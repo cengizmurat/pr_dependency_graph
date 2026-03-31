@@ -1,0 +1,36 @@
+# PR Dependency Graph
+
+A containerized Node.js + React application that visualizes pull request dependency graphs for GitHub repositories. It detects stacked PRs (where one PR's base branch is another PR's head branch) and renders an interactive D3.js directed acyclic graph.
+
+## Quick Start
+
+```bash
+# Set your GitHub token
+export GITHUB_TOKEN=ghp_your_token_here
+
+# Run with Docker Compose
+docker compose up
+
+# Open http://localhost:8000
+```
+
+## Development
+
+```bash
+# Install dependencies
+cd server && npm install
+cd ../client && npm install
+
+# Start the server (from /server)
+npm run dev
+
+# Start the client (from /client)
+npm run dev
+```
+
+## How It Works
+
+1. Enter a GitHub `owner/repo` on the landing page.
+2. The server fetches all open PRs via the GitHub API.
+3. Stacked PR dependencies are detected: if PR-B's base branch matches PR-A's head branch, PR-B depends on PR-A.
+4. The React frontend renders an interactive force-directed graph with clickable PR nodes.
