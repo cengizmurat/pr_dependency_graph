@@ -1,14 +1,14 @@
-import { EnrichedPullRequest } from "./github.js";
+import { GraphQLPullRequest } from "./github.js";
 import { GraphData, GraphNode, GraphEdge } from "./types.js";
 
 export function buildDependencyGraph(
-  prs: EnrichedPullRequest[],
+  prs: GraphQLPullRequest[],
   owner: string,
-  repo: string
+  repo: string,
 ): GraphData {
-  const headBranchToPR = new Map<string, EnrichedPullRequest>();
+  const headBranchToPR = new Map<string, GraphQLPullRequest>();
   for (const pr of prs) {
-    headBranchToPR.set(pr.head.ref, pr);
+    headBranchToPR.set(pr.headRefName, pr);
   }
 
   const nodes: GraphNode[] = prs.map((pr) => ({
@@ -16,14 +16,14 @@ export function buildDependencyGraph(
     id: `pr-${pr.number}`,
     number: pr.number,
     title: pr.title,
-    url: pr.html_url,
-    author: pr.user?.login ?? "unknown",
-    avatarUrl: pr.user?.avatar_url ?? "",
-    baseBranch: pr.base.ref,
-    headBranch: pr.head.ref,
-    isDraft: pr.draft ?? false,
-    labels: pr.labels.map((l) => l.name).filter((n): n is string => !!n),
-    createdAt: pr.created_at,
+    url: pr.url,
+    author: pr.authorLogin,
+    avatarUrl: pr.authorAvatarUrl,
+    baseBranch: pr.baseRefName,
+    headBranch: pr.headRefName,
+    isDraft: pr.isDraft,
+    labels: pr.labels,
+    createdAt: pr.createdAt,
     additions: pr.additions,
     deletions: pr.deletions,
     reviewers: pr.reviewers,
@@ -34,20 +34,20 @@ export function buildDependencyGraph(
   const branchNodes = new Map<string, GraphNode>();
 
   for (const pr of prs) {
-    const dependency = headBranchToPR.get(pr.base.ref);
+    const dependency = headBranchToPR.get(pr.baseRefName);
     if (dependency) {
       edges.push({
         source: `pr-${dependency.number}`,
         target: `pr-${pr.number}`,
       });
     } else {
-      const branchId = `branch-${pr.base.ref}`;
+      const branchId = `branch-${pr.baseRefName}`;
       if (!branchNodes.has(branchId)) {
         branchNodes.set(branchId, {
           type: "branch",
           id: branchId,
-          name: pr.base.ref,
-          url: `https://github.com/${owner}/${repo}/tree/${pr.base.ref}`,
+          name: pr.baseRefName,
+          url: `https://github.com/${owner}/${repo}/tree/${pr.baseRefName}`,
         });
       }
       edges.push({
