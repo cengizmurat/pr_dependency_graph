@@ -65,7 +65,8 @@ function buildTrees(data: GraphData): LayoutNode[] {
       y: 0,
       children: (childrenOf.get(id) ?? [])
         .filter((cid) => nodeMap.has(cid))
-        .map(buildSubtree),
+        .map(buildSubtree)
+        .reverse(),
     };
   }
 
