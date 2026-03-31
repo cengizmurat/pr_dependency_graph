@@ -5,8 +5,11 @@ A containerized Node.js + React application that visualizes pull request depende
 ## Quick Start
 
 ```bash
-# Set your GitHub token
+# Set your GitHub token (option A: environment variable)
 export GITHUB_TOKEN=ghp_your_token_here
+
+# Or store it in a .env file (option B)
+echo "GITHUB_TOKEN=ghp_your_token_here" > .env
 
 # Run with Docker Compose
 docker compose up
