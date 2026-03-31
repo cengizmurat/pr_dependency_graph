@@ -13,6 +13,8 @@ export interface PRNode {
   createdAt: string;
   additions: number;
   deletions: number;
+  reviewers: { login: string; avatarUrl: string }[];
+  commentCount: number;
 }
 
 export interface BranchNode {
