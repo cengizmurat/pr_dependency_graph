@@ -152,8 +152,8 @@ export async function fetchOpenPRs(
         authorLogin: pr.author?.login ?? "unknown",
         authorAvatarUrl: pr.author?.avatarUrl ?? "",
         labels: (pr.labels?.nodes ?? [])
-          .filter((l): l is { name: string } => !!l?.name)
-          .map((l) => l.name),
+          .filter((l: { name?: string } | null | undefined): l is { name: string } => !!l?.name)
+          .map((l: { name: string }) => l.name),
         reviewers,
         commentCount: (pr.comments?.totalCount ?? 0) + reviewCommentCount,
       });
