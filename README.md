@@ -14,20 +14,6 @@ docker compose up
 # Open http://localhost:8000
 ```
 
-## Development
-
-```bash
-# Install dependencies
-cd server && npm install
-cd ../client && npm install
-
-# Start the server (from /server)
-npm run dev
-
-# Start the client (from /client)
-npm run dev
-```
-
 ## How It Works
 
 1. Enter a GitHub `owner/repo` on the landing page.
