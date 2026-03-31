@@ -4,9 +4,17 @@ import {
   type QueryResult,
 } from "./generated/index.js";
 
+export type ReviewState =
+  | "APPROVED"
+  | "CHANGES_REQUESTED"
+  | "COMMENTED"
+  | "DISMISSED"
+  | "REQUESTED";
+
 export interface Reviewer {
   login: string;
   avatarUrl: string;
+  state: ReviewState;
 }
 
 export interface GraphQLPullRequest {
@@ -49,11 +57,20 @@ function buildQuery(cursor: string | null) {
           baseRefName: true,
           author: { login: true, avatarUrl: true },
           labels: { __args: { first: 20 }, nodes: { name: true } },
-          reviews: {
+          latestReviews: {
             __args: { first: 100 },
             nodes: {
+              state: true,
               author: { login: true, avatarUrl: true },
               comments: { totalCount: true },
+            },
+          },
+          reviewRequests: {
+            __args: { first: 100 },
+            nodes: {
+              requestedReviewer: {
+                on_User: { login: true, avatarUrl: true },
+              },
             },
           },
           comments: { totalCount: true },
@@ -92,22 +109,35 @@ export async function fetchOpenPRs(
     for (const pr of prs.nodes) {
       if (!pr) continue;
 
-      const seen = new Set<string>();
-      const reviewers: Reviewer[] = [];
+      const reviewerMap = new Map<string, Reviewer>();
       let reviewCommentCount = 0;
 
-      for (const review of pr.reviews?.nodes ?? []) {
+      for (const review of pr.latestReviews?.nodes ?? []) {
         if (!review) continue;
         reviewCommentCount += review.comments?.totalCount ?? 0;
         const login = review.author?.login;
-        if (login && !seen.has(login)) {
-          seen.add(login);
-          reviewers.push({
+        if (login) {
+          reviewerMap.set(login, {
             login,
             avatarUrl: review.author?.avatarUrl ?? "",
+            state: (review.state as ReviewState) ?? "COMMENTED",
           });
         }
       }
+
+      for (const req of pr.reviewRequests?.nodes ?? []) {
+        const reviewer = req?.requestedReviewer;
+        if (!reviewer || !("login" in reviewer) || typeof reviewer.login !== "string") continue;
+        if (!reviewerMap.has(reviewer.login)) {
+          reviewerMap.set(reviewer.login, {
+            login: reviewer.login,
+            avatarUrl: ("avatarUrl" in reviewer ? String(reviewer.avatarUrl) : ""),
+            state: "REQUESTED",
+          });
+        }
+      }
+
+      const reviewers = [...reviewerMap.values()];
 
       allPRs.push({
         number: pr.number,

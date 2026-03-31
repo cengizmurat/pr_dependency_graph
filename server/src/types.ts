@@ -13,7 +13,11 @@ export interface PRNode {
   createdAt: string;
   additions: number;
   deletions: number;
-  reviewers: { login: string; avatarUrl: string }[];
+  reviewers: {
+    login: string;
+    avatarUrl: string;
+    state: "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED" | "REQUESTED";
+  }[];
   commentCount: number;
 }
 
