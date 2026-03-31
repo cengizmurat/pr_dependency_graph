@@ -1,12 +1,12 @@
-import { PullRequest } from "./github.js";
+import { EnrichedPullRequest } from "./github.js";
 import { GraphData, GraphNode, GraphEdge } from "./types.js";
 
 export function buildDependencyGraph(
-  prs: PullRequest[],
+  prs: EnrichedPullRequest[],
   owner: string,
   repo: string
 ): GraphData {
-  const headBranchToPR = new Map<string, PullRequest>();
+  const headBranchToPR = new Map<string, EnrichedPullRequest>();
   for (const pr of prs) {
     headBranchToPR.set(pr.head.ref, pr);
   }
@@ -23,6 +23,9 @@ export function buildDependencyGraph(
     headBranch: pr.head.ref,
     isDraft: pr.draft ?? false,
     labels: pr.labels.map((l) => l.name).filter((n): n is string => !!n),
+    createdAt: pr.created_at,
+    additions: pr.additions,
+    deletions: pr.deletions,
   }));
 
   const edges: GraphEdge[] = [];

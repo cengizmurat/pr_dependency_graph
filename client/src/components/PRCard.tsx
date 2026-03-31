@@ -4,6 +4,23 @@ interface Props {
   pr: PRNode;
 }
 
+function timeAgo(dateStr: string): string {
+  const seconds = Math.floor(
+    (Date.now() - new Date(dateStr).getTime()) / 1000
+  );
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  const years = Math.floor(months / 12);
+  return `${years}y ago`;
+}
+
 export default function PRCard({ pr }: Props) {
   return (
     <div style={styles.card} data-draft={pr.isDraft || undefined}>
@@ -18,7 +35,14 @@ export default function PRCard({ pr }: Props) {
           #{pr.number} {pr.title}
         </span>
       </div>
-      <span style={styles.branch}>{pr.headBranch}</span>
+      <div style={styles.meta}>
+        <span style={styles.branch}>{pr.headBranch}</span>
+        <div style={styles.stats}>
+          <span style={styles.age}>{timeAgo(pr.createdAt)}</span>
+          <span style={styles.additions}>+{pr.additions}</span>
+          <span style={styles.deletions}>&minus;{pr.deletions}</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -60,12 +84,42 @@ const styles: Record<string, React.CSSProperties> = {
     WebkitBoxOrient: "vertical" as const,
     overflow: "hidden",
   },
+  meta: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 6,
+    paddingLeft: 18,
+    minWidth: 0,
+  },
   branch: {
     color: "#8b949e",
     fontSize: 11,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap" as const,
-    paddingLeft: 18,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  stats: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 0,
+    fontSize: 11,
+  },
+  age: {
+    color: "#8b949e",
+    whiteSpace: "nowrap" as const,
+  },
+  additions: {
+    color: "#3fb950",
+    fontWeight: 600,
+    whiteSpace: "nowrap" as const,
+  },
+  deletions: {
+    color: "#f85149",
+    fontWeight: 600,
+    whiteSpace: "nowrap" as const,
   },
 };

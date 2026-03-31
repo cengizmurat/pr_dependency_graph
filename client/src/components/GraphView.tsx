@@ -9,7 +9,7 @@ interface Props {
 }
 
 const PR_WIDTH = 260;
-const PR_HEIGHT = 68;
+const PR_HEIGHT = 82;
 const BRANCH_WIDTH = 140;
 const BRANCH_HEIGHT = 36;
 const H_SPACING = 320;

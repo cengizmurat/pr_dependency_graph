@@ -10,6 +10,9 @@ export interface PRNode {
   headBranch: string;
   isDraft: boolean;
   labels: string[];
+  createdAt: string;
+  additions: number;
+  deletions: number;
 }
 
 export interface BranchNode {
