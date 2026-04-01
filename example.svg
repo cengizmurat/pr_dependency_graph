@@ -1,540 +1,258 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="300 0 1200 900">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="300 0 1200 900">
   <defs>
     <marker id="arrowhead" viewBox="0 -5 10 10" refX="10" refY="0" markerWidth="8" markerHeight="8" orient="auto">
-      <path d="M0,-5L10,0L0,5" fill="#d0d7de"></path>
+      <path d="M0,-5L10,0L0,5" fill="#d0d7de"/>
     </marker>
+    <symbol id="comment-icon" viewBox="0 0 16 16">
+      <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2v2.189l2.72-2.72.53-.219h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z" fill="#656d76"/>
+    </symbol>
   </defs>
   <g transform="translate(404.33383757286447,-47.19164991840461) scale(0.8885837624202946)">
-    <path d="M70,374 C135,374 135,136 200,136" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"></path>
-    <path d="M70,374 C135,374 135,272 200,272" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"></path>
-    <path d="M70,374 C135,374 135,408 200,408" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"></path>
-    <path d="M480,408 C510,408 510,408 540,408" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"></path>
-    <path d="M70,374 C135,374 135,612 200,612" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"></path>
-    <path d="M480,612 C510,612 510,544 540,544" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"></path>
-    <path d="M820,544 C850,544 850,544 880,544" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"></path>
-    <path d="M480,612 C510,612 510,680 540,680" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"></path>
-    <path d="M820,680 C850,680 850,680 880,680" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"></path>
-    <path d="M70,952 C135,952 135,952 200,952" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"></path>
-    <path d="M480,952 C510,952 510,952 540,952" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"></path>
-    <g transform="translate(0,374)" style="cursor: pointer;">
-      <rect x="-70" y="-18" width="140" height="36" rx="8" ry="8" fill="#1e1535" stroke="#8250df" stroke-width="1.5"></rect>
-      <foreignObject x="-70" y="-18" width="140" height="36">
-        <div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; box-sizing: border-box; padding: 0px 10px; font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif;">
-          <span style="color: #8250df; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center;">main</span>
-        </div>
-      </foreignObject>
+    <path d="M70,374 C135,374 135,136 200,136" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <path d="M70,374 C135,374 135,272 200,272" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <path d="M70,374 C135,374 135,408 200,408" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <path d="M480,408 C510,408 510,408 540,408" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <path d="M70,374 C135,374 135,612 200,612" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <path d="M480,612 C510,612 510,544 540,544" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <path d="M820,544 C850,544 850,544 880,544" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <path d="M480,612 C510,612 510,680 540,680" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <path d="M820,680 C850,680 850,680 880,680" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <path d="M70,952 C135,952 135,952 200,952" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <path d="M480,952 C510,952 510,952 540,952" fill="none" stroke="#d0d7de" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+    <!-- main branch -->
+    <g transform="translate(0,374)">
+      <rect x="-70" y="-18" width="140" height="36" rx="8" ry="8" fill="#1e1535" stroke="#8250df" stroke-width="1.5"/>
+      <text x="0" y="5" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="600" fill="#8250df">main</text>
     </g>
-    <g transform="translate(340,136)" style="cursor: pointer;">
-      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#dafbe1" stroke="#238636" stroke-width="1.5"></rect>
-      <foreignObject x="-140" y="-60" width="280" height="120">
-        <div style="display: flex; flex-direction: column; justify-content: space-evenly; padding: 8px 12px; width: 100%; height: 100%; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif; overflow: hidden;">
-          <div style="display: flex; align-items: center; gap: 8px; min-width: 0px;">
-            <span style="width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; background-color: #238636;"></span>
-            <span style="color: #1f2328; font-size: 13px; font-weight: 600; line-height: 1.3; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">#158 Add E2E tests for checkout flow</span>
-          </div>
-          <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 18px;">test/checkout-e2e</span>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <span style="color: #656d76; white-space: nowrap;">3d ago</span>
-            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-              <span style="color: #1a7f37; font-weight: 600; white-space: nowrap;">+567</span>
-              <span style="color: #cf222e; font-weight: 600; white-space: nowrap;">−12</span>
-            </div>
-          </div>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <div style="display: flex; align-items: center; gap: 4px; min-width: 0px; flex-shrink: 1;">
-              <img alt="kevinl" src="https://avatars.githubusercontent.com/u/150?v=4" style="width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;">
-              <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">kevinl</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-              <div style="display: flex; align-items: center;">
-                <div title="danielr: changes requested" style="position: relative; margin-left: -4px; width: 19px; height: 19px; flex-shrink: 0;">
-                  <img alt="danielr" src="https://avatars.githubusercontent.com/u/88?v=4" style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ffffff;">
-                  <span style="position: absolute; bottom: -2px; right: -3px; display: flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #ffffff; background-color: rgb(218, 54, 51);">
-                    <svg width="7" height="7" viewBox="0 0 16 16" fill="#ffffff">
-                      <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"></path>
-                    </svg>
-                  </span>
-                </div>
-                <div title="amypark: commented" style="position: relative; margin-left: -4px; width: 19px; height: 19px; flex-shrink: 0;">
-                  <img alt="amypark" src="https://avatars.githubusercontent.com/u/102?v=4" style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ffffff;">
-                  <span style="position: absolute; bottom: -2px; right: -3px; display: flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #ffffff; background-color: rgb(139, 148, 158);">
-                    <svg width="7" height="7" viewBox="0 0 16 16" fill="#ffffff">
-                      <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0113.25 12H9.06l-2.573 2.573A1.458 1.458 0 014 13.543V12H2.75A1.75 1.75 0 011 10.25zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h2v2.189l2.72-2.72.53-.219h4.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25z"></path>
-                    </svg>
-                  </span>
-                </div>
-              </div>
-              <div style="display: flex; align-items: center; gap: 3px;">
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="#656d76" style="flex-shrink: 0;">
-                  <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2v2.189l2.72-2.72.53-.219h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
-                </svg>
-                <span style="color: #656d76; font-size: 11px; white-space: nowrap;">9</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </foreignObject>
+
+    <!-- #158 Add E2E tests for checkout flow -->
+    <g transform="translate(340,136)">
+      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#dafbe1" stroke="#238636" stroke-width="1.5"/>
+      <circle cx="-122" cy="-36" r="5" fill="#238636"/>
+      <text x="-108" y="-33" font-family="sans-serif" font-size="13" font-weight="600" fill="#1f2328">#158 Add E2E tests for checkout flow</text>
+      <text x="-108" y="-11" font-family="sans-serif" font-size="11" fill="#656d76">test/checkout-e2e</text>
+      <text x="-108" y="11" font-family="sans-serif" font-size="11" fill="#656d76">3d ago</text>
+      <text x="95" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#1a7f37" text-anchor="end">+567</text>
+      <text x="128" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#cf222e" text-anchor="end">−12</text>
+      <circle cx="-114" cy="34" r="8" fill="#0969da"/>
+      <text x="-114" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">K</text>
+      <text x="-100" y="37" font-family="sans-serif" font-size="11" fill="#656d76">kevinl</text>
+      <circle cx="80" cy="34" r="8" fill="#e16f24" stroke="#fff" stroke-width="1.5"/>
+      <text x="80" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">D</text>
+      <circle cx="86" cy="39" r="4" fill="#da3633" stroke="#fff" stroke-width="1.5"/>
+      <circle cx="94" cy="34" r="8" fill="#1a7f37" stroke="#fff" stroke-width="1.5"/>
+      <text x="94" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">A</text>
+      <circle cx="100" cy="39" r="4" fill="#8b949e" stroke="#fff" stroke-width="1.5"/>
+      <use href="#comment-icon" x="108" y="28" width="12" height="12"/>
+      <text x="128" y="37" font-family="sans-serif" font-size="11" fill="#656d76" text-anchor="end">9</text>
     </g>
-    <g transform="translate(340,272)" style="cursor: pointer;">
-      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#1c1e23" stroke="#656d76" stroke-width="1.5"></rect>
-      <foreignObject x="-140" y="-60" width="280" height="120">
-        <div data-draft="true" style="display: flex; flex-direction: column; justify-content: space-evenly; padding: 8px 12px; width: 100%; height: 100%; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif; overflow: hidden;">
-          <div style="display: flex; align-items: center; gap: 8px; min-width: 0px;">
-            <span style="width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; background-color: #656d76;"></span>
-            <span style="color: #1f2328; font-size: 13px; font-weight: 600; line-height: 1.3; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">#161 Update CI pipeline for arm64 builds</span>
-          </div>
-          <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 18px;">ci/arm64-support</span>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <span style="color: #656d76; white-space: nowrap;">18h ago</span>
-            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-              <span style="color: #1a7f37; font-weight: 600; white-space: nowrap;">+94</span>
-              <span style="color: #cf222e; font-weight: 600; white-space: nowrap;">−31</span>
-            </div>
-          </div>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <div style="display: flex; align-items: center; gap: 4px; min-width: 0px; flex-shrink: 1;">
-              <img alt="kevinl" src="https://avatars.githubusercontent.com/u/150?v=4" style="width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;">
-              <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">kevinl</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-              <div style="display: flex; align-items: center; gap: 3px;">
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="#656d76" style="flex-shrink: 0;">
-                  <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2v2.189l2.72-2.72.53-.219h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
-                </svg>
-                <span style="color: #656d76; font-size: 11px; white-space: nowrap;">1</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </foreignObject>
+
+    <!-- #161 Update CI pipeline for arm64 builds (draft) -->
+    <g transform="translate(340,272)">
+      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#1c1e23" stroke="#656d76" stroke-width="1.5"/>
+      <circle cx="-122" cy="-36" r="5" fill="#656d76"/>
+      <text x="-108" y="-33" font-family="sans-serif" font-size="13" font-weight="600" fill="#e6edf3">#161 Update CI pipeline for arm64 builds</text>
+      <text x="-108" y="-11" font-family="sans-serif" font-size="11" fill="#8b949e">ci/arm64-support</text>
+      <text x="-108" y="11" font-family="sans-serif" font-size="11" fill="#8b949e">18h ago</text>
+      <text x="95" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#3fb950" text-anchor="end">+94</text>
+      <text x="128" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#f85149" text-anchor="end">−31</text>
+      <circle cx="-114" cy="34" r="8" fill="#0969da"/>
+      <text x="-114" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">K</text>
+      <text x="-100" y="37" font-family="sans-serif" font-size="11" fill="#8b949e">kevinl</text>
+      <use href="#comment-icon" x="108" y="28" width="12" height="12"/>
+      <text x="128" y="37" font-family="sans-serif" font-size="11" fill="#8b949e" text-anchor="end">1</text>
     </g>
-    <g transform="translate(340,408)" style="cursor: pointer;">
-      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#dafbe1" stroke="#238636" stroke-width="1.5"></rect>
-      <foreignObject x="-140" y="-60" width="280" height="120">
-        <div style="display: flex; flex-direction: column; justify-content: space-evenly; padding: 8px 12px; width: 100%; height: 100%; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif; overflow: hidden;">
-          <div style="display: flex; align-items: center; gap: 8px; min-width: 0px;">
-            <span style="width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; background-color: #238636;"></span>
-            <span style="color: #1f2328; font-size: 13px; font-weight: 600; line-height: 1.3; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">#138 Refactor API to REST v2 endpoints</span>
-          </div>
-          <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 18px;">refactor/api-v2</span>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <span style="color: #656d76; white-space: nowrap;">8d ago</span>
-            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-              <span style="color: #1a7f37; font-weight: 600; white-space: nowrap;">+1247</span>
-              <span style="color: #cf222e; font-weight: 600; white-space: nowrap;">−893</span>
-            </div>
-          </div>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <div style="display: flex; align-items: center; gap: 4px; min-width: 0px; flex-shrink: 1;">
-              <img alt="jaredm" src="https://avatars.githubusercontent.com/u/45?v=4" style="width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;">
-              <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">jaredm</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-              <div style="display: flex; align-items: center;">
-                <div title="sarahchen: approved" style="position: relative; margin-left: -4px; width: 19px; height: 19px; flex-shrink: 0;">
-                  <img alt="sarahchen" src="https://avatars.githubusercontent.com/u/30?v=4" style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ffffff;">
-                  <span style="position: absolute; bottom: -2px; right: -3px; display: flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #ffffff; background-color: rgb(35, 134, 54);">
-                    <svg width="7" height="7" viewBox="0 0 16 16" fill="#ffffff">
-                      <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"></path>
-                    </svg>
-                  </span>
-                </div>
-                <div title="amypark: approved" style="position: relative; margin-left: -4px; width: 19px; height: 19px; flex-shrink: 0;">
-                  <img alt="amypark" src="https://avatars.githubusercontent.com/u/102?v=4" style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ffffff;">
-                  <span style="position: absolute; bottom: -2px; right: -3px; display: flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #ffffff; background-color: rgb(35, 134, 54);">
-                    <svg width="7" height="7" viewBox="0 0 16 16" fill="#ffffff">
-                      <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"></path>
-                    </svg>
-                  </span>
-                </div>
-                <div title="danielr: changes requested" style="position: relative; margin-left: -4px; width: 19px; height: 19px; flex-shrink: 0;">
-                  <img alt="danielr" src="https://avatars.githubusercontent.com/u/88?v=4" style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ffffff;">
-                  <span style="position: absolute; bottom: -2px; right: -3px; display: flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #ffffff; background-color: rgb(218, 54, 51);">
-                    <svg width="7" height="7" viewBox="0 0 16 16" fill="#ffffff">
-                      <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"></path>
-                    </svg>
-                  </span>
-                </div>
-              </div>
-              <div style="display: flex; align-items: center; gap: 3px;">
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="#656d76" style="flex-shrink: 0;">
-                  <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2v2.189l2.72-2.72.53-.219h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
-                </svg>
-                <span style="color: #656d76; font-size: 11px; white-space: nowrap;">24</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </foreignObject>
+
+    <!-- #138 Refactor API to REST v2 endpoints -->
+    <g transform="translate(340,408)">
+      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#dafbe1" stroke="#238636" stroke-width="1.5"/>
+      <circle cx="-122" cy="-36" r="5" fill="#238636"/>
+      <text x="-108" y="-33" font-family="sans-serif" font-size="13" font-weight="600" fill="#1f2328">#138 Refactor API to REST v2 endpoints</text>
+      <text x="-108" y="-11" font-family="sans-serif" font-size="11" fill="#656d76">refactor/api-v2</text>
+      <text x="-108" y="11" font-family="sans-serif" font-size="11" fill="#656d76">8d ago</text>
+      <text x="95" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#1a7f37" text-anchor="end">+1247</text>
+      <text x="128" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#cf222e" text-anchor="end">−893</text>
+      <circle cx="-114" cy="34" r="8" fill="#8250df"/>
+      <text x="-114" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">J</text>
+      <text x="-100" y="37" font-family="sans-serif" font-size="11" fill="#656d76">jaredm</text>
+      <circle cx="58" cy="34" r="8" fill="#bf3989" stroke="#fff" stroke-width="1.5"/>
+      <text x="58" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">S</text>
+      <circle cx="64" cy="39" r="4" fill="#238636" stroke="#fff" stroke-width="1.5"/>
+      <circle cx="72" cy="34" r="8" fill="#1a7f37" stroke="#fff" stroke-width="1.5"/>
+      <text x="72" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">A</text>
+      <circle cx="78" cy="39" r="4" fill="#238636" stroke="#fff" stroke-width="1.5"/>
+      <circle cx="86" cy="34" r="8" fill="#e16f24" stroke="#fff" stroke-width="1.5"/>
+      <text x="86" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">D</text>
+      <circle cx="92" cy="39" r="4" fill="#da3633" stroke="#fff" stroke-width="1.5"/>
+      <use href="#comment-icon" x="100" y="28" width="12" height="12"/>
+      <text x="128" y="37" font-family="sans-serif" font-size="11" fill="#656d76" text-anchor="end">24</text>
     </g>
-    <g transform="translate(680,408)" style="cursor: pointer;">
-      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#dafbe1" stroke="#238636" stroke-width="1.5"></rect>
-      <foreignObject x="-140" y="-60" width="280" height="120">
-        <div style="display: flex; flex-direction: column; justify-content: space-evenly; padding: 8px 12px; width: 100%; height: 100%; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif; overflow: hidden;">
-          <div style="display: flex; align-items: center; gap: 8px; min-width: 0px;">
-            <span style="width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; background-color: #238636;"></span>
-            <span style="color: #1f2328; font-size: 13px; font-weight: 600; line-height: 1.3; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">#151 Add pagination to list endpoints</span>
-          </div>
-          <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 18px;">feat/api-pagination</span>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <span style="color: #656d76; white-space: nowrap;">4d ago</span>
-            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-              <span style="color: #1a7f37; font-weight: 600; white-space: nowrap;">+215</span>
-              <span style="color: #cf222e; font-weight: 600; white-space: nowrap;">−56</span>
-            </div>
-          </div>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <div style="display: flex; align-items: center; gap: 4px; min-width: 0px; flex-shrink: 1;">
-              <img alt="danielr" src="https://avatars.githubusercontent.com/u/88?v=4" style="width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;">
-              <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">danielr</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-              <div style="display: flex; align-items: center;">
-                <div title="jaredm: approved" style="position: relative; margin-left: -4px; width: 19px; height: 19px; flex-shrink: 0;">
-                  <img alt="jaredm" src="https://avatars.githubusercontent.com/u/45?v=4" style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ffffff;">
-                  <span style="position: absolute; bottom: -2px; right: -3px; display: flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #ffffff; background-color: rgb(35, 134, 54);">
-                    <svg width="7" height="7" viewBox="0 0 16 16" fill="#ffffff">
-                      <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"></path>
-                    </svg>
-                  </span>
-                </div>
-              </div>
-              <div style="display: flex; align-items: center; gap: 3px;">
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="#656d76" style="flex-shrink: 0;">
-                  <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2v2.189l2.72-2.72.53-.219h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
-                </svg>
-                <span style="color: #656d76; font-size: 11px; white-space: nowrap;">3</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </foreignObject>
+
+    <!-- #151 Add pagination to list endpoints -->
+    <g transform="translate(680,408)">
+      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#dafbe1" stroke="#238636" stroke-width="1.5"/>
+      <circle cx="-122" cy="-36" r="5" fill="#238636"/>
+      <text x="-108" y="-33" font-family="sans-serif" font-size="13" font-weight="600" fill="#1f2328">#151 Add pagination to list endpoints</text>
+      <text x="-108" y="-11" font-family="sans-serif" font-size="11" fill="#656d76">feat/api-pagination</text>
+      <text x="-108" y="11" font-family="sans-serif" font-size="11" fill="#656d76">4d ago</text>
+      <text x="95" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#1a7f37" text-anchor="end">+215</text>
+      <text x="128" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#cf222e" text-anchor="end">−56</text>
+      <circle cx="-114" cy="34" r="8" fill="#e16f24"/>
+      <text x="-114" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">D</text>
+      <text x="-100" y="37" font-family="sans-serif" font-size="11" fill="#656d76">danielr</text>
+      <circle cx="94" cy="34" r="8" fill="#8250df" stroke="#fff" stroke-width="1.5"/>
+      <text x="94" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">J</text>
+      <circle cx="100" cy="39" r="4" fill="#238636" stroke="#fff" stroke-width="1.5"/>
+      <use href="#comment-icon" x="108" y="28" width="12" height="12"/>
+      <text x="128" y="37" font-family="sans-serif" font-size="11" fill="#656d76" text-anchor="end">3</text>
     </g>
-    <g transform="translate(340,612)" style="cursor: pointer;">
-      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#dafbe1" stroke="#238636" stroke-width="1.5"></rect>
-      <foreignObject x="-140" y="-60" width="280" height="120">
-        <div style="display: flex; flex-direction: column; justify-content: space-evenly; padding: 8px 12px; width: 100%; height: 100%; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif; overflow: hidden;">
-          <div style="display: flex; align-items: center; gap: 8px; min-width: 0px;">
-            <span style="width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; background-color: #238636;"></span>
-            <span style="color: #1f2328; font-size: 13px; font-weight: 600; line-height: 1.3; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">#142 Add authentication middleware</span>
-          </div>
-          <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 18px;">feat/auth-middleware</span>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <span style="color: #656d76; white-space: nowrap;">5d ago</span>
-            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-              <span style="color: #1a7f37; font-weight: 600; white-space: nowrap;">+482</span>
-              <span style="color: #cf222e; font-weight: 600; white-space: nowrap;">−37</span>
-            </div>
-          </div>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <div style="display: flex; align-items: center; gap: 4px; min-width: 0px; flex-shrink: 1;">
-              <img alt="sarahchen" src="https://avatars.githubusercontent.com/u/30?v=4" style="width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;">
-              <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">sarahchen</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-              <div style="display: flex; align-items: center;">
-                <div title="jaredm: approved" style="position: relative; margin-left: -4px; width: 19px; height: 19px; flex-shrink: 0;">
-                  <img alt="jaredm" src="https://avatars.githubusercontent.com/u/45?v=4" style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ffffff;">
-                  <span style="position: absolute; bottom: -2px; right: -3px; display: flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #ffffff; background-color: rgb(35, 134, 54);">
-                    <svg width="7" height="7" viewBox="0 0 16 16" fill="#ffffff">
-                      <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"></path>
-                    </svg>
-                  </span>
-                </div>
-                <div title="amypark: approved" style="position: relative; margin-left: -4px; width: 19px; height: 19px; flex-shrink: 0;">
-                  <img alt="amypark" src="https://avatars.githubusercontent.com/u/102?v=4" style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ffffff;">
-                  <span style="position: absolute; bottom: -2px; right: -3px; display: flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #ffffff; background-color: rgb(35, 134, 54);">
-                    <svg width="7" height="7" viewBox="0 0 16 16" fill="#ffffff">
-                      <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"></path>
-                    </svg>
-                  </span>
-                </div>
-              </div>
-              <div style="display: flex; align-items: center; gap: 3px;">
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="#656d76" style="flex-shrink: 0;">
-                  <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2v2.189l2.72-2.72.53-.219h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
-                </svg>
-                <span style="color: #656d76; font-size: 11px; white-space: nowrap;">12</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </foreignObject>
+
+    <!-- #142 Add authentication middleware -->
+    <g transform="translate(340,612)">
+      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#dafbe1" stroke="#238636" stroke-width="1.5"/>
+      <circle cx="-122" cy="-36" r="5" fill="#238636"/>
+      <text x="-108" y="-33" font-family="sans-serif" font-size="13" font-weight="600" fill="#1f2328">#142 Add authentication middleware</text>
+      <text x="-108" y="-11" font-family="sans-serif" font-size="11" fill="#656d76">feat/auth-middleware</text>
+      <text x="-108" y="11" font-family="sans-serif" font-size="11" fill="#656d76">5d ago</text>
+      <text x="95" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#1a7f37" text-anchor="end">+482</text>
+      <text x="128" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#cf222e" text-anchor="end">−37</text>
+      <circle cx="-114" cy="34" r="8" fill="#bf3989"/>
+      <text x="-114" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">S</text>
+      <text x="-100" y="37" font-family="sans-serif" font-size="11" fill="#656d76">sarahchen</text>
+      <circle cx="72" cy="34" r="8" fill="#8250df" stroke="#fff" stroke-width="1.5"/>
+      <text x="72" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">J</text>
+      <circle cx="78" cy="39" r="4" fill="#238636" stroke="#fff" stroke-width="1.5"/>
+      <circle cx="86" cy="34" r="8" fill="#1a7f37" stroke="#fff" stroke-width="1.5"/>
+      <text x="86" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">A</text>
+      <circle cx="92" cy="39" r="4" fill="#238636" stroke="#fff" stroke-width="1.5"/>
+      <use href="#comment-icon" x="100" y="28" width="12" height="12"/>
+      <text x="128" y="37" font-family="sans-serif" font-size="11" fill="#656d76" text-anchor="end">12</text>
     </g>
-    <g transform="translate(680,544)" style="cursor: pointer;">
-      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#dafbe1" stroke="#238636" stroke-width="1.5"></rect>
-      <foreignObject x="-140" y="-60" width="280" height="120">
-        <div style="display: flex; flex-direction: column; justify-content: space-evenly; padding: 8px 12px; width: 100%; height: 100%; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif; overflow: hidden;">
-          <div style="display: flex; align-items: center; gap: 8px; min-width: 0px;">
-            <span style="width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; background-color: #238636;"></span>
-            <span style="color: #1f2328; font-size: 13px; font-weight: 600; line-height: 1.3; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">#164 Add JWT session management</span>
-          </div>
-          <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 18px;">feat/session-jwt</span>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <span style="color: #656d76; white-space: nowrap;">2d ago</span>
-            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-              <span style="color: #1a7f37; font-weight: 600; white-space: nowrap;">+274</span>
-              <span style="color: #cf222e; font-weight: 600; white-space: nowrap;">−19</span>
-            </div>
-          </div>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <div style="display: flex; align-items: center; gap: 4px; min-width: 0px; flex-shrink: 1;">
-              <img alt="danielr" src="https://avatars.githubusercontent.com/u/88?v=4" style="width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;">
-              <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">danielr</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-              <div style="display: flex; align-items: center;">
-                <div title="sarahchen: approved" style="position: relative; margin-left: -4px; width: 19px; height: 19px; flex-shrink: 0;">
-                  <img alt="sarahchen" src="https://avatars.githubusercontent.com/u/30?v=4" style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ffffff;">
-                  <span style="position: absolute; bottom: -2px; right: -3px; display: flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #ffffff; background-color: rgb(35, 134, 54);">
-                    <svg width="7" height="7" viewBox="0 0 16 16" fill="#ffffff">
-                      <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"></path>
-                    </svg>
-                  </span>
-                </div>
-                <div title="jaredm: commented" style="position: relative; margin-left: -4px; width: 19px; height: 19px; flex-shrink: 0;">
-                  <img alt="jaredm" src="https://avatars.githubusercontent.com/u/45?v=4" style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ffffff;">
-                  <span style="position: absolute; bottom: -2px; right: -3px; display: flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #ffffff; background-color: rgb(139, 148, 158);">
-                    <svg width="7" height="7" viewBox="0 0 16 16" fill="#ffffff">
-                      <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0113.25 12H9.06l-2.573 2.573A1.458 1.458 0 014 13.543V12H2.75A1.75 1.75 0 011 10.25zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h2v2.189l2.72-2.72.53-.219h4.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25z"></path>
-                    </svg>
-                  </span>
-                </div>
-              </div>
-              <div style="display: flex; align-items: center; gap: 3px;">
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="#656d76" style="flex-shrink: 0;">
-                  <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2v2.189l2.72-2.72.53-.219h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
-                </svg>
-                <span style="color: #656d76; font-size: 11px; white-space: nowrap;">8</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </foreignObject>
+
+    <!-- #164 Add JWT session management -->
+    <g transform="translate(680,544)">
+      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#dafbe1" stroke="#238636" stroke-width="1.5"/>
+      <circle cx="-122" cy="-36" r="5" fill="#238636"/>
+      <text x="-108" y="-33" font-family="sans-serif" font-size="13" font-weight="600" fill="#1f2328">#164 Add JWT session management</text>
+      <text x="-108" y="-11" font-family="sans-serif" font-size="11" fill="#656d76">feat/session-jwt</text>
+      <text x="-108" y="11" font-family="sans-serif" font-size="11" fill="#656d76">2d ago</text>
+      <text x="95" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#1a7f37" text-anchor="end">+274</text>
+      <text x="128" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#cf222e" text-anchor="end">−19</text>
+      <circle cx="-114" cy="34" r="8" fill="#e16f24"/>
+      <text x="-114" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">D</text>
+      <text x="-100" y="37" font-family="sans-serif" font-size="11" fill="#656d76">danielr</text>
+      <circle cx="80" cy="34" r="8" fill="#bf3989" stroke="#fff" stroke-width="1.5"/>
+      <text x="80" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">S</text>
+      <circle cx="86" cy="39" r="4" fill="#238636" stroke="#fff" stroke-width="1.5"/>
+      <circle cx="94" cy="34" r="8" fill="#8250df" stroke="#fff" stroke-width="1.5"/>
+      <text x="94" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">J</text>
+      <circle cx="100" cy="39" r="4" fill="#8b949e" stroke="#fff" stroke-width="1.5"/>
+      <use href="#comment-icon" x="108" y="28" width="12" height="12"/>
+      <text x="128" y="37" font-family="sans-serif" font-size="11" fill="#656d76" text-anchor="end">8</text>
     </g>
-    <g transform="translate(1020,544)" style="cursor: pointer;">
-      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#1c1e23" stroke="#656d76" stroke-width="1.5"></rect>
-      <foreignObject x="-140" y="-60" width="280" height="120">
-        <div data-draft="true" style="display: flex; flex-direction: column; justify-content: space-evenly; padding: 8px 12px; width: 100%; height: 100%; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif; overflow: hidden;">
-          <div style="display: flex; align-items: center; gap: 8px; min-width: 0px;">
-            <span style="width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; background-color: #656d76;"></span>
-            <span style="color: #1f2328; font-size: 13px; font-weight: 600; line-height: 1.3; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">#167 Add CSRF protection middleware</span>
-          </div>
-          <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 18px;">feat/csrf-protection</span>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <span style="color: #656d76; white-space: nowrap;">3h ago</span>
-            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-              <span style="color: #1a7f37; font-weight: 600; white-space: nowrap;">+112</span>
-              <span style="color: #cf222e; font-weight: 600; white-space: nowrap;">−6</span>
-            </div>
-          </div>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <div style="display: flex; align-items: center; gap: 4px; min-width: 0px; flex-shrink: 1;">
-              <img alt="danielr" src="https://avatars.githubusercontent.com/u/88?v=4" style="width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;">
-              <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">danielr</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-              <div style="display: flex; align-items: center;">
-                <div title="sarahchen: requested" style="position: relative; margin-left: -4px; width: 19px; height: 19px; flex-shrink: 0;">
-                  <img alt="sarahchen" src="https://avatars.githubusercontent.com/u/30?v=4" style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ffffff;">
-                  <span style="position: absolute; bottom: -2px; right: -3px; display: flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #ffffff; background-color: rgb(210, 153, 34);">
-                    <svg width="7" height="7" viewBox="0 0 16 16" fill="#ffffff">
-                      <path d="M8 2a6 6 0 110 12A6 6 0 018 2zm0 1.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9zM8 5a.75.75 0 01.75.75v1.5h1.5a.75.75 0 010 1.5h-1.5v1.5a.75.75 0 01-1.5 0v-1.5h-1.5a.75.75 0 010-1.5h1.5v-1.5A.75.75 0 018 5z"></path>
-                    </svg>
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </foreignObject>
+
+    <!-- #167 Add CSRF protection middleware (draft) -->
+    <g transform="translate(1020,544)">
+      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#1c1e23" stroke="#656d76" stroke-width="1.5"/>
+      <circle cx="-122" cy="-36" r="5" fill="#656d76"/>
+      <text x="-108" y="-33" font-family="sans-serif" font-size="13" font-weight="600" fill="#e6edf3">#167 Add CSRF protection middleware</text>
+      <text x="-108" y="-11" font-family="sans-serif" font-size="11" fill="#8b949e">feat/csrf-protection</text>
+      <text x="-108" y="11" font-family="sans-serif" font-size="11" fill="#8b949e">3h ago</text>
+      <text x="95" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#3fb950" text-anchor="end">+112</text>
+      <text x="128" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#f85149" text-anchor="end">−6</text>
+      <circle cx="-114" cy="34" r="8" fill="#e16f24"/>
+      <text x="-114" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">D</text>
+      <text x="-100" y="37" font-family="sans-serif" font-size="11" fill="#8b949e">danielr</text>
+      <circle cx="120" cy="34" r="8" fill="#bf3989" stroke="#fff" stroke-width="1.5"/>
+      <text x="120" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">S</text>
+      <circle cx="126" cy="39" r="4" fill="#d29922" stroke="#fff" stroke-width="1.5"/>
     </g>
-    <g transform="translate(680,680)" style="cursor: pointer;">
-      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#dafbe1" stroke="#238636" stroke-width="5"></rect>
-      <foreignObject x="-140" y="-60" width="280" height="120">
-        <div style="display: flex; flex-direction: column; justify-content: space-evenly; padding: 8px 12px; width: 100%; height: 100%; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif; overflow: hidden;">
-          <div style="display: flex; align-items: center; gap: 8px; min-width: 0px;">
-            <span style="width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; background-color: #238636;"></span>
-            <span style="color: #1f2328; font-size: 13px; font-weight: 600; line-height: 1.3; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">#156 Implement OAuth2 login flow</span>
-          </div>
-          <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 18px;">feat/oauth-login</span>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <span style="color: #656d76; white-space: nowrap;">3d ago</span>
-            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-              <span style="color: #1a7f37; font-weight: 600; white-space: nowrap;">+310</span>
-              <span style="color: #cf222e; font-weight: 600; white-space: nowrap;">−14</span>
-            </div>
-          </div>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <div style="display: flex; align-items: center; gap: 4px; min-width: 0px; flex-shrink: 1;">
-              <img alt="sarahchen" src="https://avatars.githubusercontent.com/u/30?v=4" style="width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;">
-              <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">sarahchen</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-              <div style="display: flex; align-items: center;">
-                <div title="jaredm: commented" style="position: relative; margin-left: -4px; width: 19px; height: 19px; flex-shrink: 0;">
-                  <img alt="jaredm" src="https://avatars.githubusercontent.com/u/45?v=4" style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ffffff;">
-                  <span style="position: absolute; bottom: -2px; right: -3px; display: flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #ffffff; background-color: rgb(139, 148, 158);">
-                    <svg width="7" height="7" viewBox="0 0 16 16" fill="#ffffff">
-                      <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0113.25 12H9.06l-2.573 2.573A1.458 1.458 0 014 13.543V12H2.75A1.75 1.75 0 011 10.25zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h2v2.189l2.72-2.72.53-.219h4.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25z"></path>
-                    </svg>
-                  </span>
-                </div>
-                <div title="danielr: requested" style="position: relative; margin-left: -4px; width: 19px; height: 19px; flex-shrink: 0;">
-                  <img alt="danielr" src="https://avatars.githubusercontent.com/u/88?v=4" style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ffffff;">
-                  <span style="position: absolute; bottom: -2px; right: -3px; display: flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #ffffff; background-color: rgb(210, 153, 34);">
-                    <svg width="7" height="7" viewBox="0 0 16 16" fill="#ffffff">
-                      <path d="M8 2a6 6 0 110 12A6 6 0 018 2zm0 1.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9zM8 5a.75.75 0 01.75.75v1.5h1.5a.75.75 0 010 1.5h-1.5v1.5a.75.75 0 01-1.5 0v-1.5h-1.5a.75.75 0 010-1.5h1.5v-1.5A.75.75 0 018 5z"></path>
-                    </svg>
-                  </span>
-                </div>
-              </div>
-              <div style="display: flex; align-items: center; gap: 3px;">
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="#656d76" style="flex-shrink: 0;">
-                  <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2v2.189l2.72-2.72.53-.219h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
-                </svg>
-                <span style="color: #656d76; font-size: 11px; white-space: nowrap;">5</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </foreignObject>
+
+    <!-- #156 Implement OAuth2 login flow (highlighted) -->
+    <g transform="translate(680,680)">
+      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#dafbe1" stroke="#238636" stroke-width="5"/>
+      <circle cx="-122" cy="-36" r="5" fill="#238636"/>
+      <text x="-108" y="-33" font-family="sans-serif" font-size="13" font-weight="600" fill="#1f2328">#156 Implement OAuth2 login flow</text>
+      <text x="-108" y="-11" font-family="sans-serif" font-size="11" fill="#656d76">feat/oauth-login</text>
+      <text x="-108" y="11" font-family="sans-serif" font-size="11" fill="#656d76">3d ago</text>
+      <text x="95" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#1a7f37" text-anchor="end">+310</text>
+      <text x="128" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#cf222e" text-anchor="end">−14</text>
+      <circle cx="-114" cy="34" r="8" fill="#bf3989"/>
+      <text x="-114" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">S</text>
+      <text x="-100" y="37" font-family="sans-serif" font-size="11" fill="#656d76">sarahchen</text>
+      <circle cx="80" cy="34" r="8" fill="#8250df" stroke="#fff" stroke-width="1.5"/>
+      <text x="80" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">J</text>
+      <circle cx="86" cy="39" r="4" fill="#8b949e" stroke="#fff" stroke-width="1.5"/>
+      <circle cx="94" cy="34" r="8" fill="#e16f24" stroke="#fff" stroke-width="1.5"/>
+      <text x="94" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">D</text>
+      <circle cx="100" cy="39" r="4" fill="#d29922" stroke="#fff" stroke-width="1.5"/>
+      <use href="#comment-icon" x="108" y="28" width="12" height="12"/>
+      <text x="128" y="37" font-family="sans-serif" font-size="11" fill="#656d76" text-anchor="end">5</text>
     </g>
-    <g transform="translate(1020,680)" style="cursor: pointer;">
-      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#1c1e23" stroke="#656d76" stroke-width="1.5"></rect>
-      <foreignObject x="-140" y="-60" width="280" height="120">
-        <div data-draft="true" style="display: flex; flex-direction: column; justify-content: space-evenly; padding: 8px 12px; width: 100%; height: 100%; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif; overflow: hidden;">
-          <div style="display: flex; align-items: center; gap: 8px; min-width: 0px;">
-            <span style="width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; background-color: #656d76;"></span>
-            <span style="color: #1f2328; font-size: 13px; font-weight: 600; line-height: 1.3; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">#163 Add role-based access control</span>
-          </div>
-          <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 18px;">feat/rbac</span>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <span style="color: #656d76; white-space: nowrap;">6h ago</span>
-            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-              <span style="color: #1a7f37; font-weight: 600; white-space: nowrap;">+189</span>
-              <span style="color: #cf222e; font-weight: 600; white-space: nowrap;">−4</span>
-            </div>
-          </div>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <div style="display: flex; align-items: center; gap: 4px; min-width: 0px; flex-shrink: 1;">
-              <img alt="sarahchen" src="https://avatars.githubusercontent.com/u/30?v=4" style="width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;">
-              <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">sarahchen</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;"></div>
-          </div>
-        </div>
-      </foreignObject>
+
+    <!-- #163 Add role-based access control (draft) -->
+    <g transform="translate(1020,680)">
+      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#1c1e23" stroke="#656d76" stroke-width="1.5"/>
+      <circle cx="-122" cy="-36" r="5" fill="#656d76"/>
+      <text x="-108" y="-33" font-family="sans-serif" font-size="13" font-weight="600" fill="#e6edf3">#163 Add role-based access control</text>
+      <text x="-108" y="-11" font-family="sans-serif" font-size="11" fill="#8b949e">feat/rbac</text>
+      <text x="-108" y="11" font-family="sans-serif" font-size="11" fill="#8b949e">6h ago</text>
+      <text x="95" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#3fb950" text-anchor="end">+189</text>
+      <text x="128" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#f85149" text-anchor="end">−4</text>
+      <circle cx="-114" cy="34" r="8" fill="#bf3989"/>
+      <text x="-114" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">S</text>
+      <text x="-100" y="37" font-family="sans-serif" font-size="11" fill="#8b949e">sarahchen</text>
     </g>
-    <g transform="translate(0,952)" style="cursor: pointer;">
-      <rect x="-70" y="-18" width="140" height="36" rx="8" ry="8" fill="#1e1535" stroke="#8250df" stroke-width="1.5"></rect>
-      <foreignObject x="-70" y="-18" width="140" height="36">
-        <div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; box-sizing: border-box; padding: 0px 10px; font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif;">
-          <span style="color: #8250df; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center;">develop</span>
-        </div>
-      </foreignObject>
+
+    <!-- develop branch -->
+    <g transform="translate(0,952)">
+      <rect x="-70" y="-18" width="140" height="36" rx="8" ry="8" fill="#1e1535" stroke="#8250df" stroke-width="1.5"/>
+      <text x="0" y="5" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="600" fill="#8250df">develop</text>
     </g>
-    <g transform="translate(340,952)" style="cursor: pointer;">
-      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#dafbe1" stroke="#238636" stroke-width="1.5"></rect>
-      <foreignObject x="-140" y="-60" width="280" height="120">
-        <div style="display: flex; flex-direction: column; justify-content: space-evenly; padding: 8px 12px; width: 100%; height: 100%; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif; overflow: hidden;">
-          <div style="display: flex; align-items: center; gap: 8px; min-width: 0px;">
-            <span style="width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; background-color: #238636;"></span>
-            <span style="color: #1f2328; font-size: 13px; font-weight: 600; line-height: 1.3; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">#144 Database migration framework</span>
-          </div>
-          <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 18px;">feat/db-migrations</span>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <span style="color: #656d76; white-space: nowrap;">7d ago</span>
-            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-              <span style="color: #1a7f37; font-weight: 600; white-space: nowrap;">+653</span>
-              <span style="color: #cf222e; font-weight: 600; white-space: nowrap;">−29</span>
-            </div>
-          </div>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <div style="display: flex; align-items: center; gap: 4px; min-width: 0px; flex-shrink: 1;">
-              <img alt="jaredm" src="https://avatars.githubusercontent.com/u/45?v=4" style="width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;">
-              <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">jaredm</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-              <div style="display: flex; align-items: center;">
-                <div title="sarahchen: approved" style="position: relative; margin-left: -4px; width: 19px; height: 19px; flex-shrink: 0;">
-                  <img alt="sarahchen" src="https://avatars.githubusercontent.com/u/30?v=4" style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ffffff;">
-                  <span style="position: absolute; bottom: -2px; right: -3px; display: flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #ffffff; background-color: rgb(35, 134, 54);">
-                    <svg width="7" height="7" viewBox="0 0 16 16" fill="#ffffff">
-                      <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"></path>
-                    </svg>
-                  </span>
-                </div>
-                <div title="danielr: approved" style="position: relative; margin-left: -4px; width: 19px; height: 19px; flex-shrink: 0;">
-                  <img alt="danielr" src="https://avatars.githubusercontent.com/u/88?v=4" style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ffffff;">
-                  <span style="position: absolute; bottom: -2px; right: -3px; display: flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #ffffff; background-color: rgb(35, 134, 54);">
-                    <svg width="7" height="7" viewBox="0 0 16 16" fill="#ffffff">
-                      <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"></path>
-                    </svg>
-                  </span>
-                </div>
-                <div title="kevinl: approved" style="position: relative; margin-left: -4px; width: 19px; height: 19px; flex-shrink: 0;">
-                  <img alt="kevinl" src="https://avatars.githubusercontent.com/u/150?v=4" style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ffffff;">
-                  <span style="position: absolute; bottom: -2px; right: -3px; display: flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #ffffff; background-color: rgb(35, 134, 54);">
-                    <svg width="7" height="7" viewBox="0 0 16 16" fill="#ffffff">
-                      <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"></path>
-                    </svg>
-                  </span>
-                </div>
-              </div>
-              <div style="display: flex; align-items: center; gap: 3px;">
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="#656d76" style="flex-shrink: 0;">
-                  <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2v2.189l2.72-2.72.53-.219h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
-                </svg>
-                <span style="color: #656d76; font-size: 11px; white-space: nowrap;">15</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </foreignObject>
+
+    <!-- #144 Database migration framework -->
+    <g transform="translate(340,952)">
+      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#dafbe1" stroke="#238636" stroke-width="1.5"/>
+      <circle cx="-122" cy="-36" r="5" fill="#238636"/>
+      <text x="-108" y="-33" font-family="sans-serif" font-size="13" font-weight="600" fill="#1f2328">#144 Database migration framework</text>
+      <text x="-108" y="-11" font-family="sans-serif" font-size="11" fill="#656d76">feat/db-migrations</text>
+      <text x="-108" y="11" font-family="sans-serif" font-size="11" fill="#656d76">7d ago</text>
+      <text x="95" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#1a7f37" text-anchor="end">+653</text>
+      <text x="128" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#cf222e" text-anchor="end">−29</text>
+      <circle cx="-114" cy="34" r="8" fill="#8250df"/>
+      <text x="-114" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">J</text>
+      <text x="-100" y="37" font-family="sans-serif" font-size="11" fill="#656d76">jaredm</text>
+      <circle cx="58" cy="34" r="8" fill="#bf3989" stroke="#fff" stroke-width="1.5"/>
+      <text x="58" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">S</text>
+      <circle cx="64" cy="39" r="4" fill="#238636" stroke="#fff" stroke-width="1.5"/>
+      <circle cx="72" cy="34" r="8" fill="#e16f24" stroke="#fff" stroke-width="1.5"/>
+      <text x="72" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">D</text>
+      <circle cx="78" cy="39" r="4" fill="#238636" stroke="#fff" stroke-width="1.5"/>
+      <circle cx="86" cy="34" r="8" fill="#0969da" stroke="#fff" stroke-width="1.5"/>
+      <text x="86" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">K</text>
+      <circle cx="92" cy="39" r="4" fill="#238636" stroke="#fff" stroke-width="1.5"/>
+      <use href="#comment-icon" x="100" y="28" width="12" height="12"/>
+      <text x="128" y="37" font-family="sans-serif" font-size="11" fill="#656d76" text-anchor="end">15</text>
     </g>
-    <g transform="translate(680,952)" style="cursor: pointer;">
-      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#dafbe1" stroke="#238636" stroke-width="1.5"></rect>
-      <foreignObject x="-140" y="-60" width="280" height="120">
-        <div style="display: flex; flex-direction: column; justify-content: space-evenly; padding: 8px 12px; width: 100%; height: 100%; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif; overflow: hidden;">
-          <div style="display: flex; align-items: center; gap: 8px; min-width: 0px;">
-            <span style="width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; background-color: #238636;"></span>
-            <span style="color: #1f2328; font-size: 13px; font-weight: 600; line-height: 1.3; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">#159 Add migration for user preferences table</span>
-          </div>
-          <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 18px;">feat/user-prefs-migration</span>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <span style="color: #656d76; white-space: nowrap;">2d ago</span>
-            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-              <span style="color: #1a7f37; font-weight: 600; white-space: nowrap;">+78</span>
-              <span style="color: #cf222e; font-weight: 600; white-space: nowrap;">−3</span>
-            </div>
-          </div>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-left: 18px; min-width: 0px; font-size: 11px;">
-            <div style="display: flex; align-items: center; gap: 4px; min-width: 0px; flex-shrink: 1;">
-              <img alt="jaredm" src="https://avatars.githubusercontent.com/u/45?v=4" style="width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;">
-              <span style="color: #656d76; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">jaredm</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-              <div style="display: flex; align-items: center;">
-                <div title="sarahchen: commented" style="position: relative; margin-left: -4px; width: 19px; height: 19px; flex-shrink: 0;">
-                  <img alt="sarahchen" src="https://avatars.githubusercontent.com/u/30?v=4" style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #ffffff;">
-                  <span style="position: absolute; bottom: -2px; right: -3px; display: flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid #ffffff; background-color: rgb(139, 148, 158);">
-                    <svg width="7" height="7" viewBox="0 0 16 16" fill="#ffffff">
-                      <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0113.25 12H9.06l-2.573 2.573A1.458 1.458 0 014 13.543V12H2.75A1.75 1.75 0 011 10.25zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h2v2.189l2.72-2.72.53-.219h4.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25z"></path>
-                    </svg>
-                  </span>
-                </div>
-              </div>
-              <div style="display: flex; align-items: center; gap: 3px;">
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="#656d76" style="flex-shrink: 0;">
-                  <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2v2.189l2.72-2.72.53-.219h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
-                </svg>
-                <span style="color: #656d76; font-size: 11px; white-space: nowrap;">4</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </foreignObject>
+
+    <!-- #159 Add migration for user preferences table -->
+    <g transform="translate(680,952)">
+      <rect x="-140" y="-60" width="280" height="120" rx="8" ry="8" fill="#dafbe1" stroke="#238636" stroke-width="1.5"/>
+      <circle cx="-122" cy="-36" r="5" fill="#238636"/>
+      <text x="-108" y="-33" font-family="sans-serif" font-size="13" font-weight="600" fill="#1f2328">#159 Add migration for user preferences table</text>
+      <text x="-108" y="-11" font-family="sans-serif" font-size="11" fill="#656d76">feat/user-prefs-migration</text>
+      <text x="-108" y="11" font-family="sans-serif" font-size="11" fill="#656d76">2d ago</text>
+      <text x="95" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#1a7f37" text-anchor="end">+78</text>
+      <text x="128" y="11" font-family="sans-serif" font-size="11" font-weight="600" fill="#cf222e" text-anchor="end">−3</text>
+      <circle cx="-114" cy="34" r="8" fill="#8250df"/>
+      <text x="-114" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">J</text>
+      <text x="-100" y="37" font-family="sans-serif" font-size="11" fill="#656d76">jaredm</text>
+      <circle cx="94" cy="34" r="8" fill="#bf3989" stroke="#fff" stroke-width="1.5"/>
+      <text x="94" y="37" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="#fff">S</text>
+      <circle cx="100" cy="39" r="4" fill="#8b949e" stroke="#fff" stroke-width="1.5"/>
+      <use href="#comment-icon" x="108" y="28" width="12" height="12"/>
+      <text x="128" y="37" font-family="sans-serif" font-size="11" fill="#656d76" text-anchor="end">4</text>
     </g>
   </g>
 </svg>
