@@ -222,6 +222,12 @@ export default function GraphView({ data }: Props) {
             const stroke = isHovered
               ? COLORS.hover
               : strokeColor(n.data);
+            const needsAttention =
+              isPR(n.data) &&
+              !!data.viewerLogin &&
+              n.data.reviewers.some(
+                (r) => r.login === data.viewerLogin && r.state === "REQUESTED",
+              );
 
             return (
               <g
@@ -230,9 +236,7 @@ export default function GraphView({ data }: Props) {
                 style={{ cursor: "pointer" }}
                 onMouseEnter={() => setHoveredId(n.data.id)}
                 onMouseLeave={() => setHoveredId(null)}
-                onClick={() =>
-                  window.open(n.data.url, "_blank", "noopener")
-                }
+                onClick={() => window.open(n.data.url, "_blank", "noopener")}
               >
                 <rect
                   x={-w / 2}
@@ -243,14 +247,9 @@ export default function GraphView({ data }: Props) {
                   ry={8}
                   fill={bgColor(n.data)}
                   stroke={stroke}
-                  strokeWidth={1.5}
+                  strokeWidth={needsAttention ? 5 : 1.5}
                 />
-                <foreignObject
-                  x={-w / 2}
-                  y={-h / 2}
-                  width={w}
-                  height={h}
-                >
+                <foreignObject x={-w / 2} y={-h / 2} width={w} height={h}>
                   {isPR(n.data) ? (
                     <PRCard pr={n.data} />
                   ) : (

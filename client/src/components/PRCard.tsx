@@ -45,7 +45,6 @@ export default function PRCard({ pr }: Props) {
 
   return (
     <div style={styles.card} data-draft={pr.isDraft || undefined}>
-      {/* Row 1: title */}
       <div style={styles.header}>
         <span
           style={{

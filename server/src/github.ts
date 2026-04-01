@@ -82,6 +82,17 @@ function buildQuery(cursor: string | null) {
 
 type PRQueryResult = QueryResult<ReturnType<typeof buildQuery>>;
 
+export async function fetchViewerLogin(token: string): Promise<string> {
+  const client = createClient({
+    headers: {
+      Authorization: `bearer ${token}`,
+      "User-Agent": "pr-dependency-graph",
+    },
+  });
+  const data = await client.query({ viewer: { login: true } });
+  return data.viewer?.login ?? "";
+}
+
 export async function fetchOpenPRs(
   token: string,
   owner: string,

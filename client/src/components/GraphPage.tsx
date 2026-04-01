@@ -41,6 +41,9 @@ export default function GraphPage() {
         <h1 style={styles.title}>
           {owner}/{repo}
         </h1>
+        {data?.viewerLogin && (
+          <span style={styles.viewer}>@{data.viewerLogin}</span>
+        )}
         <span style={styles.badge}>
           {data
             ? `${data.nodes.filter((n) => n.type === "pr").length} open PRs`
@@ -85,6 +88,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 18,
     fontWeight: 600,
     margin: 0,
+  },
+  viewer: {
+    fontSize: 13,
+    color: "var(--color-text-secondary)",
+    fontWeight: 500,
   },
   badge: {
     fontSize: 12,

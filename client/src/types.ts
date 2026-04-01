@@ -40,4 +40,5 @@ export interface GraphData {
   edges: GraphEdge[];
   owner: string;
   repo: string;
+  viewerLogin?: string;
 }

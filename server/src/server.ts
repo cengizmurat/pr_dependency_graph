@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
-import { fetchOpenPRs } from "./github.js";
+import { fetchOpenPRs, fetchViewerLogin } from "./github.js";
 import { buildDependencyGraph } from "./graph.js";
 
 const app = express();
@@ -11,17 +11,21 @@ const PORT = parseInt(process.env.PORT ?? "8000", 10);
 app.use(cors());
 
 app.get("/api/:owner/:repo", async (req, res) => {
+  const { owner, repo } = req.params;
+
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
     res.status(500).json({ error: "GITHUB_TOKEN is not configured" });
     return;
   }
 
-  const { owner, repo } = req.params;
-
   try {
-    const prs = await fetchOpenPRs(token, owner, repo);
+    const [prs, viewerLogin] = await Promise.all([
+      fetchOpenPRs(token, owner, repo),
+      fetchViewerLogin(token),
+    ]);
     const graph = buildDependencyGraph(prs, owner, repo);
+    graph.viewerLogin = viewerLogin;
     res.json(graph);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
