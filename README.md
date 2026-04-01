@@ -2,7 +2,7 @@
 
 A containerized Node.js + React application that visualizes pull request dependency graphs for GitHub repositories. It detects stacked PRs (where one PR's base branch is another PR's head branch) and renders an interactive D3.js directed acyclic graph.
 
-<img src="./example.svg" width="400"/>
+![Example](./example.svg)
 
 ## Quick Start
 
