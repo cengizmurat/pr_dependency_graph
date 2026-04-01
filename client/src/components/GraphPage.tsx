@@ -62,21 +62,21 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     height: "100vh",
-    background: "#0d1117",
+    background: "var(--color-page-bg)",
     fontFamily:
       '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
-    color: "#e6edf3",
+    color: "var(--color-text)",
   },
   header: {
     display: "flex",
     alignItems: "center",
     gap: 16,
     padding: "12px 20px",
-    borderBottom: "1px solid #21262d",
-    background: "#161b22",
+    borderBottom: "1px solid var(--color-border-subtle)",
+    background: "var(--color-header-bg)",
   },
   backLink: {
-    color: "#58a6ff",
+    color: "var(--color-link)",
     textDecoration: "none",
     fontSize: 14,
     fontWeight: 500,
@@ -88,7 +88,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   badge: {
     fontSize: 12,
-    color: "#8b949e",
+    color: "var(--color-text-secondary)",
     marginLeft: "auto",
   },
   content: {
@@ -99,13 +99,13 @@ const styles: Record<string, React.CSSProperties> = {
   status: {
     textAlign: "center" as const,
     marginTop: 80,
-    color: "#8b949e",
+    color: "var(--color-text-secondary)",
     fontSize: 15,
   },
   error: {
     textAlign: "center" as const,
     marginTop: 80,
-    color: "#f85149",
+    color: "var(--color-error)",
     fontSize: 15,
   },
 };

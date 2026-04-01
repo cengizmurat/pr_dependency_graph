@@ -25,7 +25,7 @@ const styles: Record<string, React.CSSProperties> = {
       '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
   },
   name: {
-    color: "#8957e5",
+    color: "var(--color-branch)",
     fontSize: 13,
     fontWeight: 600,
     overflow: "hidden",

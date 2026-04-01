@@ -16,14 +16,14 @@ const H_SPACING = 340;
 const V_SPACING = 136;
 
 const COLORS = {
-  ready: "#238636",
-  draft: "#6e7681",
-  readyBg: "#1b2a1f",
-  draftBg: "#1c1e23",
-  branch: "#8957e5",
-  branchBg: "#1e1535",
-  edge: "#30363d",
-  hover: "#58a6ff",
+  ready: "var(--color-ready)",
+  draft: "var(--color-draft)",
+  readyBg: "var(--color-ready-bg)",
+  draftBg: "var(--color-draft-bg)",
+  branch: "var(--color-branch)",
+  branchBg: "var(--color-branch-bg)",
+  edge: "var(--color-edge)",
+  hover: "var(--color-hover)",
 };
 
 function isPR(d: GraphNode): d is PRNode {
@@ -166,7 +166,7 @@ export default function GraphView({ data }: Props) {
     const padding = 40;
     const scaleX = (width - padding * 2) / totalWidth;
     const scaleY = (height - padding * 2) / totalHeight;
-    const scale = Math.min(scaleX, scaleY, 1);
+    const scale = Math.min(scaleX, scaleY);
     const tx = (width - totalWidth * scale) / 2;
     const ty = (height - totalHeight * scale) / 2;
 
@@ -187,7 +187,7 @@ export default function GraphView({ data }: Props) {
   }, [fitView]);
 
   return (
-    <div style={{ width: "100%", height: "100%", background: "#0d1117" }}>
+    <div style={{ width: "100%", height: "100%", background: "var(--color-page-bg)" }}>
       <svg ref={svgRef} width="100%" height="100%">
         <defs>
           <marker

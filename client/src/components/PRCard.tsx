@@ -50,7 +50,9 @@ export default function PRCard({ pr }: Props) {
         <span
           style={{
             ...styles.dot,
-            backgroundColor: pr.isDraft ? "#6e7681" : "#238636",
+            backgroundColor: pr.isDraft
+              ? "var(--color-draft)"
+              : "var(--color-ready)",
           }}
         />
         <span style={styles.title}>
@@ -115,7 +117,7 @@ export default function PRCard({ pr }: Props) {
                 width="12"
                 height="12"
                 viewBox="0 0 16 16"
-                fill="#8b949e"
+                fill="var(--color-text-secondary)"
                 style={{ flexShrink: 0 }}
               >
                 <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2v2.189l2.72-2.72.53-.219h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z" />
@@ -156,7 +158,7 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 3,
   },
   title: {
-    color: "#e6edf3",
+    color: "var(--color-text)",
     fontSize: 13,
     fontWeight: 600,
     lineHeight: "1.3",
@@ -167,7 +169,7 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: "hidden",
   },
   branch: {
-    color: "#8b949e",
+    color: "var(--color-text-secondary)",
     fontSize: 11,
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -184,7 +186,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
   },
   age: {
-    color: "#8b949e",
+    color: "var(--color-text-secondary)",
     whiteSpace: "nowrap" as const,
   },
   diff: {
@@ -194,12 +196,12 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   additions: {
-    color: "#3fb950",
+    color: "var(--color-additions)",
     fontWeight: 600,
     whiteSpace: "nowrap" as const,
   },
   deletions: {
-    color: "#f85149",
+    color: "var(--color-deletions)",
     fontWeight: 600,
     whiteSpace: "nowrap" as const,
   },
@@ -217,7 +219,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   authorName: {
-    color: "#8b949e",
+    color: "var(--color-text-secondary)",
     fontSize: 11,
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -244,7 +246,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: 16,
     height: 16,
     borderRadius: "50%",
-    border: "1.5px solid #0d1117",
+    border: "1.5px solid var(--color-avatar-border)",
   },
   stateBadge: {
     position: "absolute" as const,
@@ -256,10 +258,10 @@ const styles: Record<string, React.CSSProperties> = {
     width: 11,
     height: 11,
     borderRadius: "50%",
-    border: "1.5px solid #0d1117",
+    border: "1.5px solid var(--color-avatar-border)",
   },
   extraCount: {
-    color: "#8b949e",
+    color: "var(--color-text-secondary)",
     fontSize: 10,
     marginLeft: 2,
     whiteSpace: "nowrap" as const,
@@ -270,7 +272,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 3,
   },
   commentCount: {
-    color: "#8b949e",
+    color: "var(--color-text-secondary)",
     fontSize: 11,
     whiteSpace: "nowrap" as const,
   },
