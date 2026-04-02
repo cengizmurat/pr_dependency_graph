@@ -1,10 +1,7 @@
 node_modules
-server/node_modules
 client/node_modules
-server/dist
 client/dist
-**/package-lock.json
+client/package-lock.json
 .git
 .gitignore
 *.md
-.env

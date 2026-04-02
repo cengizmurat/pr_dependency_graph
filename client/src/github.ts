@@ -1,0 +1,207 @@
+export type ReviewState =
+  | "APPROVED"
+  | "CHANGES_REQUESTED"
+  | "COMMENTED"
+  | "DISMISSED"
+  | "REQUESTED";
+
+export interface Reviewer {
+  login: string;
+  avatarUrl: string;
+  state: ReviewState;
+}
+
+export interface GraphQLPullRequest {
+  number: number;
+  title: string;
+  url: string;
+  isDraft: boolean;
+  createdAt: string;
+  additions: number;
+  deletions: number;
+  headRefName: string;
+  baseRefName: string;
+  authorLogin: string;
+  authorAvatarUrl: string;
+  labels: string[];
+  reviewers: Reviewer[];
+  commentCount: number;
+}
+
+const GITHUB_GRAPHQL = "https://api.github.com/graphql";
+
+const PR_QUERY = `
+query($owner: String!, $name: String!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(states: OPEN, first: 100, after: $cursor) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number title url isDraft createdAt additions deletions
+        headRefName baseRefName
+        author { login avatarUrl }
+        labels(first: 20) { nodes { name } }
+        latestReviews(first: 100) {
+          nodes {
+            state
+            author { login avatarUrl }
+            comments { totalCount }
+          }
+        }
+        reviewRequests(first: 100) {
+          nodes {
+            requestedReviewer {
+              ... on User { login avatarUrl }
+            }
+          }
+        }
+        comments { totalCount }
+      }
+    }
+  }
+}`;
+
+const VIEWER_QUERY = `query { viewer { login } }`;
+
+async function graphql<T>(token: string, query: string, variables?: Record<string, unknown>): Promise<T> {
+  const res = await fetch(GITHUB_GRAPHQL, {
+    method: "POST",
+    headers: {
+      Authorization: `bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message ?? `GitHub API returned ${res.status}`);
+  }
+
+  const json = await res.json();
+  if (json.errors?.length) {
+    throw new Error(json.errors[0].message);
+  }
+  return json.data as T;
+}
+
+export async function fetchViewerLogin(token: string): Promise<string> {
+  const data = await graphql<{ viewer: { login: string } }>(token, VIEWER_QUERY);
+  return data.viewer?.login ?? "";
+}
+
+interface PRPageInfo {
+  hasNextPage: boolean;
+  endCursor: string | null;
+}
+
+interface PRNodeRaw {
+  number: number;
+  title: string;
+  url: string;
+  isDraft: boolean;
+  createdAt: string;
+  additions: number;
+  deletions: number;
+  headRefName: string;
+  baseRefName: string;
+  author: { login: string; avatarUrl: string } | null;
+  labels: { nodes: ({ name: string } | null)[] | null } | null;
+  latestReviews: {
+    nodes: ({
+      state: string;
+      author: { login: string; avatarUrl: string } | null;
+      comments: { totalCount: number } | null;
+    } | null)[] | null;
+  } | null;
+  reviewRequests: {
+    nodes: ({
+      requestedReviewer: { login?: string; avatarUrl?: string } | null;
+    } | null)[] | null;
+  } | null;
+  comments: { totalCount: number } | null;
+}
+
+interface PRQueryData {
+  repository: {
+    pullRequests: {
+      pageInfo: PRPageInfo;
+      nodes: (PRNodeRaw | null)[];
+    };
+  };
+}
+
+export async function fetchOpenPRs(
+  token: string,
+  owner: string,
+  repo: string,
+): Promise<GraphQLPullRequest[]> {
+  const allPRs: GraphQLPullRequest[] = [];
+  let cursor: string | null = null;
+
+  do {
+    const data: PRQueryData = await graphql<PRQueryData>(token, PR_QUERY, {
+      owner,
+      name: repo,
+      cursor,
+    });
+
+    const prs: PRQueryData["repository"]["pullRequests"] | undefined =
+      data.repository?.pullRequests;
+    if (!prs?.nodes) break;
+
+    for (const pr of prs.nodes) {
+      if (!pr) continue;
+
+      const reviewerMap = new Map<string, Reviewer>();
+      let reviewCommentCount = 0;
+
+      for (const review of pr.latestReviews?.nodes ?? []) {
+        if (!review) continue;
+        reviewCommentCount += review.comments?.totalCount ?? 0;
+        const login = review.author?.login;
+        if (login) {
+          reviewerMap.set(login, {
+            login,
+            avatarUrl: review.author?.avatarUrl ?? "",
+            state: (review.state as ReviewState) ?? "COMMENTED",
+          });
+        }
+      }
+
+      for (const req of pr.reviewRequests?.nodes ?? []) {
+        const reviewer = req?.requestedReviewer;
+        if (!reviewer?.login) continue;
+        if (!reviewerMap.has(reviewer.login)) {
+          reviewerMap.set(reviewer.login, {
+            login: reviewer.login,
+            avatarUrl: reviewer.avatarUrl ?? "",
+            state: "REQUESTED",
+          });
+        }
+      }
+
+      allPRs.push({
+        number: pr.number,
+        title: pr.title,
+        url: pr.url,
+        isDraft: pr.isDraft,
+        createdAt: pr.createdAt,
+        additions: pr.additions,
+        deletions: pr.deletions,
+        headRefName: pr.headRefName,
+        baseRefName: pr.baseRefName,
+        authorLogin: pr.author?.login ?? "unknown",
+        authorAvatarUrl: pr.author?.avatarUrl ?? "",
+        labels: (pr.labels?.nodes ?? [])
+          .filter((l: { name?: string } | null): l is { name: string } => !!l?.name)
+          .map((l: { name: string }) => l.name),
+        reviewers: [...reviewerMap.values()],
+        commentCount: (pr.comments?.totalCount ?? 0) + reviewCommentCount,
+      });
+    }
+
+    cursor = prs.pageInfo.hasNextPage ? (prs.pageInfo.endCursor ?? null) : null;
+  } while (cursor);
+
+  return allPRs;
+}

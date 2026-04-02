@@ -1,5 +1,5 @@
-import { GraphQLPullRequest } from "./github.js";
-import { GraphData, GraphNode, GraphEdge } from "./types.js";
+import type { GraphQLPullRequest } from "./github";
+import type { GraphData, GraphNode, GraphEdge } from "./types";
 
 export function buildDependencyGraph(
   prs: GraphQLPullRequest[],

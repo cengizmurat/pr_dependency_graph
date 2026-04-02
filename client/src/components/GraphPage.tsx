@@ -1,22 +1,24 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, Navigate } from "react-router-dom";
 import { fetchGraph } from "../api";
+import { useGithubToken } from "../hooks/useGithubToken";
 import type { GraphData } from "../types";
 import GraphView from "./GraphView";
 
 export default function GraphPage() {
   const { owner, repo } = useParams<{ owner: string; repo: string }>();
+  const { token } = useGithubToken();
   const [data, setData] = useState<GraphData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!owner || !repo) return;
+    if (!owner || !repo || !token) return;
     let cancelled = false;
 
     setLoading(true);
     setError(null);
-    fetchGraph(owner, repo)
+    fetchGraph(owner, repo, token)
       .then((graph) => {
         if (!cancelled) setData(graph);
       })
@@ -30,7 +32,11 @@ export default function GraphPage() {
     return () => {
       cancelled = true;
     };
-  }, [owner, repo]);
+  }, [owner, repo, token]);
+
+  if (!token) {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <div style={styles.page}>
