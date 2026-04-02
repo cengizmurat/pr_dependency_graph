@@ -4,16 +4,22 @@ import type { GraphData, GraphNode, PRNode } from "../types";
 import PRCard from "./PRCard";
 import BranchCard from "./BranchCard";
 
+export type Orientation = "horizontal" | "vertical";
+
 interface Props {
   data: GraphData;
+  orientation: Orientation;
 }
 
 const PR_WIDTH = 280;
 const PR_HEIGHT = 120;
 const BRANCH_WIDTH = 140;
 const BRANCH_HEIGHT = 36;
-const H_SPACING = 340;
-const V_SPACING = 136;
+
+const SPACING = {
+  horizontal: { depth: 340, sibling: 136 },
+  vertical: { depth: 180, sibling: 320 },
+};
 
 const COLORS = {
   ready: "var(--color-ready)",
@@ -73,27 +79,40 @@ function buildTrees(data: GraphData): LayoutNode[] {
   return roots.map((r) => buildSubtree(r.id));
 }
 
-function layoutTree(root: LayoutNode, startY: number): number {
+function layoutTree(
+  root: LayoutNode,
+  startSecondary: number,
+  orientation: Orientation,
+): number {
+  const { depth: depthSpacing, sibling: siblingSpacing } = SPACING[orientation];
+  const isH = orientation === "horizontal";
+
   function assignDepth(node: LayoutNode, depth: number) {
-    node.x = depth * H_SPACING;
+    if (isH) node.x = depth * depthSpacing;
+    else node.y = depth * depthSpacing;
     for (const child of node.children) assignDepth(child, depth + 1);
   }
   assignDepth(root, 0);
 
-  let currentY = startY;
-  function assignY(node: LayoutNode) {
+  let current = startSecondary;
+  function assignSecondary(node: LayoutNode) {
     if (node.children.length === 0) {
-      node.y = currentY;
-      currentY += V_SPACING;
+      if (isH) node.y = current;
+      else node.x = current;
+      current += siblingSpacing;
       return;
     }
-    for (const child of node.children) assignY(child);
-    node.y =
-      (node.children[0].y + node.children[node.children.length - 1].y) / 2;
+    for (const child of node.children) assignSecondary(child);
+    const first = isH ? node.children[0].y : node.children[0].x;
+    const last = isH
+      ? node.children[node.children.length - 1].y
+      : node.children[node.children.length - 1].x;
+    if (isH) node.y = (first + last) / 2;
+    else node.x = (first + last) / 2;
   }
-  assignY(root);
+  assignSecondary(root);
 
-  return currentY;
+  return current;
 }
 
 function flattenTree(node: LayoutNode): LayoutNode[] {
@@ -116,13 +135,21 @@ function nodeHeight(d: GraphNode) {
   return isPR(d) ? PR_HEIGHT : BRANCH_HEIGHT;
 }
 
-function edgePath(e: FlatEdge): string {
-  const sx = e.source.x + nodeWidth(e.source.data) / 2;
-  const sy = e.source.y;
-  const tx = e.target.x - nodeWidth(e.target.data) / 2;
-  const ty = e.target.y;
-  const mx = (sx + tx) / 2;
-  return `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`;
+function edgePath(e: FlatEdge, orientation: Orientation): string {
+  if (orientation === "horizontal") {
+    const sx = e.source.x + nodeWidth(e.source.data) / 2;
+    const sy = e.source.y;
+    const tx = e.target.x - nodeWidth(e.target.data) / 2;
+    const ty = e.target.y;
+    const mx = (sx + tx) / 2;
+    return `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`;
+  }
+  const sx = e.source.x;
+  const sy = e.source.y + nodeHeight(e.source.data) / 2;
+  const tx = e.target.x;
+  const ty = e.target.y - nodeHeight(e.target.data) / 2;
+  const my = (sy + ty) / 2;
+  return `M${sx},${sy} C${sx},${my} ${tx},${my} ${tx},${ty}`;
 }
 
 function strokeColor(d: GraphNode): string {
@@ -134,27 +161,37 @@ function bgColor(d: GraphNode): string {
   return d.isDraft ? COLORS.draftBg : COLORS.readyBg;
 }
 
-export default function GraphView({ data }: Props) {
+export default function GraphView({ data, orientation }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const gRef = useRef<SVGGElement>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const { allNodes, allEdges, totalWidth, totalHeight } = useMemo(() => {
     const trees = buildTrees(data);
-    let nextY = V_SPACING;
+    const gap = SPACING[orientation].sibling;
+    let nextSecondary = gap;
     for (const tree of trees) {
-      nextY = layoutTree(tree, nextY) + V_SPACING;
+      nextSecondary = layoutTree(tree, nextSecondary, orientation) + gap;
     }
     const nodes = trees.flatMap(flattenTree);
     const edges = trees.flatMap(flattenEdges);
-    const maxX = nodes.reduce((m, n) => Math.max(m, n.x), 0);
+    if (orientation === "horizontal") {
+      const maxX = nodes.reduce((m, n) => Math.max(m, n.x), 0);
+      return {
+        allNodes: nodes,
+        allEdges: edges,
+        totalWidth: maxX + PR_WIDTH + 80,
+        totalHeight: nextSecondary,
+      };
+    }
+    const maxY = nodes.reduce((m, n) => Math.max(m, n.y), 0);
     return {
       allNodes: nodes,
       allEdges: edges,
-      totalWidth: maxX + PR_WIDTH + 80,
-      totalHeight: nextY,
+      totalWidth: nextSecondary,
+      totalHeight: maxY + PR_HEIGHT + 80,
     };
-  }, [data]);
+  }, [data, orientation]);
 
   const fitView = useCallback(() => {
     const svg = svgRef.current;
@@ -207,7 +244,7 @@ export default function GraphView({ data }: Props) {
           {allEdges.map((e, i) => (
             <path
               key={i}
-              d={edgePath(e)}
+              d={edgePath(e, orientation)}
               fill="none"
               stroke={COLORS.edge}
               strokeWidth={2}

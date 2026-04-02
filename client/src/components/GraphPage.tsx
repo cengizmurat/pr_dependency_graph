@@ -4,6 +4,7 @@ import { fetchGraph } from "../api";
 import { useGithubToken } from "../hooks/useGithubToken";
 import type { GraphData } from "../types";
 import GraphView from "./GraphView";
+import type { Orientation } from "./GraphView";
 
 export default function GraphPage() {
   const { owner, repo } = useParams<{ owner: string; repo: string }>();
@@ -11,6 +12,7 @@ export default function GraphPage() {
   const [data, setData] = useState<GraphData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [orientation, setOrientation] = useState<Orientation>("horizontal");
 
   useEffect(() => {
     if (!owner || !repo || !token) return;
@@ -55,6 +57,23 @@ export default function GraphPage() {
             ? `${data.nodes.filter((n) => n.type === "pr").length} open PRs`
             : ""}
         </span>
+        <span style={styles.toggleLabel}>Orientation:</span>
+        <button
+          style={styles.toggleBtn}
+          onClick={() =>
+            setOrientation((o) => (o === "horizontal" ? "vertical" : "horizontal"))
+          }
+          title={`Switch to ${orientation === "horizontal" ? "vertical" : "horizontal"} layout`}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            {orientation === "horizontal" ? (
+              <path d="M1 7h10M8 4l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            ) : (
+              <path d="M7 1v10M4 8l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            )}
+          </svg>
+          {orientation === "horizontal" ? "Horizontal" : "Vertical"}
+        </button>
         <a
           href="https://github.com/cengizmurat/pr_dependency_graph"
           target="_blank"
@@ -71,7 +90,7 @@ export default function GraphPage() {
       <div style={styles.content}>
         {loading && <p style={styles.status}>Loading pull requests...</p>}
         {error && <p style={styles.error}>{error}</p>}
-        {data && !loading && <GraphView data={data} />}
+        {data && !loading && <GraphView data={data} orientation={orientation} />}
       </div>
     </div>
   );
@@ -116,6 +135,25 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--color-text-secondary)",
     marginLeft: "auto",
   },
+  toggleLabel: {
+    fontSize: 12,
+    color: "var(--color-text-secondary)",
+    fontWeight: 500,
+  },
+  toggleBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "4px 10px",
+    fontSize: 12,
+    fontWeight: 500,
+    borderRadius: 6,
+    border: "1px solid var(--color-border-subtle)",
+    cursor: "pointer",
+    background: "transparent",
+    color: "var(--color-text-secondary)",
+    transition: "background 0.15s, color 0.15s",
+  } as React.CSSProperties,
   githubLink: {
     color: "var(--color-text-secondary)",
     display: "flex",
