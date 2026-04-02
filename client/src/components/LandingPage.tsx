@@ -41,22 +41,28 @@ export default function LandingPage() {
         </p>
 
         {!token ? (
-          <form onSubmit={handleSaveToken} style={styles.form}>
-            <input
-              type="password"
-              value={tokenInput}
-              onChange={(e) => {
-                setTokenInput(e.target.value);
-                setError("");
-              }}
-              placeholder="GitHub personal access token"
-              style={styles.input}
-              autoFocus
-            />
-            <button type="submit" style={styles.button}>
-              Save
-            </button>
-          </form>
+          <>
+            <form onSubmit={handleSaveToken} style={styles.form}>
+              <input
+                type="password"
+                value={tokenInput}
+                onChange={(e) => {
+                  setTokenInput(e.target.value);
+                  setError("");
+                }}
+                placeholder="GitHub personal access token"
+                style={styles.input}
+                autoFocus
+              />
+              <button type="submit" style={styles.button}>
+                Save
+              </button>
+            </form>
+            <p style={styles.disclaimer}>
+              Your token is only stored in your browser's localStorage and is
+              never sent to any server other than GitHub's API
+            </p>
+          </>
         ) : (
           <>
             <form onSubmit={handleRepoSubmit} style={styles.form}>
@@ -158,6 +164,13 @@ const styles: Record<string, React.CSSProperties> = {
     background: "transparent",
     color: "var(--color-text-secondary)",
     cursor: "pointer",
+  },
+  disclaimer: {
+    color: "var(--color-text-secondary)",
+    fontSize: 12,
+    fontStyle: "italic",
+    marginTop: 10,
+    marginBottom: 0,
   },
   error: {
     color: "var(--color-error)",
