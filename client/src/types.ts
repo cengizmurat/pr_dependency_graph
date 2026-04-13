@@ -19,6 +19,7 @@ export interface PRNode {
     state: "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED" | "REQUESTED";
   }[];
   commentCount: number;
+  behindBy?: number;
 }
 
 export interface BranchNode {

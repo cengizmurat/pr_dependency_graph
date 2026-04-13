@@ -213,6 +213,59 @@ export async function mergeAndCascade(
   return result;
 }
 
+async function fetchCompareBehindBy(
+  token: string,
+  owner: string,
+  repo: string,
+  base: string,
+  head: string,
+): Promise<number> {
+  const res = await fetch(
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`,
+    {
+      headers: {
+        Authorization: `bearer ${token}`,
+        Accept: "application/vnd.github+json",
+      },
+    },
+  );
+  if (!res.ok) return 0;
+  const data: { behind_by?: number } = await res.json();
+  return data.behind_by ?? 0;
+}
+
+export async function fetchBehindByCounts(
+  token: string,
+  owner: string,
+  repo: string,
+  prs: { number: number; baseRefName: string; headRefName: string }[],
+  queryClient: { fetchQuery: (opts: { queryKey: unknown[]; queryFn: () => Promise<number>; staleTime: number }) => Promise<number> },
+): Promise<Map<number, number>> {
+  if (prs.length === 0) return new Map();
+
+  const result = new Map<number, number>();
+  const COMPARE_STALE_TIME = 5 * 60 * 1000;
+
+  const settled = await Promise.allSettled(
+    prs.map(async (pr) => {
+      const behindBy = await queryClient.fetchQuery({
+        queryKey: ["compare", owner, repo, pr.baseRefName, pr.headRefName],
+        queryFn: () => fetchCompareBehindBy(token, owner, repo, pr.baseRefName, pr.headRefName),
+        staleTime: COMPARE_STALE_TIME,
+      });
+      result.set(pr.number, behindBy);
+    }),
+  );
+
+  for (const s of settled) {
+    if (s.status === "rejected") {
+      console.warn("Failed to fetch comparison:", s.reason);
+    }
+  }
+
+  return result;
+}
+
 export async function fetchViewerLogin(token: string): Promise<string> {
   const data = await graphql<{ viewer: { login: string } }>(token, VIEWER_QUERY);
   return data.viewer?.login ?? "";

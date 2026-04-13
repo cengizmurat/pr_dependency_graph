@@ -1,7 +1,7 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import * as d3 from "d3";
 import type { GraphData, GraphNode, PRNode, EdgeReviewStatus } from "../types";
-import { mergeAndCascade } from "../github";
+import { mergeAndCascade, updatePRBranch } from "../github";
 import PRCard from "./PRCard";
 import BranchCard from "./BranchCard";
 import Legend from "./Legend";
@@ -246,6 +246,20 @@ export default function GraphView({ data, orientation, token }: Props) {
     [token, data],
   );
 
+  const handleUpdateBranch = useCallback(
+    async (prNumber: number) => {
+      if (!window.confirm(`Update PR #${prNumber} with latest changes from base branch?`))
+        return;
+      try {
+        await updatePRBranch(token, data.owner, data.repo, prNumber);
+        window.location.reload();
+      } catch (err) {
+        alert(`Branch update failed: ${(err as Error).message}`);
+      }
+    },
+    [token, data],
+  );
+
   const { allNodes, allEdges, nodeFlags, totalWidth, totalHeight } =
     useMemo(() => {
       const { roots: trees, edgeFlagsMap } = buildTrees(data);
@@ -434,6 +448,7 @@ export default function GraphView({ data, orientation, token }: Props) {
                       mergeStatus={nodeFlags.get(n.data.id)}
                       isMerging={merging === n.data.number}
                       onMerge={handleMerge}
+                      onUpdateBranch={handleUpdateBranch}
                       orientation={orientation}
                     />
                   ) : (

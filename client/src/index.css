@@ -25,6 +25,7 @@
   --color-edge: #d0d7de;
   --color-conflict: #cf222e;
   --color-hover: #0969da;
+  --color-behind: #0969da;
   --color-additions: #1a7f37;
   --color-deletions: #cf222e;
   --color-avatar-border: #ffffff;
@@ -57,6 +58,7 @@
     --color-edge: #30363d;
     --color-conflict: #f85149;
     --color-hover: #58a6ff;
+    --color-behind: #58a6ff;
     --color-additions: #3fb950;
     --color-deletions: #f85149;
     --color-avatar-border: #0d1117;

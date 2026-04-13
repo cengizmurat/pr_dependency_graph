@@ -11,6 +11,7 @@ interface Props {
   mergeStatus?: MergeStatus;
   isMerging?: boolean;
   onMerge?: (prNumber: number, prTitle: string) => void;
+  onUpdateBranch?: (prNumber: number) => void;
   orientation?: Orientation;
 }
 
@@ -55,23 +56,16 @@ function MergeBadge({
   onMerge,
   prNumber,
   prTitle,
-  orientation,
 }: {
   status: MergeStatus;
   isMerging: boolean;
   onMerge?: (prNumber: number, prTitle: string) => void;
   prNumber: number;
   prTitle: string;
-  orientation: Orientation;
 }) {
   const isConflict = status.hasConflict;
   const clickable = status.isMergeable && !isConflict && !!onMerge;
   const color = isConflict ? "var(--color-conflict)" : "var(--color-ready)";
-
-  const posStyle: React.CSSProperties =
-    orientation === "horizontal"
-      ? { left: 0, top: "50%", transform: "translate(-50%, -50%)" }
-      : { top: 0, left: "50%", transform: "translate(-50%, -50%)" };
 
   return (
     <button
@@ -88,7 +82,6 @@ function MergeBadge({
       }
       style={{
         ...badgeStyles.box,
-        ...posStyle,
         borderColor: color,
         cursor: clickable ? "pointer" : "default",
         opacity: isMerging ? 0.5 : 1,
@@ -116,21 +109,76 @@ function MergeBadge({
   );
 }
 
-export default function PRCard({ pr, mergeStatus, isMerging, onMerge, orientation = "horizontal" }: Props) {
+function UpdateBadge({
+  behindBy,
+  onUpdateBranch,
+  prNumber,
+}: {
+  behindBy: number;
+  onUpdateBranch?: (prNumber: number) => void;
+  prNumber: number;
+}) {
+  const color = "var(--color-behind)";
+
+  return (
+    <button
+      type="button"
+      title={`Behind by ${behindBy} commit${behindBy === 1 ? "" : "s"} — click to update branch`}
+      onClick={
+        onUpdateBranch
+          ? (evt) => {
+              evt.stopPropagation();
+              onUpdateBranch(prNumber);
+            }
+          : undefined
+      }
+      style={{
+        ...badgeStyles.box,
+        borderColor: color,
+        cursor: onUpdateBranch ? "pointer" : "default",
+      }}
+    >
+      <svg width="12" height="12" viewBox="0 0 16 16" fill={color}>
+        <path d="M8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5ZM1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834Z" />
+      </svg>
+    </button>
+  );
+}
+
+export default function PRCard({ pr, mergeStatus, isMerging, onMerge, onUpdateBranch, orientation = "horizontal" }: Props) {
   const visibleReviewers = pr.reviewers.slice(0, MAX_REVIEWER_AVATARS);
   const extraCount = pr.reviewers.length - MAX_REVIEWER_AVATARS;
 
+  const hasMergeBadge = mergeStatus && (mergeStatus.hasConflict || mergeStatus.isMergeable);
+  const hasUpdateBadge = pr.behindBy != null && pr.behindBy > 0;
+  const hasBadges = hasMergeBadge || hasUpdateBadge;
+
   return (
     <div style={styles.card} data-draft={pr.isDraft || undefined}>
-      {mergeStatus && (mergeStatus.hasConflict || mergeStatus.isMergeable) && (
-        <MergeBadge
-          status={mergeStatus}
-          isMerging={!!isMerging}
-          onMerge={onMerge}
-          prNumber={pr.number}
-          prTitle={pr.title}
-          orientation={orientation}
-        />
+      {hasBadges && (
+        <div
+          style={{
+            ...badgeStyles.container,
+            flexDirection: orientation === "horizontal" ? "column" : "row",
+          }}
+        >
+          {hasMergeBadge && (
+            <MergeBadge
+              status={mergeStatus}
+              isMerging={!!isMerging}
+              onMerge={onMerge}
+              prNumber={pr.number}
+              prTitle={pr.title}
+            />
+          )}
+          {hasUpdateBadge && (
+            <UpdateBadge
+              behindBy={pr.behindBy!}
+              onUpdateBranch={onUpdateBranch}
+              prNumber={pr.number}
+            />
+          )}
+        </div>
       )}
       <div style={styles.header}>
         <span
@@ -366,8 +414,17 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 const badgeStyles: Record<string, React.CSSProperties> = {
-  box: {
+  container: {
     position: "absolute",
+    left: 0,
+    top: "50%",
+    transform: "translate(-50%, -50%)",
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    zIndex: 10,
+  },
+  box: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -377,6 +434,6 @@ const badgeStyles: Record<string, React.CSSProperties> = {
     border: "2px solid",
     background: "var(--color-page-bg)",
     padding: 0,
-    zIndex: 10,
+    flexShrink: 0,
   },
 };

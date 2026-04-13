@@ -1,10 +1,10 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { useParams, Link, Navigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DatePicker } from "antd";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
-import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, buildDependencyGraph } from "../api";
+import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, fetchBehindByCounts, buildDependencyGraph } from "../api";
 import type { Contributor } from "../types";
 import { useGithubToken } from "../hooks/useGithubToken";
 import GraphView from "./GraphView";
@@ -17,6 +17,7 @@ const DEFAULT_RANGE: DateRange = [dayjs().subtract(7, "day").startOf("day"), day
 
 export default function GraphPage() {
   const { owner, repo } = useParams<{ owner: string; repo: string }>();
+  const queryClient = useQueryClient();
   const { token } = useGithubToken();
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
   const [authorFilter, setAuthorFilter] = useState<string | null>(null);
@@ -49,6 +50,14 @@ export default function GraphPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const prKeys = allPRs?.map((p) => p.number).join(",") ?? "";
+  const { data: behindByData } = useQuery({
+    queryKey: ["behindBy", owner, repo, prKeys],
+    queryFn: () => fetchBehindByCounts(token!, owner!, repo!, allPRs!, queryClient),
+    enabled: !!owner && !!repo && !!token && !!allPRs && allPRs.length > 0,
+    staleTime: 60 * 1000,
+  });
+
   const prCountByAuthor = useMemo(() => {
     const counts = new Map<string, number>();
     if (!allPRs) return counts;
@@ -67,8 +76,16 @@ export default function GraphPage() {
     const graph = buildDependencyGraph(prs, owner, repo);
     if (viewerLogin) graph.viewerLogin = viewerLogin;
     if (contributors) graph.contributors = contributors;
+    if (behindByData) {
+      for (const node of graph.nodes) {
+        if (node.type === "pr") {
+          const behind = behindByData.get(node.number);
+          if (behind !== undefined) node.behindBy = behind;
+        }
+      }
+    }
     return graph;
-  }, [allPRs, owner, repo, viewerLogin, contributors, authorFilter]);
+  }, [allPRs, owner, repo, viewerLogin, contributors, authorFilter, behindByData]);
 
   const error = prError?.message ?? null;
 
