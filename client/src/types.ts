@@ -40,10 +40,16 @@ export interface GraphEdge {
   reviewStatus: EdgeReviewStatus;
 }
 
+export interface Contributor {
+  login: string;
+  avatarUrl: string;
+}
+
 export interface GraphData {
   nodes: GraphNode[];
   edges: GraphEdge[];
   owner: string;
   repo: string;
   viewerLogin?: string;
+  contributors?: Contributor[];
 }

@@ -79,3 +79,7 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+.contributor-dropdown-item:hover {
+  background: var(--color-border-subtle);
+}

@@ -218,6 +218,52 @@ export async function fetchViewerLogin(token: string): Promise<string> {
   return data.viewer?.login ?? "";
 }
 
+export interface Contributor {
+  login: string;
+  avatarUrl: string;
+}
+
+export async function fetchContributors(
+  token: string,
+  owner: string,
+  repo: string,
+): Promise<Contributor[]> {
+  const contributors: Contributor[] = [];
+  let page = 1;
+
+  while (true) {
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contributors?per_page=100&page=${page}`,
+      {
+        headers: {
+          Authorization: `bearer ${token}`,
+          Accept: "application/vnd.github+json",
+        },
+      },
+    );
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(body?.message ?? `GitHub API returned ${res.status}`);
+    }
+
+    const data: { login?: string; avatar_url?: string; type?: string }[] =
+      await res.json();
+
+    for (const c of data) {
+      if (c.login && c.type !== "Bot") {
+        contributors.push({ login: c.login, avatarUrl: c.avatar_url ?? "" });
+      }
+    }
+
+    const link = res.headers.get("Link") ?? "";
+    if (!link.includes('rel="next"')) break;
+    page++;
+  }
+
+  return contributors;
+}
+
 interface PRPageInfo {
   hasNextPage: boolean;
   endCursor: string | null;

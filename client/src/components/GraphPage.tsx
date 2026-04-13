@@ -1,8 +1,9 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { useParams, Link, Navigate } from "react-router-dom";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { fetchOpenPRs, fetchViewerLogin, buildDependencyGraph } from "../api";
+import { fetchOpenPRs, fetchViewerLogin, fetchContributors, buildDependencyGraph } from "../api";
 import type { PRPageResult } from "../api";
+import type { Contributor } from "../types";
 import { useGithubToken } from "../hooks/useGithubToken";
 import GraphView from "./GraphView";
 import type { Orientation } from "./GraphView";
@@ -11,6 +12,7 @@ export default function GraphPage() {
   const { owner, repo } = useParams<{ owner: string; repo: string }>();
   const { token } = useGithubToken();
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
+  const [authorFilter, setAuthorFilter] = useState<string | null>(null);
   const pageSizeRef = useRef<number | undefined>(undefined);
 
   const {
@@ -44,13 +46,35 @@ export default function GraphPage() {
     enabled: !!token,
   });
 
+  const { data: contributors } = useQuery({
+    queryKey: ["contributors", owner, repo],
+    queryFn: () => fetchContributors(token!, owner!, repo!),
+    enabled: !!owner && !!repo && !!token,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const prCountByAuthor = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (!prPages) return counts;
+    for (const page of prPages.pages) {
+      for (const pr of page.prs) {
+        counts.set(pr.authorLogin, (counts.get(pr.authorLogin) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [prPages]);
+
   const data = useMemo(() => {
     if (!prPages || !owner || !repo) return null;
-    const allPRs = prPages.pages.flatMap((page) => page.prs);
+    let allPRs = prPages.pages.flatMap((page) => page.prs);
+    if (authorFilter) {
+      allPRs = allPRs.filter((pr) => pr.authorLogin === authorFilter);
+    }
     const graph = buildDependencyGraph(allPRs, owner, repo);
     if (viewerLogin) graph.viewerLogin = viewerLogin;
+    if (contributors) graph.contributors = contributors;
     return graph;
-  }, [prPages, owner, repo, viewerLogin]);
+  }, [prPages, owner, repo, viewerLogin, contributors, authorFilter]);
 
   const error = prError?.message ?? null;
 
@@ -75,6 +99,12 @@ export default function GraphPage() {
             ? `${data.nodes.filter((n) => n.type === "pr").length}${hasNextPage ? "+" : ""} open PRs`
             : ""}
         </span>
+        <ContributorDropdown
+          contributors={contributors ?? []}
+          prCountByAuthor={prCountByAuthor}
+          selected={authorFilter}
+          onSelect={setAuthorFilter}
+        />
         <span style={styles.toggleLabel}>Orientation:</span>
         <button
           style={styles.toggleBtn}
@@ -144,6 +174,203 @@ export default function GraphPage() {
     </div>
   );
 }
+
+function ContributorDropdown({
+  contributors,
+  prCountByAuthor,
+  selected,
+  onSelect,
+}: {
+  contributors: Contributor[];
+  prCountByAuthor: Map<string, number>;
+  selected: string | null;
+  onSelect: (login: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    },
+    [],
+  );
+
+  const sortedContributors = useMemo(() => {
+    return [...contributors]
+      .filter((c) => (prCountByAuthor.get(c.login) ?? 0) > 0)
+      .sort(
+        (a, b) => (prCountByAuthor.get(b.login) ?? 0) - (prCountByAuthor.get(a.login) ?? 0),
+      );
+  }, [contributors, prCountByAuthor]);
+
+  const selectedContributor = contributors.find((c) => c.login === selected);
+
+  return (
+    <div ref={ref} style={dropdownStyles.wrapper} onKeyDown={handleKeyDown}>
+      <button
+        style={dropdownStyles.trigger}
+        onClick={() => setOpen((o) => !o)}
+        title="Filter by author"
+      >
+        {selectedContributor ? (
+          <>
+            <img
+              src={selectedContributor.avatarUrl}
+              alt={selectedContributor.login}
+              style={dropdownStyles.triggerAvatar}
+            />
+            {selectedContributor.login}
+          </>
+        ) : (
+          <>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M10.561 8.073a6.005 6.005 0 0 1 3.432 5.142.75.75 0 1 1-1.498.07 4.5 4.5 0 0 0-8.99 0 .75.75 0 0 1-1.498-.07 6.005 6.005 0 0 1 3.431-5.142 3.999 3.999 0 1 1 5.123 0ZM10.5 5a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z" />
+            </svg>
+            All authors
+          </>
+        )}
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style={{ marginLeft: 2 }}>
+          <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        </svg>
+      </button>
+      {open && (
+        <div style={dropdownStyles.menu}>
+          <button
+            className="contributor-dropdown-item"
+            style={{
+              ...dropdownStyles.item,
+              fontWeight: selected === null ? 600 : 400,
+            }}
+            onClick={() => {
+              onSelect(null);
+              setOpen(false);
+            }}
+          >
+            All authors
+          </button>
+          <div style={dropdownStyles.divider} />
+          <div style={dropdownStyles.list}>
+            {sortedContributors.map((c) => {
+              const count = prCountByAuthor.get(c.login) ?? 0;
+              return (
+                <button
+                  key={c.login}
+                  className="contributor-dropdown-item"
+                  style={{
+                    ...dropdownStyles.item,
+                    fontWeight: selected === c.login ? 600 : 400,
+                  }}
+                  onClick={() => {
+                    onSelect(c.login);
+                    setOpen(false);
+                  }}
+                >
+                  <img
+                    src={c.avatarUrl}
+                    alt={c.login}
+                    style={dropdownStyles.avatar}
+                  />
+                  <span>{c.login}</span>
+                  {count > 0 && (
+                    <span style={dropdownStyles.count}>({count})</span>
+                  )}
+                  {selected === c.login && (
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--color-ready)" style={{ marginLeft: "auto", flexShrink: 0 }}>
+                      <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const dropdownStyles: Record<string, React.CSSProperties> = {
+  wrapper: {
+    position: "relative",
+  },
+  trigger: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "4px 10px",
+    fontSize: 12,
+    fontWeight: 500,
+    borderRadius: 6,
+    border: "1px solid var(--color-border-subtle)",
+    cursor: "pointer",
+    background: "transparent",
+    color: "var(--color-text-secondary)",
+    transition: "background 0.15s, color 0.15s",
+    whiteSpace: "nowrap",
+  },
+  triggerAvatar: {
+    width: 16,
+    height: 16,
+    borderRadius: "50%",
+    flexShrink: 0,
+  },
+  menu: {
+    position: "absolute",
+    top: "calc(100% + 4px)",
+    left: 0,
+    minWidth: 200,
+    background: "var(--color-header-bg)",
+    border: "1px solid var(--color-border-subtle)",
+    borderRadius: 8,
+    boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
+    zIndex: 100,
+    overflow: "hidden",
+  },
+  list: {
+    maxHeight: 280,
+    overflowY: "auto" as const,
+  },
+  item: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    width: "100%",
+    padding: "7px 12px",
+    fontSize: 13,
+    border: "none",
+    background: "transparent",
+    color: "var(--color-text)",
+    cursor: "pointer",
+    textAlign: "left" as const,
+    transition: "background 0.1s",
+  },
+  avatar: {
+    width: 20,
+    height: 20,
+    borderRadius: "50%",
+    flexShrink: 0,
+  },
+  count: {
+    color: "var(--color-text-secondary)",
+    fontSize: 12,
+    fontWeight: 400,
+    flexShrink: 0,
+  },
+  divider: {
+    height: 1,
+    background: "var(--color-border-subtle)",
+  },
+};
 
 function Spinner({ size = 24 }: { size?: number }) {
   return (
