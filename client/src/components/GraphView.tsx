@@ -93,8 +93,7 @@ function buildTrees(data: GraphData): {
       y: 0,
       children: (childrenOf.get(id) ?? [])
         .filter((cid) => nodeMap.has(cid))
-        .map(buildSubtree)
-        .reverse(),
+        .map(buildSubtree),
     };
   }
 

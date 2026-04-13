@@ -38,9 +38,9 @@ export interface GraphQLPullRequest {
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 
 const PR_QUERY = `
-query($owner: String!, $name: String!, $cursor: String) {
+query($owner: String!, $name: String!, $cursor: String, $first: Int!) {
   repository(owner: $owner, name: $name) {
-    pullRequests(states: OPEN, first: 100, after: $cursor) {
+    pullRequests(states: OPEN, first: $first, after: $cursor, orderBy: { field: CREATED_AT, direction: DESC }) {
       pageInfo { hasNextPage endCursor }
       nodes {
         number title url isDraft createdAt additions deletions
@@ -69,7 +69,14 @@ query($owner: String!, $name: String!, $cursor: String) {
 
 const VIEWER_QUERY = `query { viewer { login } }`;
 
-async function graphql<T>(token: string, query: string, variables?: Record<string, unknown>): Promise<T> {
+const FETCH_TIMEOUT_MS = 10_000;
+
+async function graphql<T>(
+  token: string,
+  query: string,
+  variables?: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<T> {
   const res = await fetch(GITHUB_GRAPHQL, {
     method: "POST",
     headers: {
@@ -77,6 +84,7 @@ async function graphql<T>(token: string, query: string, variables?: Record<strin
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ query, variables }),
+    signal,
   });
 
   if (!res.ok) {
@@ -258,83 +266,127 @@ interface PRQueryData {
   };
 }
 
+export interface PRPageResult {
+  prs: GraphQLPullRequest[];
+  hasNextPage: boolean;
+  endCursor: string | null;
+  pageSize: number;
+}
+
+const DEFAULT_PAGE_SIZE = 50;
+const MIN_PAGE_SIZE = 5;
+
 export async function fetchOpenPRs(
   token: string,
   owner: string,
   repo: string,
-): Promise<GraphQLPullRequest[]> {
-  const allPRs: GraphQLPullRequest[] = [];
-  let cursor: string | null = null;
+  cursor?: string | null,
+  pageSize: number = DEFAULT_PAGE_SIZE,
+): Promise<PRPageResult> {
+  let currentSize = pageSize;
 
-  do {
-    const data: PRQueryData = await graphql<PRQueryData>(token, PR_QUERY, {
-      owner,
-      name: repo,
-      cursor,
-    });
+  while (currentSize >= MIN_PAGE_SIZE) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    const prs: PRQueryData["repository"]["pullRequests"] | undefined =
-      data.repository?.pullRequests;
-    if (!prs?.nodes) break;
+    try {
+      const data: PRQueryData = await graphql<PRQueryData>(
+        token,
+        PR_QUERY,
+        { owner, name: repo, cursor: cursor ?? null, first: currentSize },
+        controller.signal,
+      );
+      clearTimeout(timer);
 
-    for (const pr of prs.nodes) {
-      if (!pr) continue;
+      const prs: PRQueryData["repository"]["pullRequests"] | undefined =
+        data.repository?.pullRequests;
+      if (!prs?.nodes) return { prs: [], hasNextPage: false, endCursor: null, pageSize: currentSize };
 
-      const reviewerMap = new Map<string, Reviewer>();
-      let reviewCommentCount = 0;
-
-      for (const review of pr.latestReviews?.nodes ?? []) {
-        if (!review) continue;
-        reviewCommentCount += review.comments?.totalCount ?? 0;
-        const login = review.author?.login;
-        if (login) {
-          reviewerMap.set(login, {
-            login,
-            avatarUrl: review.author?.avatarUrl ?? "",
-            state: (review.state as ReviewState) ?? "COMMENTED",
-          });
-        }
+      return processPage(prs, currentSize);
+    } catch (err) {
+      clearTimeout(timer);
+      const isTimeout =
+        err instanceof DOMException && err.name === "AbortError";
+      if (isTimeout && currentSize > MIN_PAGE_SIZE) {
+        currentSize = Math.max(Math.floor(currentSize / 2), MIN_PAGE_SIZE);
+        continue;
       }
+      throw err;
+    }
+  }
 
-      for (const req of pr.reviewRequests?.nodes ?? []) {
-        const reviewer = req?.requestedReviewer;
-        if (!reviewer?.login) continue;
-        if (!reviewerMap.has(reviewer.login)) {
-          reviewerMap.set(reviewer.login, {
-            login: reviewer.login,
-            avatarUrl: reviewer.avatarUrl ?? "",
-            state: "REQUESTED",
-          });
-        }
+  throw new Error("Request timed out even at minimum page size");
+}
+
+function processPage(
+  prs: PRQueryData["repository"]["pullRequests"],
+  pageSize: number,
+): PRPageResult {
+
+  const result: GraphQLPullRequest[] = [];
+
+  for (const pr of prs.nodes) {
+    if (!pr) continue;
+    if (pr.mergeable === "UNKNOWN" && pr.mergeStateStatus === "UNKNOWN")
+      continue;
+
+    const reviewerMap = new Map<string, Reviewer>();
+    let reviewCommentCount = 0;
+
+    for (const review of pr.latestReviews?.nodes ?? []) {
+      if (!review) continue;
+      reviewCommentCount += review.comments?.totalCount ?? 0;
+      const login = review.author?.login;
+      if (login) {
+        reviewerMap.set(login, {
+          login,
+          avatarUrl: review.author?.avatarUrl ?? "",
+          state: (review.state as ReviewState) ?? "COMMENTED",
+        });
       }
-
-      allPRs.push({
-        number: pr.number,
-        title: pr.title,
-        url: pr.url,
-        isDraft: pr.isDraft,
-        createdAt: pr.createdAt,
-        additions: pr.additions,
-        deletions: pr.deletions,
-        headRefName: pr.headRefName,
-        baseRefName: pr.baseRefName,
-        authorLogin: pr.author?.login ?? "unknown",
-        authorAvatarUrl: pr.author?.avatarUrl ?? "",
-        labels: (pr.labels?.nodes ?? [])
-          .filter(
-            (l: { name?: string } | null): l is { name: string } => !!l?.name,
-          )
-          .map((l: { name: string }) => l.name),
-        reviewers: [...reviewerMap.values()],
-        commentCount: (pr.comments?.totalCount ?? 0) + reviewCommentCount,
-        mergeable: pr.mergeable ?? "UNKNOWN",
-        mergeStateStatus: pr.mergeStateStatus ?? "UNKNOWN",
-        reviewDecision: (pr.reviewDecision as ReviewDecision) ?? null,
-      });
     }
 
-    cursor = prs.pageInfo.hasNextPage ? (prs.pageInfo.endCursor ?? null) : null;
-  } while (cursor);
+    for (const req of pr.reviewRequests?.nodes ?? []) {
+      const reviewer = req?.requestedReviewer;
+      if (!reviewer?.login) continue;
+      if (!reviewerMap.has(reviewer.login)) {
+        reviewerMap.set(reviewer.login, {
+          login: reviewer.login,
+          avatarUrl: reviewer.avatarUrl ?? "",
+          state: "REQUESTED",
+        });
+      }
+    }
 
-  return allPRs;
+    result.push({
+      number: pr.number,
+      title: pr.title,
+      url: pr.url,
+      isDraft: pr.isDraft,
+      createdAt: pr.createdAt,
+      additions: pr.additions,
+      deletions: pr.deletions,
+      headRefName: pr.headRefName,
+      baseRefName: pr.baseRefName,
+      authorLogin: pr.author?.login ?? "unknown",
+      authorAvatarUrl: pr.author?.avatarUrl ?? "",
+      labels: (pr.labels?.nodes ?? [])
+        .filter(
+          (l: { name?: string } | null): l is { name: string } => !!l?.name,
+        )
+        .map((l: { name: string }) => l.name),
+      reviewers: [...reviewerMap.values()],
+      commentCount: (pr.comments?.totalCount ?? 0) + reviewCommentCount,
+      mergeable: pr.mergeable ?? "UNKNOWN",
+      mergeStateStatus: pr.mergeStateStatus ?? "UNKNOWN",
+      reviewDecision: (pr.reviewDecision as ReviewDecision) ?? null,
+    });
+  }
+
+  return {
+    prs: result,
+    hasNextPage: prs.pageInfo.hasNextPage,
+    endCursor: prs.pageInfo.endCursor ?? null,
+    pageSize,
+  };
 }

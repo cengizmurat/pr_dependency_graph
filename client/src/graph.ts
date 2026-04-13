@@ -16,7 +16,9 @@ export function buildDependencyGraph(
 ): GraphData {
   const headBranchToPR = new Map<string, GraphQLPullRequest>();
   for (const pr of prs) {
-    headBranchToPR.set(pr.headRefName, pr);
+    if (pr.headRefName !== pr.baseRefName) {
+      headBranchToPR.set(pr.headRefName, pr);
+    }
   }
 
   const nodes: GraphNode[] = prs.map((pr) => ({
@@ -46,7 +48,7 @@ export function buildDependencyGraph(
     const isMergeable = pr.mergeStateStatus === "CLEAN";
     const reviewStatus = reviewStatusFromDecision(pr.reviewDecision);
     const dependency = headBranchToPR.get(pr.baseRefName);
-    if (dependency) {
+    if (dependency && dependency.number !== pr.number) {
       edges.push({
         source: `pr-${dependency.number}`,
         target: `pr-${pr.number}`,

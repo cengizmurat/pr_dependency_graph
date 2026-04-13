@@ -1,40 +1,58 @@
-import { useEffect, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useParams, Link, Navigate } from "react-router-dom";
-import { fetchGraph } from "../api";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { fetchOpenPRs, fetchViewerLogin, buildDependencyGraph } from "../api";
+import type { PRPageResult } from "../api";
 import { useGithubToken } from "../hooks/useGithubToken";
-import type { GraphData } from "../types";
 import GraphView from "./GraphView";
 import type { Orientation } from "./GraphView";
 
 export default function GraphPage() {
   const { owner, repo } = useParams<{ owner: string; repo: string }>();
   const { token } = useGithubToken();
-  const [data, setData] = useState<GraphData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
+  const pageSizeRef = useRef<number | undefined>(undefined);
 
-  useEffect(() => {
-    if (!owner || !repo || !token) return;
-    let cancelled = false;
+  const {
+    data: prPages,
+    error: prError,
+    isLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    refetch,
+  } = useInfiniteQuery<PRPageResult, Error>({
+    queryKey: ["prs", owner, repo],
+    queryFn: async ({ pageParam }) => {
+      const result = await fetchOpenPRs(
+        token!, owner!, repo!,
+        pageParam as string | null,
+        pageSizeRef.current,
+      );
+      pageSizeRef.current = result.pageSize;
+      return result;
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) =>
+      lastPage.hasNextPage ? lastPage.endCursor : undefined,
+    enabled: !!owner && !!repo && !!token,
+  });
 
-    setLoading(true);
-    setError(null);
-    fetchGraph(owner, repo, token)
-      .then((graph) => {
-        if (!cancelled) setData(graph);
-      })
-      .catch((err: Error) => {
-        if (!cancelled) setError(err.message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+  const { data: viewerLogin } = useQuery({
+    queryKey: ["viewer", token],
+    queryFn: () => fetchViewerLogin(token!),
+    enabled: !!token,
+  });
 
-    return () => {
-      cancelled = true;
-    };
-  }, [owner, repo, token]);
+  const data = useMemo(() => {
+    if (!prPages || !owner || !repo) return null;
+    const allPRs = prPages.pages.flatMap((page) => page.prs);
+    const graph = buildDependencyGraph(allPRs, owner, repo);
+    if (viewerLogin) graph.viewerLogin = viewerLogin;
+    return graph;
+  }, [prPages, owner, repo, viewerLogin]);
+
+  const error = prError?.message ?? null;
 
   if (!token) {
     return <Navigate to="/" replace />;
@@ -54,7 +72,7 @@ export default function GraphPage() {
         )}
         <span style={styles.badge}>
           {data
-            ? `${data.nodes.filter((n) => n.type === "pr").length} open PRs`
+            ? `${data.nodes.filter((n) => n.type === "pr").length}${hasNextPage ? "+" : ""} open PRs`
             : ""}
         </span>
         <span style={styles.toggleLabel}>Orientation:</span>
@@ -88,13 +106,66 @@ export default function GraphPage() {
       </header>
 
       <div style={styles.content}>
-        {loading && <p style={styles.status}>Loading pull requests...</p>}
-        {error && <p style={styles.error}>{error}</p>}
-        {data && !loading && (
-          <GraphView data={data} orientation={orientation} token={token} />
+        {isLoading && (
+          <div style={styles.statusContainer}>
+            <Spinner />
+            <p style={styles.status}>Loading pull requests...</p>
+          </div>
+        )}
+        {error && (
+          <div style={styles.errorContainer}>
+            <p style={styles.error}>{error}</p>
+            <button style={styles.retryBtn} onClick={() => refetch()}>
+              Retry
+            </button>
+          </div>
+        )}
+        {data && !isLoading && (
+          <>
+            <GraphView data={data} orientation={orientation} token={token} />
+            {hasNextPage && (
+              <div style={styles.loadMoreContainer}>
+                <button
+                  style={styles.loadMoreBtn}
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                >
+                  {isFetchingNextPage ? (
+                    <><Spinner size={14} /> Loading...</>
+                  ) : (
+                    `Load next ${pageSizeRef.current ?? 50} PRs`
+                  )}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
+  );
+}
+
+function Spinner({ size = 24 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      style={{ animation: "spin 0.8s linear infinite" }}
+    >
+      <circle
+        cx="12" cy="12" r="10"
+        stroke="var(--color-border-subtle)"
+        strokeWidth="3"
+      />
+      <path
+        d="M12 2a10 10 0 0 1 10 10"
+        stroke="var(--color-text-secondary)"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 
@@ -169,16 +240,60 @@ const styles: Record<string, React.CSSProperties> = {
     position: "relative" as const,
     overflow: "hidden",
   },
+  statusContainer: {
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    marginTop: 80,
+    gap: 12,
+  },
   status: {
     textAlign: "center" as const,
-    marginTop: 80,
+    margin: 0,
     color: "var(--color-text-secondary)",
     fontSize: 15,
   },
+  errorContainer: {
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    marginTop: 80,
+    gap: 12,
+  },
   error: {
     textAlign: "center" as const,
-    marginTop: 80,
+    margin: 0,
     color: "var(--color-error)",
     fontSize: 15,
+  },
+  retryBtn: {
+    padding: "6px 16px",
+    fontSize: 13,
+    fontWeight: 600,
+    borderRadius: 6,
+    border: "1px solid var(--color-border-subtle)",
+    background: "transparent",
+    color: "var(--color-text)",
+    cursor: "pointer",
+    transition: "background 0.15s",
+  },
+  loadMoreContainer: {
+    position: "absolute" as const,
+    bottom: 16,
+    left: "50%",
+    transform: "translateX(-50%)",
+    zIndex: 10,
+  },
+  loadMoreBtn: {
+    padding: "8px 20px",
+    fontSize: 13,
+    fontWeight: 600,
+    borderRadius: 8,
+    border: "1px solid var(--color-border-subtle)",
+    background: "var(--color-header-bg)",
+    color: "var(--color-text)",
+    cursor: "pointer",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+    transition: "background 0.15s, opacity 0.15s",
   },
 };

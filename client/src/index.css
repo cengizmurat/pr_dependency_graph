@@ -75,3 +75,7 @@ body {
   background-color: var(--color-page-bg);
   color: var(--color-text);
 }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
