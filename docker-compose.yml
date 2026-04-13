@@ -3,3 +3,16 @@ services:
     build: .
     ports:
       - "8000:80"
+    profiles:
+      - prod
+
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:5173"
+    volumes:
+      - ./client/src:/app/src
+    profiles:
+      - dev
