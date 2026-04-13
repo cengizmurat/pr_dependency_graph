@@ -137,17 +137,17 @@ function nodeHeight(d: GraphNode) {
 
 function edgePath(e: FlatEdge, orientation: Orientation): string {
   if (orientation === "horizontal") {
-    const sx = e.source.x + nodeWidth(e.source.data) / 2;
-    const sy = e.source.y;
-    const tx = e.target.x - nodeWidth(e.target.data) / 2;
-    const ty = e.target.y;
+    const sx = e.target.x - nodeWidth(e.target.data) / 2;
+    const sy = e.target.y;
+    const tx = e.source.x + nodeWidth(e.source.data) / 2;
+    const ty = e.source.y;
     const mx = (sx + tx) / 2;
     return `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`;
   }
-  const sx = e.source.x;
-  const sy = e.source.y + nodeHeight(e.source.data) / 2;
-  const tx = e.target.x;
-  const ty = e.target.y - nodeHeight(e.target.data) / 2;
+  const sx = e.target.x;
+  const sy = e.target.y - nodeHeight(e.target.data) / 2;
+  const tx = e.source.x;
+  const ty = e.source.y + nodeHeight(e.source.data) / 2;
   const my = (sy + ty) / 2;
   return `M${sx},${sy} C${sx},${my} ${tx},${my} ${tx},${ty}`;
 }
