@@ -535,16 +535,21 @@ export async function fetchPRsByDateRange(
   repo: string,
   startDate: string,
   endDate: string,
+  onPage?: (accumulated: GraphQLPullRequest[]) => void,
+  signal?: AbortSignal,
 ): Promise<GraphQLPullRequest[]> {
   const searchQuery = `repo:${owner}/${repo} is:pr is:open created:${startDate}..${endDate}`;
   const all: GraphQLPullRequest[] = [];
   let cursor: string | null = null;
 
   while (true) {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+
     const result: SearchQueryData = await graphql<SearchQueryData>(
       token,
       SEARCH_PR_QUERY,
       { query: searchQuery, cursor, first: 50 },
+      signal,
     );
 
     const search = result.search;
@@ -555,6 +560,8 @@ export async function fetchPRsByDateRange(
       const processed = processRawPR(pr);
       if (processed) all.push(processed);
     }
+
+    onPage?.([...all]);
 
     if (!search.pageInfo.hasNextPage) break;
     cursor = search.pageInfo.endCursor;

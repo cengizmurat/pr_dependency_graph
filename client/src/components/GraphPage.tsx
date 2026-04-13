@@ -5,6 +5,7 @@ import { DatePicker } from "antd";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, fetchBehindByCounts, buildDependencyGraph } from "../api";
+import type { GraphQLPullRequest } from "../github";
 import type { Contributor } from "../types";
 import { useGithubToken } from "../hooks/useGithubToken";
 import GraphView from "./GraphView";
@@ -14,6 +15,65 @@ const { RangePicker } = DatePicker;
 
 type DateRange = [Dayjs, Dayjs];
 const DEFAULT_RANGE: DateRange = [dayjs().subtract(7, "day").startOf("day"), dayjs().endOf("day")];
+
+function useIncrementalPRs(
+  token: string | null,
+  owner: string | undefined,
+  repo: string | undefined,
+  startDate: string,
+  endDate: string,
+) {
+  const [prs, setPRs] = useState<GraphQLPullRequest[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fetchKey, setFetchKey] = useState(0);
+
+  const refetch = useCallback(() => setFetchKey((k) => k + 1), []);
+
+  useEffect(() => {
+    if (!token || !owner || !repo) return;
+
+    const controller = new AbortController();
+    let receivedFirstPage = false;
+
+    setIsLoading(true);
+    setIsFetchingMore(false);
+    setError(null);
+    setPRs([]);
+
+    fetchPRsByDateRange(
+      token,
+      owner,
+      repo,
+      startDate,
+      endDate,
+      (accumulated) => {
+        setPRs(accumulated);
+        if (!receivedFirstPage) {
+          receivedFirstPage = true;
+          setIsLoading(false);
+          setIsFetchingMore(true);
+        }
+      },
+      controller.signal,
+    )
+      .then(() => {
+        if (!receivedFirstPage) setIsLoading(false);
+        setIsFetchingMore(false);
+      })
+      .catch((err) => {
+        if ((err as DOMException).name === "AbortError") return;
+        setError((err as Error).message);
+        setIsLoading(false);
+        setIsFetchingMore(false);
+      });
+
+    return () => controller.abort();
+  }, [token, owner, repo, startDate, endDate, fetchKey]);
+
+  return { prs, isLoading, isFetchingMore, error, refetch };
+}
 
 export default function GraphPage() {
   const { owner, repo } = useParams<{ owner: string; repo: string }>();
@@ -27,15 +87,12 @@ export default function GraphPage() {
   const endDate = dateRange[1].toISOString();
 
   const {
-    data: allPRs,
-    error: prError,
+    prs: allPRs,
     isLoading,
+    isFetchingMore,
+    error: prError,
     refetch,
-  } = useQuery({
-    queryKey: ["prs", owner, repo, startDate, endDate],
-    queryFn: () => fetchPRsByDateRange(token!, owner!, repo!, startDate, endDate),
-    enabled: !!owner && !!repo && !!token,
-  });
+  } = useIncrementalPRs(token, owner, repo, startDate, endDate);
 
   const { data: viewerLogin } = useQuery({
     queryKey: ["viewer", token],
@@ -50,17 +107,16 @@ export default function GraphPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const prKeys = allPRs?.map((p) => p.number).join(",") ?? "";
+  const prKeys = allPRs.map((p) => p.number).join(",");
   const { data: behindByData } = useQuery({
     queryKey: ["behindBy", owner, repo, prKeys],
-    queryFn: () => fetchBehindByCounts(token!, owner!, repo!, allPRs!, queryClient),
-    enabled: !!owner && !!repo && !!token && !!allPRs && allPRs.length > 0,
+    queryFn: () => fetchBehindByCounts(token!, owner!, repo!, allPRs, queryClient),
+    enabled: !!owner && !!repo && !!token && allPRs.length > 0,
     staleTime: 60 * 1000,
   });
 
   const prCountByAuthor = useMemo(() => {
     const counts = new Map<string, number>();
-    if (!allPRs) return counts;
     for (const pr of allPRs) {
       counts.set(pr.authorLogin, (counts.get(pr.authorLogin) ?? 0) + 1);
     }
@@ -68,7 +124,7 @@ export default function GraphPage() {
   }, [allPRs]);
 
   const data = useMemo(() => {
-    if (!allPRs || !owner || !repo) return null;
+    if (allPRs.length === 0 || !owner || !repo) return null;
     let prs = allPRs;
     if (authorFilter) {
       prs = prs.filter((pr) => pr.authorLogin === authorFilter);
@@ -87,7 +143,7 @@ export default function GraphPage() {
     return graph;
   }, [allPRs, owner, repo, viewerLogin, contributors, authorFilter, behindByData]);
 
-  const error = prError?.message ?? null;
+  const error = prError ?? null;
 
   if (!token) {
     return <Navigate to="/" replace />;
@@ -107,7 +163,7 @@ export default function GraphPage() {
         )}
         <span style={styles.badge}>
           {data
-            ? `${data.nodes.filter((n) => n.type === "pr").length} open PRs`
+            ? `${data.nodes.filter((n) => n.type === "pr").length}${isFetchingMore ? "+" : ""} open PRs`
             : ""}
         </span>
         <RangePicker
@@ -173,9 +229,28 @@ export default function GraphPage() {
             </button>
           </div>
         )}
-        {data && !isLoading && (
+        {data && (
           <GraphView data={data} orientation={orientation} token={token} />
         )}
+        {isFetchingMore && (() => {
+          const oldestSoFar = dayjs(allPRs[allPRs.length - 1]?.createdAt);
+          const totalMs = dayjs(endDate).diff(dayjs(startDate));
+          const elapsedMs = dayjs(endDate).diff(oldestSoFar);
+          const progress = totalMs > 0 ? Math.min(1, Math.max(0, elapsedMs / totalMs)) : 0;
+          return (
+            <div style={styles.fetchingMoreBar}>
+              <div style={styles.fetchingMoreContent}>
+                <Spinner size={14} />
+                <span>
+                  Loading PRs created before {oldestSoFar.format("MMM D, YYYY")}...
+                </span>
+              </div>
+              <div style={styles.progressTrack}>
+                <div style={{ ...styles.progressFill, width: `${progress * 100}%` }} />
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -509,5 +584,43 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--color-text)",
     cursor: "pointer",
     transition: "background 0.15s",
+  },
+  fetchingMoreBar: {
+    position: "absolute" as const,
+    bottom: 16,
+    left: "50%",
+    transform: "translateX(-50%)",
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 6,
+    padding: "8px 16px",
+    fontSize: 12,
+    fontWeight: 500,
+    color: "var(--color-text-secondary)",
+    background: "var(--color-header-bg)",
+    border: "1px solid var(--color-border-subtle)",
+    borderRadius: 8,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+    zIndex: 50,
+    whiteSpace: "nowrap" as const,
+    minWidth: 260,
+  },
+  fetchingMoreContent: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  progressTrack: {
+    width: "100%",
+    height: 4,
+    borderRadius: 2,
+    background: "var(--color-border-subtle)",
+    overflow: "hidden" as const,
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 2,
+    background: "var(--color-link, #58a6ff)",
+    transition: "width 0.3s ease",
   },
 };
