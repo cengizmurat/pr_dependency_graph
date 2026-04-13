@@ -138,6 +138,7 @@ function UpdateBadge({
         cursor: onUpdateBranch ? "pointer" : "default",
       }}
     >
+      <span style={badgeStyles.notificationBubble}>{behindBy}</span>
       <svg width="12" height="12" viewBox="0 0 16 16" fill={color}>
         <path d="M8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5ZM1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834Z" />
       </svg>
@@ -421,10 +422,11 @@ const badgeStyles: Record<string, React.CSSProperties> = {
     transform: "translate(-50%, -50%)",
     display: "flex",
     alignItems: "center",
-    gap: 4,
+    gap: 8,
     zIndex: 10,
   },
   box: {
+    position: "relative" as const,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -435,5 +437,22 @@ const badgeStyles: Record<string, React.CSSProperties> = {
     background: "var(--color-page-bg)",
     padding: 0,
     flexShrink: 0,
+  },
+  notificationBubble: {
+    position: "absolute" as const,
+    top: -8,
+    left: -6,
+    minWidth: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "var(--color-behind)",
+    color: "#fff",
+    fontSize: 9,
+    fontWeight: 700,
+    lineHeight: "14px",
+    textAlign: "center" as const,
+    padding: "0 3px",
+    boxSizing: "border-box" as const,
+    pointerEvents: "none" as const,
   },
 };
