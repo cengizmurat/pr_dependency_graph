@@ -90,7 +90,9 @@ export default function GraphPage() {
       <div style={styles.content}>
         {loading && <p style={styles.status}>Loading pull requests...</p>}
         {error && <p style={styles.error}>{error}</p>}
-        {data && !loading && <GraphView data={data} orientation={orientation} />}
+        {data && !loading && (
+          <GraphView data={data} orientation={orientation} token={token} />
+        )}
       </div>
     </div>
   );

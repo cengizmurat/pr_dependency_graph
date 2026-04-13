@@ -5,11 +5,15 @@ export type ReviewState =
   | "DISMISSED"
   | "REQUESTED";
 
+export type Mergeable = "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
+
 export interface Reviewer {
   login: string;
   avatarUrl: string;
   state: ReviewState;
 }
+
+export type ReviewDecision = "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null;
 
 export interface GraphQLPullRequest {
   number: number;
@@ -26,6 +30,9 @@ export interface GraphQLPullRequest {
   labels: string[];
   reviewers: Reviewer[];
   commentCount: number;
+  mergeable: Mergeable;
+  mergeStateStatus: string;
+  reviewDecision: ReviewDecision;
 }
 
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
@@ -37,7 +44,7 @@ query($owner: String!, $name: String!, $cursor: String) {
       pageInfo { hasNextPage endCursor }
       nodes {
         number title url isDraft createdAt additions deletions
-        headRefName baseRefName
+        headRefName baseRefName mergeable mergeStateStatus reviewDecision
         author { login avatarUrl }
         labels(first: 20) { nodes { name } }
         latestReviews(first: 100) {
@@ -84,6 +91,120 @@ async function graphql<T>(token: string, query: string, variables?: Record<strin
   return json.data as T;
 }
 
+export async function mergePR(
+  token: string,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+): Promise<void> {
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/merge`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ merge_method: "merge" }),
+    },
+  );
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message ?? `Merge failed with status ${res.status}`);
+  }
+}
+
+export async function updatePRBase(
+  token: string,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  newBase: string,
+): Promise<void> {
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ base: newBase }),
+    },
+  );
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message ?? `Retarget failed with status ${res.status}`);
+  }
+}
+
+export async function updatePRBranch(
+  token: string,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+): Promise<void> {
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/update-branch`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message ?? `Branch update failed with status ${res.status}`);
+  }
+}
+
+export interface CascadeResult {
+  merged: number;
+  updated: { number: number; title: string }[];
+  errors: { number: number; message: string }[];
+}
+
+export async function mergeAndCascade(
+  token: string,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  nodes: { type: string; number?: number; title?: string; baseBranch?: string; headBranch?: string }[],
+): Promise<CascadeResult> {
+  const prNodes = nodes.filter(
+    (n): n is typeof n & { number: number; baseBranch: string; headBranch: string; title: string } =>
+      n.type === "pr" && n.number != null,
+  );
+
+  const mergedPR = prNodes.find((n) => n.number === prNumber);
+  if (!mergedPR) throw new Error(`PR #${prNumber} not found in graph`);
+
+  await mergePR(token, owner, repo, prNumber);
+
+  const dependents = prNodes.filter((n) => n.baseBranch === mergedPR.headBranch);
+  const result: CascadeResult = { merged: prNumber, updated: [], errors: [] };
+
+  for (const dep of dependents) {
+    try {
+      await updatePRBase(token, owner, repo, dep.number, mergedPR.baseBranch);
+      await updatePRBranch(token, owner, repo, dep.number);
+      result.updated.push({ number: dep.number, title: dep.title });
+    } catch (err) {
+      result.errors.push({
+        number: dep.number,
+        message: (err as Error).message,
+      });
+    }
+  }
+
+  return result;
+}
+
 export async function fetchViewerLogin(token: string): Promise<string> {
   const data = await graphql<{ viewer: { login: string } }>(token, VIEWER_QUERY);
   return data.viewer?.login ?? "";
@@ -104,19 +225,26 @@ interface PRNodeRaw {
   deletions: number;
   headRefName: string;
   baseRefName: string;
+  mergeable: Mergeable;
+  mergeStateStatus: string;
+  reviewDecision: string | null;
   author: { login: string; avatarUrl: string } | null;
   labels: { nodes: ({ name: string } | null)[] | null } | null;
   latestReviews: {
-    nodes: ({
-      state: string;
-      author: { login: string; avatarUrl: string } | null;
-      comments: { totalCount: number } | null;
-    } | null)[] | null;
+    nodes:
+      | ({
+          state: string;
+          author: { login: string; avatarUrl: string } | null;
+          comments: { totalCount: number } | null;
+        } | null)[]
+      | null;
   } | null;
   reviewRequests: {
-    nodes: ({
-      requestedReviewer: { login?: string; avatarUrl?: string } | null;
-    } | null)[] | null;
+    nodes:
+      | ({
+          requestedReviewer: { login?: string; avatarUrl?: string } | null;
+        } | null)[]
+      | null;
   } | null;
   comments: { totalCount: number } | null;
 }
@@ -193,10 +321,15 @@ export async function fetchOpenPRs(
         authorLogin: pr.author?.login ?? "unknown",
         authorAvatarUrl: pr.author?.avatarUrl ?? "",
         labels: (pr.labels?.nodes ?? [])
-          .filter((l: { name?: string } | null): l is { name: string } => !!l?.name)
+          .filter(
+            (l: { name?: string } | null): l is { name: string } => !!l?.name,
+          )
           .map((l: { name: string }) => l.name),
         reviewers: [...reviewerMap.values()],
         commentCount: (pr.comments?.totalCount ?? 0) + reviewCommentCount,
+        mergeable: pr.mergeable ?? "UNKNOWN",
+        mergeStateStatus: pr.mergeStateStatus ?? "UNKNOWN",
+        reviewDecision: (pr.reviewDecision as ReviewDecision) ?? null,
       });
     }
 

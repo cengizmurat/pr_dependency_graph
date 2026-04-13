@@ -1,7 +1,17 @@
 import type { PRNode } from "../types";
+import type { Orientation } from "./GraphView";
+
+interface MergeStatus {
+  hasConflict: boolean;
+  isMergeable: boolean;
+}
 
 interface Props {
   pr: PRNode;
+  mergeStatus?: MergeStatus;
+  isMerging?: boolean;
+  onMerge?: (prNumber: number, prTitle: string) => void;
+  orientation?: Orientation;
 }
 
 function timeAgo(dateStr: string): string {
@@ -39,12 +49,89 @@ const STATE_ICONS: Record<string, string> = {
   REQUESTED: "M8 2a6 6 0 110 12A6 6 0 018 2zm0 1.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9zM8 5a.75.75 0 01.75.75v1.5h1.5a.75.75 0 010 1.5h-1.5v1.5a.75.75 0 01-1.5 0v-1.5h-1.5a.75.75 0 010-1.5h1.5v-1.5A.75.75 0 018 5z",
 };
 
-export default function PRCard({ pr }: Props) {
+function MergeBadge({
+  status,
+  isMerging,
+  onMerge,
+  prNumber,
+  prTitle,
+  orientation,
+}: {
+  status: MergeStatus;
+  isMerging: boolean;
+  onMerge?: (prNumber: number, prTitle: string) => void;
+  prNumber: number;
+  prTitle: string;
+  orientation: Orientation;
+}) {
+  const isConflict = status.hasConflict;
+  const clickable = status.isMergeable && !isConflict && !!onMerge;
+  const color = isConflict ? "var(--color-conflict)" : "var(--color-ready)";
+
+  const posStyle: React.CSSProperties =
+    orientation === "horizontal"
+      ? { left: 0, top: "50%", transform: "translate(-50%, -50%)" }
+      : { top: 0, left: "50%", transform: "translate(-50%, -50%)" };
+
+  return (
+    <button
+      type="button"
+      title={isConflict ? "Merge conflict" : "Merge PR"}
+      disabled={!clickable || isMerging}
+      onClick={
+        clickable
+          ? (evt) => {
+              evt.stopPropagation();
+              onMerge(prNumber, prTitle);
+            }
+          : undefined
+      }
+      style={{
+        ...badgeStyles.box,
+        ...posStyle,
+        borderColor: color,
+        cursor: clickable ? "pointer" : "default",
+        opacity: isMerging ? 0.5 : 1,
+      }}
+    >
+      <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
+        {isConflict ? (
+          <path
+            d="M3 3L9 9M9 3L3 9"
+            stroke={color}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        ) : (
+          <path
+            d="M2 6L5 9L10 3"
+            stroke={color}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+      </svg>
+    </button>
+  );
+}
+
+export default function PRCard({ pr, mergeStatus, isMerging, onMerge, orientation = "horizontal" }: Props) {
   const visibleReviewers = pr.reviewers.slice(0, MAX_REVIEWER_AVATARS);
   const extraCount = pr.reviewers.length - MAX_REVIEWER_AVATARS;
 
   return (
     <div style={styles.card} data-draft={pr.isDraft || undefined}>
+      {mergeStatus && (mergeStatus.hasConflict || mergeStatus.isMergeable) && (
+        <MergeBadge
+          status={mergeStatus}
+          isMerging={!!isMerging}
+          onMerge={onMerge}
+          prNumber={pr.number}
+          prTitle={pr.title}
+          orientation={orientation}
+        />
+      )}
       <div style={styles.header}>
         <span
           style={{
@@ -132,6 +219,7 @@ export default function PRCard({ pr }: Props) {
 
 const styles: Record<string, React.CSSProperties> = {
   card: {
+    position: "relative" as const,
     display: "flex",
     flexDirection: "column",
     justifyContent: "space-evenly",
@@ -141,7 +229,7 @@ const styles: Record<string, React.CSSProperties> = {
     boxSizing: "border-box",
     fontFamily:
       '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
-    overflow: "hidden",
+    overflow: "visible",
   },
   header: {
     display: "flex",
@@ -274,5 +362,21 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--color-text-secondary)",
     fontSize: 11,
     whiteSpace: "nowrap" as const,
+  },
+};
+
+const badgeStyles: Record<string, React.CSSProperties> = {
+  box: {
+    position: "absolute",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 26,
+    height: 26,
+    borderRadius: 5,
+    border: "2px solid",
+    background: "var(--color-page-bg)",
+    padding: 0,
+    zIndex: 10,
   },
 };

@@ -23,6 +23,7 @@
   --color-branch: #8250df;
   --color-branch-bg: #fbefff;
   --color-edge: #d0d7de;
+  --color-conflict: #cf222e;
   --color-hover: #0969da;
   --color-additions: #1a7f37;
   --color-deletions: #cf222e;
@@ -54,6 +55,7 @@
     --color-branch: #8957e5;
     --color-branch-bg: #1e1535;
     --color-edge: #30363d;
+    --color-conflict: #f85149;
     --color-hover: #58a6ff;
     --color-additions: #3fb950;
     --color-deletions: #f85149;

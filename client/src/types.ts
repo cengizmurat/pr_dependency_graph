@@ -30,9 +30,14 @@ export interface BranchNode {
 
 export type GraphNode = PRNode | BranchNode;
 
+export type EdgeReviewStatus = "approved" | "changes_requested" | null;
+
 export interface GraphEdge {
   source: string;
   target: string;
+  hasConflict: boolean;
+  isMergeable: boolean;
+  reviewStatus: EdgeReviewStatus;
 }
 
 export interface GraphData {

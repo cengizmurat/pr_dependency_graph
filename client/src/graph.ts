@@ -1,5 +1,13 @@
 import type { GraphQLPullRequest } from "./github";
-import type { GraphData, GraphNode, GraphEdge } from "./types";
+import type { GraphData, GraphNode, GraphEdge, EdgeReviewStatus } from "./types";
+
+function reviewStatusFromDecision(
+  reviewDecision: string | null,
+): EdgeReviewStatus {
+  if (reviewDecision === "CHANGES_REQUESTED") return "changes_requested";
+  if (reviewDecision === "APPROVED") return "approved";
+  return null;
+}
 
 export function buildDependencyGraph(
   prs: GraphQLPullRequest[],
@@ -34,11 +42,17 @@ export function buildDependencyGraph(
   const branchNodes = new Map<string, GraphNode>();
 
   for (const pr of prs) {
+    const hasConflict = pr.mergeable === "CONFLICTING";
+    const isMergeable = pr.mergeStateStatus === "CLEAN";
+    const reviewStatus = reviewStatusFromDecision(pr.reviewDecision);
     const dependency = headBranchToPR.get(pr.baseRefName);
     if (dependency) {
       edges.push({
         source: `pr-${dependency.number}`,
         target: `pr-${pr.number}`,
+        hasConflict,
+        isMergeable,
+        reviewStatus,
       });
     } else {
       const branchId = `branch-${pr.baseRefName}`;
@@ -53,6 +67,9 @@ export function buildDependencyGraph(
       edges.push({
         source: branchId,
         target: `pr-${pr.number}`,
+        hasConflict,
+        isMergeable,
+        reviewStatus,
       });
     }
   }
