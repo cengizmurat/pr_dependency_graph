@@ -364,75 +364,148 @@ export async function fetchOpenPRs(
   throw new Error("Request timed out even at minimum page size");
 }
 
+function processRawPR(pr: PRNodeRaw): GraphQLPullRequest | null {
+  if (pr.mergeable === "UNKNOWN" && pr.mergeStateStatus === "UNKNOWN")
+    return null;
+
+  const reviewerMap = new Map<string, Reviewer>();
+  let reviewCommentCount = 0;
+
+  for (const review of pr.latestReviews?.nodes ?? []) {
+    if (!review) continue;
+    reviewCommentCount += review.comments?.totalCount ?? 0;
+    const login = review.author?.login;
+    if (login) {
+      reviewerMap.set(login, {
+        login,
+        avatarUrl: review.author?.avatarUrl ?? "",
+        state: (review.state as ReviewState) ?? "COMMENTED",
+      });
+    }
+  }
+
+  for (const req of pr.reviewRequests?.nodes ?? []) {
+    const reviewer = req?.requestedReviewer;
+    if (!reviewer?.login) continue;
+    if (!reviewerMap.has(reviewer.login)) {
+      reviewerMap.set(reviewer.login, {
+        login: reviewer.login,
+        avatarUrl: reviewer.avatarUrl ?? "",
+        state: "REQUESTED",
+      });
+    }
+  }
+
+  return {
+    number: pr.number,
+    title: pr.title,
+    url: pr.url,
+    isDraft: pr.isDraft,
+    createdAt: pr.createdAt,
+    additions: pr.additions,
+    deletions: pr.deletions,
+    headRefName: pr.headRefName,
+    baseRefName: pr.baseRefName,
+    authorLogin: pr.author?.login ?? "unknown",
+    authorAvatarUrl: pr.author?.avatarUrl ?? "",
+    labels: (pr.labels?.nodes ?? [])
+      .filter(
+        (l: { name?: string } | null): l is { name: string } => !!l?.name,
+      )
+      .map((l: { name: string }) => l.name),
+    reviewers: [...reviewerMap.values()],
+    commentCount: (pr.comments?.totalCount ?? 0) + reviewCommentCount,
+    mergeable: pr.mergeable ?? "UNKNOWN",
+    mergeStateStatus: pr.mergeStateStatus ?? "UNKNOWN",
+    reviewDecision: (pr.reviewDecision as ReviewDecision) ?? null,
+  };
+}
+
 function processPage(
   prs: PRQueryData["repository"]["pullRequests"],
   pageSize: number,
 ): PRPageResult {
-
   const result: GraphQLPullRequest[] = [];
-
   for (const pr of prs.nodes) {
     if (!pr) continue;
-    if (pr.mergeable === "UNKNOWN" && pr.mergeStateStatus === "UNKNOWN")
-      continue;
-
-    const reviewerMap = new Map<string, Reviewer>();
-    let reviewCommentCount = 0;
-
-    for (const review of pr.latestReviews?.nodes ?? []) {
-      if (!review) continue;
-      reviewCommentCount += review.comments?.totalCount ?? 0;
-      const login = review.author?.login;
-      if (login) {
-        reviewerMap.set(login, {
-          login,
-          avatarUrl: review.author?.avatarUrl ?? "",
-          state: (review.state as ReviewState) ?? "COMMENTED",
-        });
-      }
-    }
-
-    for (const req of pr.reviewRequests?.nodes ?? []) {
-      const reviewer = req?.requestedReviewer;
-      if (!reviewer?.login) continue;
-      if (!reviewerMap.has(reviewer.login)) {
-        reviewerMap.set(reviewer.login, {
-          login: reviewer.login,
-          avatarUrl: reviewer.avatarUrl ?? "",
-          state: "REQUESTED",
-        });
-      }
-    }
-
-    result.push({
-      number: pr.number,
-      title: pr.title,
-      url: pr.url,
-      isDraft: pr.isDraft,
-      createdAt: pr.createdAt,
-      additions: pr.additions,
-      deletions: pr.deletions,
-      headRefName: pr.headRefName,
-      baseRefName: pr.baseRefName,
-      authorLogin: pr.author?.login ?? "unknown",
-      authorAvatarUrl: pr.author?.avatarUrl ?? "",
-      labels: (pr.labels?.nodes ?? [])
-        .filter(
-          (l: { name?: string } | null): l is { name: string } => !!l?.name,
-        )
-        .map((l: { name: string }) => l.name),
-      reviewers: [...reviewerMap.values()],
-      commentCount: (pr.comments?.totalCount ?? 0) + reviewCommentCount,
-      mergeable: pr.mergeable ?? "UNKNOWN",
-      mergeStateStatus: pr.mergeStateStatus ?? "UNKNOWN",
-      reviewDecision: (pr.reviewDecision as ReviewDecision) ?? null,
-    });
+    const processed = processRawPR(pr);
+    if (processed) result.push(processed);
   }
-
   return {
     prs: result,
     hasNextPage: prs.pageInfo.hasNextPage,
     endCursor: prs.pageInfo.endCursor ?? null,
     pageSize,
   };
+}
+
+const SEARCH_PR_QUERY = `
+query($query: String!, $cursor: String, $first: Int!) {
+  search(query: $query, type: ISSUE, first: $first, after: $cursor) {
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      ... on PullRequest {
+        number title url isDraft createdAt additions deletions
+        headRefName baseRefName mergeable mergeStateStatus reviewDecision
+        author { login avatarUrl }
+        labels(first: 20) { nodes { name } }
+        latestReviews(first: 100) {
+          nodes {
+            state
+            author { login avatarUrl }
+            comments { totalCount }
+          }
+        }
+        reviewRequests(first: 100) {
+          nodes {
+            requestedReviewer {
+              ... on User { login avatarUrl }
+            }
+          }
+        }
+        comments { totalCount }
+      }
+    }
+  }
+}`;
+
+interface SearchQueryData {
+  search: {
+    pageInfo: PRPageInfo;
+    nodes: (PRNodeRaw | null)[];
+  };
+}
+
+export async function fetchPRsByDateRange(
+  token: string,
+  owner: string,
+  repo: string,
+  startDate: string,
+  endDate: string,
+): Promise<GraphQLPullRequest[]> {
+  const searchQuery = `repo:${owner}/${repo} is:pr is:open created:${startDate}..${endDate}`;
+  const all: GraphQLPullRequest[] = [];
+  let cursor: string | null = null;
+
+  while (true) {
+    const result: SearchQueryData = await graphql<SearchQueryData>(
+      token,
+      SEARCH_PR_QUERY,
+      { query: searchQuery, cursor, first: 50 },
+    );
+
+    const search = result.search;
+    if (!search?.nodes) break;
+
+    for (const pr of search.nodes) {
+      if (!pr) continue;
+      const processed = processRawPR(pr);
+      if (processed) all.push(processed);
+    }
+
+    if (!search.pageInfo.hasNextPage) break;
+    cursor = search.pageInfo.endCursor;
+  }
+
+  return all;
 }

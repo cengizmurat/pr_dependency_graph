@@ -1,42 +1,38 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { useParams, Link, Navigate } from "react-router-dom";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { fetchOpenPRs, fetchViewerLogin, fetchContributors, buildDependencyGraph } from "../api";
-import type { PRPageResult } from "../api";
+import { useQuery } from "@tanstack/react-query";
+import { DatePicker } from "antd";
+import dayjs from "dayjs";
+import type { Dayjs } from "dayjs";
+import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, buildDependencyGraph } from "../api";
 import type { Contributor } from "../types";
 import { useGithubToken } from "../hooks/useGithubToken";
 import GraphView from "./GraphView";
 import type { Orientation } from "./GraphView";
+
+const { RangePicker } = DatePicker;
+
+type DateRange = [Dayjs, Dayjs];
+const DEFAULT_RANGE: DateRange = [dayjs().subtract(7, "day").startOf("day"), dayjs().endOf("day")];
 
 export default function GraphPage() {
   const { owner, repo } = useParams<{ owner: string; repo: string }>();
   const { token } = useGithubToken();
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
   const [authorFilter, setAuthorFilter] = useState<string | null>(null);
-  const pageSizeRef = useRef<number | undefined>(undefined);
+  const [dateRange, setDateRange] = useState<DateRange>(DEFAULT_RANGE);
+
+  const startDate = dateRange[0].toISOString();
+  const endDate = dateRange[1].toISOString();
 
   const {
-    data: prPages,
+    data: allPRs,
     error: prError,
     isLoading,
-    isFetchingNextPage,
-    hasNextPage,
-    fetchNextPage,
     refetch,
-  } = useInfiniteQuery<PRPageResult, Error>({
-    queryKey: ["prs", owner, repo],
-    queryFn: async ({ pageParam }) => {
-      const result = await fetchOpenPRs(
-        token!, owner!, repo!,
-        pageParam as string | null,
-        pageSizeRef.current,
-      );
-      pageSizeRef.current = result.pageSize;
-      return result;
-    },
-    initialPageParam: null as string | null,
-    getNextPageParam: (lastPage) =>
-      lastPage.hasNextPage ? lastPage.endCursor : undefined,
+  } = useQuery({
+    queryKey: ["prs", owner, repo, startDate, endDate],
+    queryFn: () => fetchPRsByDateRange(token!, owner!, repo!, startDate, endDate),
     enabled: !!owner && !!repo && !!token,
   });
 
@@ -55,26 +51,24 @@ export default function GraphPage() {
 
   const prCountByAuthor = useMemo(() => {
     const counts = new Map<string, number>();
-    if (!prPages) return counts;
-    for (const page of prPages.pages) {
-      for (const pr of page.prs) {
-        counts.set(pr.authorLogin, (counts.get(pr.authorLogin) ?? 0) + 1);
-      }
+    if (!allPRs) return counts;
+    for (const pr of allPRs) {
+      counts.set(pr.authorLogin, (counts.get(pr.authorLogin) ?? 0) + 1);
     }
     return counts;
-  }, [prPages]);
+  }, [allPRs]);
 
   const data = useMemo(() => {
-    if (!prPages || !owner || !repo) return null;
-    let allPRs = prPages.pages.flatMap((page) => page.prs);
+    if (!allPRs || !owner || !repo) return null;
+    let prs = allPRs;
     if (authorFilter) {
-      allPRs = allPRs.filter((pr) => pr.authorLogin === authorFilter);
+      prs = prs.filter((pr) => pr.authorLogin === authorFilter);
     }
-    const graph = buildDependencyGraph(allPRs, owner, repo);
+    const graph = buildDependencyGraph(prs, owner, repo);
     if (viewerLogin) graph.viewerLogin = viewerLogin;
     if (contributors) graph.contributors = contributors;
     return graph;
-  }, [prPages, owner, repo, viewerLogin, contributors, authorFilter]);
+  }, [allPRs, owner, repo, viewerLogin, contributors, authorFilter]);
 
   const error = prError?.message ?? null;
 
@@ -96,9 +90,21 @@ export default function GraphPage() {
         )}
         <span style={styles.badge}>
           {data
-            ? `${data.nodes.filter((n) => n.type === "pr").length}${hasNextPage ? "+" : ""} open PRs`
+            ? `${data.nodes.filter((n) => n.type === "pr").length} open PRs`
             : ""}
         </span>
+        <RangePicker
+          showTime
+          value={dateRange}
+          onChange={(dates) => {
+            if (dates && dates[0] && dates[1]) {
+              setDateRange([dates[0], dates[1]]);
+            }
+          }}
+          allowClear={false}
+          size="small"
+          style={{ fontSize: 12 }}
+        />
         <ContributorDropdown
           contributors={contributors ?? []}
           prCountByAuthor={prCountByAuthor}
@@ -151,24 +157,7 @@ export default function GraphPage() {
           </div>
         )}
         {data && !isLoading && (
-          <>
-            <GraphView data={data} orientation={orientation} token={token} />
-            {hasNextPage && (
-              <div style={styles.loadMoreContainer}>
-                <button
-                  style={styles.loadMoreBtn}
-                  onClick={() => fetchNextPage()}
-                  disabled={isFetchingNextPage}
-                >
-                  {isFetchingNextPage ? (
-                    <><Spinner size={14} /> Loading...</>
-                  ) : (
-                    `Load next ${pageSizeRef.current ?? 50} PRs`
-                  )}
-                </button>
-              </div>
-            )}
-          </>
+          <GraphView data={data} orientation={orientation} token={token} />
         )}
       </div>
     </div>
@@ -503,24 +492,5 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--color-text)",
     cursor: "pointer",
     transition: "background 0.15s",
-  },
-  loadMoreContainer: {
-    position: "absolute" as const,
-    bottom: 16,
-    left: "50%",
-    transform: "translateX(-50%)",
-    zIndex: 10,
-  },
-  loadMoreBtn: {
-    padding: "8px 20px",
-    fontSize: 13,
-    fontWeight: 600,
-    borderRadius: 8,
-    border: "1px solid var(--color-border-subtle)",
-    background: "var(--color-header-bg)",
-    color: "var(--color-text)",
-    cursor: "pointer",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-    transition: "background 0.15s, opacity 0.15s",
   },
 };
