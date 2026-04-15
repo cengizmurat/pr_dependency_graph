@@ -33,6 +33,7 @@ export default function GraphView({ data, orientation, token }: Props) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [merging, setMerging] = useState<number | null>(null);
   const [updatingPRs, setUpdatingPRs] = useState<Set<number>>(new Set());
+  const [currentlyUpdating, setCurrentlyUpdating] = useState<number | null>(null);
 
   const handleMerge = useCallback(
     async (prNumber: number, prTitle: string) => {
@@ -95,12 +96,14 @@ export default function GraphView({ data, orientation, token }: Props) {
 
       const errors: { number: number; message: string }[] = [];
       for (const num of allToUpdate) {
+        setCurrentlyUpdating(num);
         try {
           await updatePRBranch(token, data.owner, data.repo, num);
         } catch (err) {
           errors.push({ number: num, message: (err as Error).message });
         }
       }
+      setCurrentlyUpdating(null);
 
       if (errors.length > 0) {
         const errList = errors.map((e) => `  #${e.number}: ${e.message}`).join("\n");
@@ -300,6 +303,7 @@ export default function GraphView({ data, orientation, token }: Props) {
                       mergeStatus={nodeFlags.get(n.data.id)}
                       isMerging={merging === n.data.number}
                       isUpdating={updatingPRs.has(n.data.number)}
+                      isCurrentlyUpdating={currentlyUpdating === n.data.number}
                       onMerge={handleMerge}
                       onUpdateBranch={handleUpdateBranch}
                       orientation={orientation}

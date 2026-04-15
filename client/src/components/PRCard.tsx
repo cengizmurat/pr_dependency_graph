@@ -8,6 +8,7 @@ interface Props {
   mergeStatus?: MergeStatus;
   isMerging?: boolean;
   isUpdating?: boolean;
+  isCurrentlyUpdating?: boolean;
   onMerge?: (prNumber: number, prTitle: string) => void;
   onUpdateBranch?: (prNumber: number) => void;
   orientation?: Orientation;
@@ -77,11 +78,13 @@ function UpdateBadge({
   onUpdateBranch,
   prNumber,
   isUpdating,
+  isCurrentlyUpdating,
 }: {
   behindBy: number;
   onUpdateBranch?: (prNumber: number) => void;
   prNumber: number;
   isUpdating?: boolean;
+  isCurrentlyUpdating?: boolean;
 }) {
   const color = "var(--color-behind)";
   const clickable = !!onUpdateBranch && !isUpdating;
@@ -111,7 +114,7 @@ function UpdateBadge({
         height="12"
         viewBox="0 0 16 16"
         fill={color}
-        style={isUpdating ? { animation: "spin 0.8s linear infinite" } : undefined}
+        style={isCurrentlyUpdating ? { animation: "spin 0.8s linear infinite" } : undefined}
       >
         <path d="M8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5ZM1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834Z" />
       </svg>
@@ -119,7 +122,7 @@ function UpdateBadge({
   );
 }
 
-export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, onMerge, onUpdateBranch, orientation = "horizontal" }: Props) {
+export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurrentlyUpdating, onMerge, onUpdateBranch, orientation = "horizontal" }: Props) {
   const visibleReviewers = pr.reviewers.slice(0, MAX_REVIEWER_AVATARS);
   const extraCount = pr.reviewers.length - MAX_REVIEWER_AVATARS;
 
@@ -151,6 +154,7 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, onMerge
               onUpdateBranch={onUpdateBranch}
               prNumber={pr.number}
               isUpdating={isUpdating}
+              isCurrentlyUpdating={isCurrentlyUpdating}
             />
           )}
         </div>
