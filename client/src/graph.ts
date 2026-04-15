@@ -1,5 +1,4 @@
-import type { GraphQLPullRequest } from "./github";
-import type { GraphData, GraphNode, GraphEdge, EdgeReviewStatus } from "./types";
+import type { GraphQLPullRequest, GraphData, GraphNode, GraphEdge, EdgeReviewStatus } from "./types";
 
 function reviewStatusFromDecision(
   reviewDecision: string | null,

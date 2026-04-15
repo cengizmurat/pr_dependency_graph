@@ -1,39 +1,13 @@
-export type ReviewState =
-  | "APPROVED"
-  | "CHANGES_REQUESTED"
-  | "COMMENTED"
-  | "DISMISSED"
-  | "REQUESTED";
-
-export type Mergeable = "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
-
-export interface Reviewer {
-  login: string;
-  avatarUrl: string;
-  state: ReviewState;
-}
-
-export type ReviewDecision = "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null;
-
-export interface GraphQLPullRequest {
-  number: number;
-  title: string;
-  url: string;
-  isDraft: boolean;
-  createdAt: string;
-  additions: number;
-  deletions: number;
-  headRefName: string;
-  baseRefName: string;
-  authorLogin: string;
-  authorAvatarUrl: string;
-  labels: string[];
-  reviewers: Reviewer[];
-  commentCount: number;
-  mergeable: Mergeable;
-  mergeStateStatus: string;
-  reviewDecision: ReviewDecision;
-}
+import type {
+  ReviewState,
+  Mergeable,
+  Reviewer,
+  ReviewDecision,
+  GraphQLPullRequest,
+  CascadeResult,
+  PRPageResult,
+  Contributor,
+} from "./types";
 
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 
@@ -171,12 +145,6 @@ export async function updatePRBranch(
   }
 }
 
-export interface CascadeResult {
-  merged: number;
-  updated: { number: number; title: string }[];
-  errors: { number: number; message: string }[];
-}
-
 export async function mergeAndCascade(
   token: string,
   owner: string,
@@ -271,11 +239,6 @@ export async function fetchViewerLogin(token: string): Promise<string> {
   return data.viewer?.login ?? "";
 }
 
-export interface Contributor {
-  login: string;
-  avatarUrl: string;
-}
-
 export async function fetchContributors(
   token: string,
   owner: string,
@@ -363,13 +326,6 @@ interface PRQueryData {
       nodes: (PRNodeRaw | null)[];
     };
   };
-}
-
-export interface PRPageResult {
-  prs: GraphQLPullRequest[];
-  hasNextPage: boolean;
-  endCursor: string | null;
-  pageSize: number;
 }
 
 const DEFAULT_PAGE_SIZE = 50;

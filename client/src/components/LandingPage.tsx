@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGithubToken } from "../hooks/useGithubToken";
+import { styles } from "./LandingPage.styles";
 
 export default function LandingPage() {
   const { token, setToken, clearToken } = useGithubToken();
@@ -98,83 +99,3 @@ export default function LandingPage() {
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    minHeight: "100vh",
-    background:
-      "linear-gradient(135deg, var(--color-gradient-from) 0%, var(--color-gradient-to) 100%)",
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
-  },
-  card: {
-    background: "var(--color-card-bg)",
-    borderRadius: 12,
-    padding: "48px 40px",
-    maxWidth: 460,
-    width: "100%",
-    boxShadow: "0 8px 32px var(--color-shadow)",
-    textAlign: "center" as const,
-  },
-  title: {
-    color: "var(--color-text)",
-    fontSize: 28,
-    margin: "0 0 8px",
-    fontWeight: 600,
-  },
-  subtitle: {
-    color: "var(--color-text-secondary)",
-    fontSize: 15,
-    margin: "0 0 32px",
-  },
-  form: {
-    display: "flex",
-    gap: 8,
-  },
-  input: {
-    flex: 1,
-    padding: "10px 14px",
-    fontSize: 15,
-    borderRadius: 6,
-    border: "1px solid var(--color-border)",
-    background: "var(--color-input-bg)",
-    color: "var(--color-text)",
-    outline: "none",
-  },
-  button: {
-    padding: "10px 20px",
-    fontSize: 15,
-    fontWeight: 600,
-    borderRadius: 6,
-    border: "none",
-    background: "var(--color-button-bg)",
-    color: "var(--color-button-text)",
-    cursor: "pointer",
-  },
-  clearButton: {
-    marginTop: 12,
-    padding: "6px 16px",
-    fontSize: 13,
-    fontWeight: 500,
-    borderRadius: 6,
-    border: "1px solid var(--color-border)",
-    background: "transparent",
-    color: "var(--color-text-secondary)",
-    cursor: "pointer",
-  },
-  disclaimer: {
-    color: "var(--color-text-secondary)",
-    fontSize: 12,
-    fontStyle: "italic",
-    marginTop: 10,
-    marginBottom: 0,
-  },
-  error: {
-    color: "var(--color-error)",
-    fontSize: 13,
-    marginTop: 12,
-  },
-};

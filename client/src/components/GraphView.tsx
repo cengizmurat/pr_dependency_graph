@@ -1,12 +1,25 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import * as d3 from "d3";
-import type { GraphData, GraphNode, PRNode, EdgeReviewStatus } from "../types";
+import type { GraphData, PRNode, Orientation, EdgeFlags } from "../types";
 import { mergeAndCascade, updatePRBranch } from "../github";
+import { collectDescendantPRs, isPR } from "../utils";
+import { PR_WIDTH, PR_HEIGHT, SPACING, COLORS } from "../constants";
+import {
+  buildTrees,
+  layoutTree,
+  flattenTree,
+  flattenEdges,
+  nodeWidth,
+  nodeHeight,
+  edgePath,
+  strokeColor,
+  bgColor,
+} from "../graphLayout";
 import PRCard from "./PRCard";
 import BranchCard from "./BranchCard";
 import Legend from "./Legend";
 
-export type Orientation = "horizontal" | "vertical";
+export type { Orientation };
 
 interface Props {
   data: GraphData;
@@ -14,191 +27,12 @@ interface Props {
   token: string;
 }
 
-const PR_WIDTH = 280;
-const PR_HEIGHT = 120;
-const BRANCH_WIDTH = 140;
-const BRANCH_HEIGHT = 36;
-
-const SPACING = {
-  horizontal: { depth: 370, sibling: 136 },
-  vertical: { depth: 210, sibling: 320 },
-};
-
-const COLORS = {
-  ready: "var(--color-ready)",
-  draft: "var(--color-draft)",
-  readyBg: "var(--color-ready-bg)",
-  draftBg: "var(--color-draft-bg)",
-  branch: "var(--color-branch)",
-  branchBg: "var(--color-branch-bg)",
-  edge: "var(--color-edge)",
-  conflict: "var(--color-conflict)",
-  hover: "var(--color-hover)",
-};
-
-function isPR(d: GraphNode): d is PRNode {
-  return d.type === "pr";
-}
-
-interface LayoutNode {
-  data: GraphNode;
-  x: number;
-  y: number;
-  children: LayoutNode[];
-}
-
-interface FlatEdge {
-  source: LayoutNode;
-  target: LayoutNode;
-  hasConflict: boolean;
-  isMergeable: boolean;
-  reviewStatus: EdgeReviewStatus;
-}
-
-interface EdgeFlags {
-  hasConflict: boolean;
-  isMergeable: boolean;
-  reviewStatus: EdgeReviewStatus;
-}
-
-function buildTrees(data: GraphData): {
-  roots: LayoutNode[];
-  edgeFlagsMap: Map<string, EdgeFlags>;
-} {
-  const nodeMap = new Map<string, GraphNode>();
-  for (const n of data.nodes) nodeMap.set(n.id, n);
-
-  const childrenOf = new Map<string, string[]>();
-  const hasParent = new Set<string>();
-  const edgeFlagsMap = new Map<string, EdgeFlags>();
-
-  for (const e of data.edges) {
-    const list = childrenOf.get(e.source) ?? [];
-    list.push(e.target);
-    childrenOf.set(e.source, list);
-    hasParent.add(e.target);
-    edgeFlagsMap.set(`${e.source}->${e.target}`, {
-      hasConflict: e.hasConflict,
-      isMergeable: e.isMergeable,
-      reviewStatus: e.reviewStatus,
-    });
-  }
-
-  const roots = data.nodes.filter((n) => !hasParent.has(n.id));
-
-  function buildSubtree(id: string): LayoutNode {
-    return {
-      data: nodeMap.get(id)!,
-      x: 0,
-      y: 0,
-      children: (childrenOf.get(id) ?? [])
-        .filter((cid) => nodeMap.has(cid))
-        .map(buildSubtree),
-    };
-  }
-
-  return { roots: roots.map((r) => buildSubtree(r.id)), edgeFlagsMap };
-}
-
-function layoutTree(
-  root: LayoutNode,
-  startSecondary: number,
-  orientation: Orientation,
-): number {
-  const { depth: depthSpacing, sibling: siblingSpacing } = SPACING[orientation];
-  const isH = orientation === "horizontal";
-
-  function assignDepth(node: LayoutNode, depth: number) {
-    if (isH) node.x = depth * depthSpacing;
-    else node.y = depth * depthSpacing;
-    for (const child of node.children) assignDepth(child, depth + 1);
-  }
-  assignDepth(root, 0);
-
-  let current = startSecondary;
-  function assignSecondary(node: LayoutNode) {
-    if (node.children.length === 0) {
-      if (isH) node.y = current;
-      else node.x = current;
-      current += siblingSpacing;
-      return;
-    }
-    for (const child of node.children) assignSecondary(child);
-    const first = isH ? node.children[0].y : node.children[0].x;
-    const last = isH
-      ? node.children[node.children.length - 1].y
-      : node.children[node.children.length - 1].x;
-    if (isH) node.y = (first + last) / 2;
-    else node.x = (first + last) / 2;
-  }
-  assignSecondary(root);
-
-  return current;
-}
-
-function flattenTree(node: LayoutNode): LayoutNode[] {
-  return [node, ...node.children.flatMap(flattenTree)];
-}
-
-function flattenEdges(
-  node: LayoutNode,
-  edgeFlagsMap: Map<string, EdgeFlags>,
-): FlatEdge[] {
-  const edges: FlatEdge[] = [];
-  for (const child of node.children) {
-    const key = `${node.data.id}->${child.data.id}`;
-    const flags = edgeFlagsMap.get(key);
-    edges.push({
-      source: node,
-      target: child,
-      hasConflict: flags?.hasConflict ?? false,
-      isMergeable: flags?.isMergeable ?? false,
-      reviewStatus: flags?.reviewStatus ?? null,
-    });
-    edges.push(...flattenEdges(child, edgeFlagsMap));
-  }
-  return edges;
-}
-
-function nodeWidth(d: GraphNode) {
-  return isPR(d) ? PR_WIDTH : BRANCH_WIDTH;
-}
-function nodeHeight(d: GraphNode) {
-  return isPR(d) ? PR_HEIGHT : BRANCH_HEIGHT;
-}
-
-function edgePath(e: FlatEdge, orientation: Orientation): string {
-  if (orientation === "horizontal") {
-    const sx = e.target.x - nodeWidth(e.target.data) / 2;
-    const sy = e.target.y;
-    const tx = e.source.x + nodeWidth(e.source.data) / 2;
-    const ty = e.source.y;
-    const mx = (sx + tx) / 2;
-    return `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`;
-  }
-  const sx = e.target.x;
-  const sy = e.target.y - nodeHeight(e.target.data) / 2;
-  const tx = e.source.x;
-  const ty = e.source.y + nodeHeight(e.source.data) / 2;
-  const my = (sy + ty) / 2;
-  return `M${sx},${sy} C${sx},${my} ${tx},${my} ${tx},${ty}`;
-}
-
-
-function strokeColor(d: GraphNode): string {
-  if (!isPR(d)) return COLORS.branch;
-  return d.isDraft ? COLORS.draft : COLORS.ready;
-}
-function bgColor(d: GraphNode): string {
-  if (!isPR(d)) return COLORS.branchBg;
-  return d.isDraft ? COLORS.draftBg : COLORS.readyBg;
-}
-
 export default function GraphView({ data, orientation, token }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const gRef = useRef<SVGGElement>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [merging, setMerging] = useState<number | null>(null);
+  const [updatingPRs, setUpdatingPRs] = useState<Set<number>>(new Set());
 
   const handleMerge = useCallback(
     async (prNumber: number, prTitle: string) => {
@@ -248,14 +82,32 @@ export default function GraphView({ data, orientation, token }: Props) {
 
   const handleUpdateBranch = useCallback(
     async (prNumber: number) => {
-      if (!window.confirm(`Update PR #${prNumber} with latest changes from base branch?`))
-        return;
-      try {
-        await updatePRBranch(token, data.owner, data.repo, prNumber);
-        window.location.reload();
-      } catch (err) {
-        alert(`Branch update failed: ${(err as Error).message}`);
+      const allToUpdate = collectDescendantPRs(prNumber, data.nodes);
+
+      let msg = `Update PR #${prNumber} with latest changes from base branch?`;
+      if (allToUpdate.length > 1) {
+        const descendantNums = allToUpdate.slice(1).map((n) => `#${n}`).join(", ");
+        msg += `\n\nThe following descending PRs will also be updated: ${descendantNums}`;
       }
+      if (!window.confirm(msg)) return;
+
+      setUpdatingPRs(new Set(allToUpdate));
+
+      const errors: { number: number; message: string }[] = [];
+      for (const num of allToUpdate) {
+        try {
+          await updatePRBranch(token, data.owner, data.repo, num);
+        } catch (err) {
+          errors.push({ number: num, message: (err as Error).message });
+        }
+      }
+
+      if (errors.length > 0) {
+        const errList = errors.map((e) => `  #${e.number}: ${e.message}`).join("\n");
+        alert(`Some branch updates failed:\n${errList}`);
+      }
+
+      window.location.reload();
     },
     [token, data],
   );
@@ -447,6 +299,7 @@ export default function GraphView({ data, orientation, token }: Props) {
                       pr={n.data}
                       mergeStatus={nodeFlags.get(n.data.id)}
                       isMerging={merging === n.data.number}
+                      isUpdating={updatingPRs.has(n.data.number)}
                       onMerge={handleMerge}
                       onUpdateBranch={handleUpdateBranch}
                       orientation={orientation}

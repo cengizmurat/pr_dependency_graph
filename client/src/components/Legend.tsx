@@ -1,12 +1,5 @@
-const COLORS = {
-  ready: "var(--color-ready)",
-  draft: "var(--color-draft)",
-  readyBg: "var(--color-ready-bg)",
-  draftBg: "var(--color-draft-bg)",
-  edge: "var(--color-edge)",
-  conflict: "var(--color-conflict)",
-  behind: "var(--color-behind)",
-};
+import { COLORS } from "../constants";
+import { styles } from "./Legend.styles";
 
 const ARROW_ITEMS = [
   { color: COLORS.ready, id: "legend-approved", label: "Approved" },
@@ -108,61 +101,3 @@ export default function Legend() {
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    position: "absolute",
-    top: 12,
-    left: 12,
-    zIndex: 10,
-    background: "var(--color-card-bg)",
-    border: "1px solid var(--color-border-subtle)",
-    borderRadius: 8,
-    padding: "8px 12px",
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
-    fontSize: 11,
-    color: "var(--color-text)",
-    boxShadow: "0 1px 3px var(--color-shadow)",
-    pointerEvents: "none",
-  },
-  title: {
-    fontWeight: 600,
-    fontSize: 12,
-    marginBottom: 6,
-  },
-  section: {
-    fontWeight: 600,
-    color: "var(--color-text-secondary)",
-    fontSize: 10,
-    textTransform: "uppercase" as const,
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  row: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 3,
-  },
-  label: {
-    color: "var(--color-text-secondary)",
-  },
-  nodeChip: {
-    width: 24,
-    height: 14,
-    borderRadius: 4,
-    border: "1.5px solid",
-    flexShrink: 0,
-  },
-  badge: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 18,
-    height: 18,
-    borderRadius: 4,
-    border: "1.5px solid",
-    background: "var(--color-page-bg)",
-  },
-};
