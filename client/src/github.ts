@@ -373,10 +373,7 @@ export async function fetchOpenPRs(
   throw new Error("Request timed out even at minimum page size");
 }
 
-function processRawPR(pr: PRNodeRaw): GraphQLPullRequest | null {
-  if (pr.mergeable === "UNKNOWN" && pr.mergeStateStatus === "UNKNOWN")
-    return null;
-
+function processRawPR(pr: PRNodeRaw): GraphQLPullRequest {
   const reviewerMap = new Map<string, Reviewer>();
   let reviewCommentCount = 0;
 
@@ -437,8 +434,7 @@ function processPage(
   const result: GraphQLPullRequest[] = [];
   for (const pr of prs.nodes) {
     if (!pr) continue;
-    const processed = processRawPR(pr);
-    if (processed) result.push(processed);
+    result.push(processRawPR(pr));
   }
   return {
     prs: result,
@@ -513,8 +509,7 @@ export async function fetchPRsByDateRange(
 
     for (const pr of search.nodes) {
       if (!pr) continue;
-      const processed = processRawPR(pr);
-      if (processed) all.push(processed);
+      all.push(processRawPR(pr));
     }
 
     onPage?.([...all]);
