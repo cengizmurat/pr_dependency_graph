@@ -195,6 +195,7 @@ async function fetchCompareBehindBy(
         Authorization: `bearer ${token}`,
         Accept: "application/vnd.github+json",
       },
+      cache: "no-store",
     },
   );
   if (!res.ok) return 0;
