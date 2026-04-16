@@ -1,5 +1,6 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import * as d3 from "d3";
+import { useQueryClient } from "@tanstack/react-query";
 import type { GraphData, PRNode, Orientation, EdgeFlags } from "../types";
 import { mergeAndCascade, updatePRBranch } from "../github";
 import { collectDescendantPRs, isPR } from "../utils";
@@ -30,6 +31,7 @@ interface Props {
 export default function GraphView({ data, orientation, token }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const gRef = useRef<SVGGElement>(null);
+  const queryClient = useQueryClient();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [merging, setMerging] = useState<number | null>(null);
   const [updatingPRs, setUpdatingPRs] = useState<Set<number>>(new Set());
@@ -97,13 +99,19 @@ export default function GraphView({ data, orientation, token }: Props) {
       const errors: { number: number; message: string }[] = [];
       for (const num of allToUpdate) {
         setCurrentlyUpdating(num);
+        const pr = data.nodes.find((n): n is PRNode => n.type === "pr" && n.number === num);
         try {
           await updatePRBranch(token, data.owner, data.repo, num);
+          if (pr) {
+            queryClient.removeQueries({ queryKey: ["compare", data.owner, data.repo, pr.baseBranch, pr.headBranch] });
+          }
         } catch (err) {
           errors.push({ number: num, message: (err as Error).message });
         }
       }
       setCurrentlyUpdating(null);
+
+      queryClient.removeQueries({ queryKey: ["behindBy", data.owner, data.repo] });
 
       if (errors.length > 0) {
         const errList = errors.map((e) => `  #${e.number}: ${e.message}`).join("\n");
@@ -112,7 +120,7 @@ export default function GraphView({ data, orientation, token }: Props) {
 
       window.location.reload();
     },
-    [token, data],
+    [token, data, queryClient],
   );
 
   const { allNodes, allEdges, nodeFlags, totalWidth, totalHeight } =
