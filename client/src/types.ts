@@ -55,6 +55,15 @@ export interface Contributor {
   avatarUrl: string;
 }
 
+export interface UserRepo {
+  owner: string;
+  repo: string;
+  fullName: string;
+  isPrivate: boolean;
+  ownerType: "User" | "Organization";
+  pushedAt: string | null;
+}
+
 // --- Graph data model types ---
 
 export interface PRNode {

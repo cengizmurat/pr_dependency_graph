@@ -22,11 +22,11 @@ npm run dev
 # Open http://localhost:5173
 ```
 
-Go to your browser, enter your GitHub personal access token, then a repository in `owner/repo` format.
+Go to your browser, sign in with GitHub (or paste a personal access token in the Advanced section), then enter a repository in `owner/repo` format.
 
 ## How It Works
 
-1. Enter a GitHub personal access token on the landing page (stored in browser localStorage).
+1. Sign in with GitHub via the OAuth App web flow (or paste a personal access token under "Advanced").
 2. Enter a GitHub `owner/repo`.
 3. The app fetches all open PRs directly from the GitHub GraphQL API.
 4. Stacked PR dependencies are detected: if PR-B's base branch matches PR-A's head branch, PR-B depends on PR-A.

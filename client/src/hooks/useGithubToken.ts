@@ -1,31 +1,53 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useSyncExternalStore } from "react";
+import {
+  STORAGE_KEY,
+  type StoredAuth,
+  logout as authLogout,
+  readStoredAuth,
+  setPatAuth,
+  subscribeAuthChange,
+} from "../auth";
 
-const STORAGE_KEY = "github_token";
+// useSyncExternalStore requires getSnapshot to return a referentially stable
+// value while the underlying data is unchanged, otherwise React detects an
+// infinite render loop and bails out. We cache the parsed StoredAuth keyed by
+// the raw localStorage string and only re-parse when the raw value changes.
+let cachedRaw: string | null = null;
+let cachedAuth: StoredAuth | null = null;
+let cacheInitialized = false;
+
+function getSnapshot(): StoredAuth | null {
+  const raw = typeof window === "undefined" ? null : localStorage.getItem(STORAGE_KEY);
+  if (cacheInitialized && raw === cachedRaw) return cachedAuth;
+  cachedRaw = raw;
+  cachedAuth = readStoredAuth();
+  cacheInitialized = true;
+  return cachedAuth;
+}
+
+function getServerSnapshot(): StoredAuth | null {
+  return null;
+}
 
 export function useGithubToken() {
-  const [token, setTokenState] = useState<string | null>(() =>
-    localStorage.getItem(STORAGE_KEY),
+  const auth = useSyncExternalStore(
+    subscribeAuthChange,
+    getSnapshot,
+    getServerSnapshot,
   );
 
-  useEffect(() => {
-    function onStorage(e: StorageEvent) {
-      if (e.key === STORAGE_KEY) {
-        setTokenState(e.newValue);
-      }
-    }
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
-
   const setToken = useCallback((value: string) => {
-    localStorage.setItem(STORAGE_KEY, value);
-    setTokenState(value);
+    setPatAuth(value);
   }, []);
 
   const clearToken = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
-    setTokenState(null);
+    authLogout();
   }, []);
 
-  return { token, setToken, clearToken } as const;
+  return {
+    token: auth?.accessToken ?? null,
+    source: auth?.source ?? null,
+    setToken,
+    clearToken,
+  } as const;
 }

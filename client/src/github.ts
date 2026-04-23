@@ -7,9 +7,35 @@ import type {
   CascadeResult,
   PRPageResult,
   Contributor,
+  UserRepo,
 } from "./types";
+import { getToken } from "./auth";
 
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
+
+async function fetchWithAuth(
+  token: string,
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const buildInit = (bearer: string): RequestInit => {
+    const headers = new Headers(init.headers ?? {});
+    headers.set("Authorization", `bearer ${bearer}`);
+    return { ...init, headers };
+  };
+
+  const res = await fetch(url, buildInit(token));
+  if (res.status !== 401) return res;
+
+  let refreshed: string;
+  try {
+    refreshed = await getToken({ forceRefresh: true });
+  } catch {
+    return res;
+  }
+  if (refreshed === token) return res;
+  return fetch(url, buildInit(refreshed));
+}
 
 const PR_QUERY = `
 query($owner: String!, $name: String!, $cursor: String, $first: Int!) {
@@ -51,10 +77,9 @@ async function graphql<T>(
   variables?: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<T> {
-  const res = await fetch(GITHUB_GRAPHQL, {
+  const res = await fetchWithAuth(token, GITHUB_GRAPHQL, {
     method: "POST",
     headers: {
-      Authorization: `bearer ${token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ query, variables }),
@@ -79,12 +104,12 @@ export async function mergePR(
   repo: string,
   pullNumber: number,
 ): Promise<void> {
-  const res = await fetch(
+  const res = await fetchWithAuth(
+    token,
     `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/merge`,
     {
       method: "PUT",
       headers: {
-        Authorization: `bearer ${token}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ merge_method: "merge" }),
@@ -104,12 +129,12 @@ export async function updatePRBase(
   pullNumber: number,
   newBase: string,
 ): Promise<void> {
-  const res = await fetch(
+  const res = await fetchWithAuth(
+    token,
     `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}`,
     {
       method: "PATCH",
       headers: {
-        Authorization: `bearer ${token}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ base: newBase }),
@@ -128,12 +153,12 @@ export async function updatePRBranch(
   repo: string,
   pullNumber: number,
 ): Promise<void> {
-  const res = await fetch(
+  const res = await fetchWithAuth(
+    token,
     `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/update-branch`,
     {
       method: "PUT",
       headers: {
-        Authorization: `bearer ${token}`,
         "Content-Type": "application/json",
       },
     },
@@ -188,11 +213,11 @@ async function fetchCompareBehindBy(
   base: string,
   head: string,
 ): Promise<number> {
-  const res = await fetch(
+  const res = await fetchWithAuth(
+    token,
     `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`,
     {
       headers: {
-        Authorization: `bearer ${token}`,
         Accept: "application/vnd.github+json",
       },
       cache: "no-store",
@@ -249,11 +274,11 @@ export async function fetchContributors(
   let page = 1;
 
   while (true) {
-    const res = await fetch(
+    const res = await fetchWithAuth(
+      token,
       `https://api.github.com/repos/${owner}/${repo}/contributors?per_page=100&page=${page}`,
       {
         headers: {
-          Authorization: `bearer ${token}`,
           Accept: "application/vnd.github+json",
         },
       },
@@ -520,4 +545,63 @@ export async function fetchPRsByDateRange(
   }
 
   return all;
+}
+
+interface RawUserRepo {
+  name: string;
+  full_name: string;
+  private: boolean;
+  pushed_at?: string | null;
+  owner?: { login?: string; type?: string } | null;
+}
+
+// Cap repo discovery to keep the dropdown snappy; an OAuth-App user with
+// access to thousands of repos can still find any one of them via the
+// free-text owner/repo input. Sorted by `pushed` server-side so the most
+// active repos surface first.
+const USER_REPOS_PAGE_LIMIT = 10;
+
+export async function fetchUserRepos(token: string): Promise<UserRepo[]> {
+  const repos: UserRepo[] = [];
+  let page = 1;
+
+  while (page <= USER_REPOS_PAGE_LIMIT) {
+    const res = await fetchWithAuth(
+      token,
+      `https://api.github.com/user/repos?per_page=100&page=${page}&sort=pushed&affiliation=owner,collaborator,organization_member`,
+      {
+        headers: {
+          Accept: "application/vnd.github+json",
+        },
+      },
+    );
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(
+        body?.message ?? `Failed to fetch repositories (HTTP ${res.status}).`,
+      );
+    }
+
+    const data: RawUserRepo[] = await res.json();
+    for (const r of data) {
+      const owner = r.owner?.login ?? r.full_name.split("/")[0] ?? "";
+      const ownerType =
+        r.owner?.type === "Organization" ? "Organization" : "User";
+      repos.push({
+        owner,
+        repo: r.name,
+        fullName: r.full_name,
+        isPrivate: r.private,
+        ownerType,
+        pushedAt: r.pushed_at ?? null,
+      });
+    }
+
+    const link = res.headers.get("Link") ?? "";
+    if (!link.includes('rel="next"')) break;
+    page++;
+  }
+
+  return repos;
 }

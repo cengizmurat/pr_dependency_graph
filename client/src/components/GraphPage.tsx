@@ -12,6 +12,15 @@ import { useGithubToken } from "../hooks/useGithubToken";
 import GraphView from "./GraphView";
 import { styles, dropdownStyles } from "./GraphPage.styles";
 
+function looksLikeRepoNotFound(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("not found") ||
+    m.includes("could not resolve to a repository") ||
+    m.includes("could not resolve to a node")
+  );
+}
+
 const { RangePicker } = DatePicker;
 
 function useIncrementalPRs(
@@ -76,7 +85,7 @@ function useIncrementalPRs(
 export default function GraphPage() {
   const { owner, repo } = useParams<{ owner: string; repo: string }>();
   const queryClient = useQueryClient();
-  const { token } = useGithubToken();
+  const { token, source } = useGithubToken();
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
   const [authorFilter, setAuthorFilter] = useState<string | null>(null);
   const [lookbackDays, setLookbackDays] = useState(getStoredLookbackDays);
@@ -278,6 +287,15 @@ export default function GraphPage() {
         {error && (
           <div style={styles.errorContainer}>
             <p style={styles.error}>{error}</p>
+            {source === "oauth" && looksLikeRepoNotFound(error) && (
+              <p style={styles.error}>
+                The repository <strong>{owner}/{repo}</strong> wasn't found
+                with your current authorization. If it's a private repo in an
+                organization, an org owner may need to approve this OAuth app
+                under <em>Settings → Third-party access</em>, or you may not be
+                a member of that org.
+              </p>
+            )}
             <button style={styles.retryBtn} onClick={() => refetch()}>
               Retry
             </button>
