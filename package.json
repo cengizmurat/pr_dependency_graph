@@ -2,6 +2,7 @@
   "name": "pr-dependency-graph",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "Root package for Vercel serverless functions in /api. The React app lives in /client.",
   "devDependencies": {
     "@vercel/node": "^5.7.13",
