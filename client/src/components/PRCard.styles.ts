@@ -4,6 +4,7 @@ export const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     justifyContent: "space-evenly",
+    gap: 3,
     padding: "8px 12px",
     width: "100%",
     height: "100%",
