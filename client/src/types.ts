@@ -15,6 +15,11 @@ export interface Reviewer {
   state: ReviewState;
 }
 
+export interface PRLabel {
+  name: string;
+  color: string;
+}
+
 export type ReviewDecision = "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null;
 
 export interface GraphQLPullRequest {
@@ -29,7 +34,7 @@ export interface GraphQLPullRequest {
   baseRefName: string;
   authorLogin: string;
   authorAvatarUrl: string;
-  labels: string[];
+  labels: PRLabel[];
   reviewers: Reviewer[];
   commentCount: number;
   mergeable: Mergeable;
@@ -77,7 +82,7 @@ export interface PRNode {
   baseBranch: string;
   headBranch: string;
   isDraft: boolean;
-  labels: string[];
+  labels: PRLabel[];
   createdAt: string;
   additions: number;
   deletions: number;

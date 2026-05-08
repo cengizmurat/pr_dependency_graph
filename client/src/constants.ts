@@ -1,7 +1,7 @@
 // --- Graph layout dimensions ---
 
 export const PR_WIDTH = 280;
-export const PR_HEIGHT = 120;
+export const PR_HEIGHT = 144;
 export const BRANCH_WIDTH = 140;
 export const BRANCH_HEIGHT = 36;
 
