@@ -46,7 +46,7 @@ query($owner: String!, $name: String!, $cursor: String, $first: Int!) {
         number title url isDraft createdAt additions deletions
         headRefName baseRefName mergeable mergeStateStatus reviewDecision
         author { login avatarUrl }
-        labels(first: 20) { nodes { name } }
+        labels(first: 20) { nodes { name color } }
         latestReviews(first: 100) {
           nodes {
             state
@@ -325,7 +325,7 @@ interface PRNodeRaw {
   mergeStateStatus: string;
   reviewDecision: string | null;
   author: { login: string; avatarUrl: string } | null;
-  labels: { nodes: ({ name: string } | null)[] | null } | null;
+  labels: { nodes: ({ name: string; color: string } | null)[] | null } | null;
   latestReviews: {
     nodes:
       | ({
@@ -442,9 +442,13 @@ function processRawPR(pr: PRNodeRaw): GraphQLPullRequest {
     authorAvatarUrl: pr.author?.avatarUrl ?? "",
     labels: (pr.labels?.nodes ?? [])
       .filter(
-        (l: { name?: string } | null): l is { name: string } => !!l?.name,
+        (l: { name?: string; color?: string } | null): l is { name: string; color: string } =>
+          !!l?.name,
       )
-      .map((l: { name: string }) => l.name),
+      .map((l: { name: string; color: string }) => ({
+        name: l.name,
+        color: l.color ?? "8b949e",
+      })),
     reviewers: [...reviewerMap.values()],
     commentCount: (pr.comments?.totalCount ?? 0) + reviewCommentCount,
     mergeable: pr.mergeable ?? "UNKNOWN",
@@ -479,7 +483,7 @@ query($query: String!, $cursor: String, $first: Int!) {
         number title url isDraft createdAt additions deletions
         headRefName baseRefName mergeable mergeStateStatus reviewDecision
         author { login avatarUrl }
-        labels(first: 20) { nodes { name } }
+        labels(first: 20) { nodes { name color } }
         latestReviews(first: 100) {
           nodes {
             state

@@ -6,8 +6,8 @@ export const BRANCH_WIDTH = 140;
 export const BRANCH_HEIGHT = 36;
 
 export const SPACING = {
-  horizontal: { depth: 370, sibling: 136 },
-  vertical: { depth: 210, sibling: 320 },
+  horizontal: { depth: 370, sibling: 190 },
+  vertical: { depth: 260, sibling: 320 },
 };
 
 export const COLORS = {

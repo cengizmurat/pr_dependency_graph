@@ -1,7 +1,19 @@
-import type { PRNode, Orientation, MergeStatus } from "../types";
+import type { PRNode, PRLabel, Orientation, MergeStatus } from "../types";
 import { MAX_REVIEWER_AVATARS, STATE_COLORS, STATE_ICONS } from "../constants";
 import { timeAgo } from "../utils";
 import { styles, badgeStyles } from "./PRCard.styles";
+
+function labelTextColor(hex: string): string {
+  const clean = hex.replace(/^#/, "");
+  if (clean.length !== 6) return "#ffffff";
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  if ([r, g, b].some(Number.isNaN)) return "#ffffff";
+  // Perceived luminance — dark text on light labels, light on dark.
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? "#1f2328" : "#ffffff";
+}
 
 interface Props {
   pr: PRNode;
@@ -174,6 +186,24 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurre
       </div>
 
       <span style={styles.branch}>{pr.headBranch}</span>
+
+      {pr.labels.length > 0 && (
+        <div style={styles.labels}>
+          {pr.labels.map((label: PRLabel) => (
+            <span
+              key={label.name}
+              title={label.name}
+              style={{
+                ...styles.label,
+                backgroundColor: `#${label.color}`,
+                color: labelTextColor(label.color),
+              }}
+            >
+              {label.name}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div style={styles.row}>
         <span style={styles.age}>{timeAgo(pr.createdAt)}</span>

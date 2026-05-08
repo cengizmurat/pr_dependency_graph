@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { GraphData, PRNode, Orientation, EdgeFlags } from "../types";
 import { mergeAndCascade, updatePRBranch } from "../github";
 import { collectDescendantPRs, isPR } from "../utils";
-import { PR_WIDTH, PR_HEIGHT, SPACING, COLORS } from "../constants";
+import { PR_WIDTH, SPACING, COLORS } from "../constants";
 import {
   buildTrees,
   layoutTree,
@@ -155,13 +155,16 @@ export default function GraphView({ data, orientation, token }: Props) {
           totalHeight: nextSecondary,
         };
       }
-      const maxY = nodes.reduce((m, n) => Math.max(m, n.y), 0);
+      const maxBottom = nodes.reduce(
+        (m, n) => Math.max(m, n.y + nodeHeight(n.data) / 2),
+        0,
+      );
       return {
         allNodes: nodes,
         allEdges: edges,
         nodeFlags: nf,
         totalWidth: nextSecondary,
-        totalHeight: maxY + PR_HEIGHT + 80,
+        totalHeight: maxBottom + 80,
       };
     }, [data, orientation]);
 
