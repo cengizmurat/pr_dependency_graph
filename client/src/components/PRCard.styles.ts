@@ -50,7 +50,7 @@ export const styles: Record<string, React.CSSProperties> = {
     gap: 3,
     paddingLeft: 18,
     overflow: "hidden",
-    maxHeight: 40,
+    maxHeight: 18,
   },
   label: {
     display: "inline-block",
