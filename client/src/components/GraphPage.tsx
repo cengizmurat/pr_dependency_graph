@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DatePicker, Dropdown } from "antd";
 import dayjs from "dayjs";
 import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, fetchBehindByCounts, buildDependencyGraph } from "../api";
-import type { GraphQLPullRequest, Contributor, Orientation } from "../types";
+import type { GraphQLPullRequest, Contributor, Orientation, PRStatusFilter } from "../types";
 import { LOOKBACK_DAYS_KEY } from "../constants";
 import { getStoredLookbackDays, buildDefaultRange } from "../utils";
 import type { DateRange } from "../utils";
@@ -88,6 +88,7 @@ export default function GraphPage() {
   const { token, source } = useGithubToken();
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
   const [authorFilter, setAuthorFilter] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<PRStatusFilter>("all");
   const [lookbackDays, setLookbackDays] = useState(getStoredLookbackDays);
   const [lookbackInput, setLookbackInput] = useState(String(lookbackDays));
   const [dateRange, setDateRange] = useState<DateRange>(() => buildDefaultRange(lookbackDays));
@@ -149,6 +150,11 @@ export default function GraphPage() {
     if (authorFilter.length > 0) {
       prs = prs.filter((pr) => authorFilter.includes(pr.authorLogin));
     }
+    if (statusFilter === "ready") {
+      prs = prs.filter((pr) => !pr.isDraft);
+    } else if (statusFilter === "draft") {
+      prs = prs.filter((pr) => pr.isDraft);
+    }
     const graph = buildDependencyGraph(prs, owner, repo);
     if (viewerLogin) graph.viewerLogin = viewerLogin;
     if (contributors) graph.contributors = contributors;
@@ -161,7 +167,7 @@ export default function GraphPage() {
       }
     }
     return graph;
-  }, [allPRs, owner, repo, viewerLogin, contributors, authorFilter, behindByData]);
+  }, [allPRs, owner, repo, viewerLogin, contributors, authorFilter, statusFilter, behindByData]);
 
   const error = prError ?? null;
 
@@ -204,6 +210,7 @@ export default function GraphPage() {
           selected={authorFilter}
           onChange={setAuthorFilter}
         />
+        <StatusDropdown selected={statusFilter} onChange={setStatusFilter} />
         <Dropdown
           trigger={["click"]}
           menu={{
@@ -462,6 +469,108 @@ function ContributorDropdown({
               );
             })}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const STATUS_OPTIONS: { value: PRStatusFilter; label: string; color?: string }[] = [
+  { value: "all", label: "All PRs" },
+  { value: "ready", label: "Ready", color: "var(--color-ready)" },
+  { value: "draft", label: "Draft", color: "var(--color-draft)" },
+];
+
+const prIconPath =
+  "M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z";
+
+function StatusIndicator({ color }: { color?: string }) {
+  if (color) {
+    return (
+      <span
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: color,
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}>
+      <path d={prIconPath} />
+    </svg>
+  );
+}
+
+function StatusDropdown({
+  selected,
+  onChange,
+}: {
+  selected: PRStatusFilter;
+  onChange: (next: PRStatusFilter) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Escape") setOpen(false);
+  }, []);
+
+  const current =
+    STATUS_OPTIONS.find((o) => o.value === selected) ?? STATUS_OPTIONS[0];
+
+  return (
+    <div ref={ref} style={dropdownStyles.wrapper} onKeyDown={handleKeyDown}>
+      <button
+        style={dropdownStyles.trigger}
+        onClick={() => setOpen((o) => !o)}
+        title="Filter by status"
+      >
+        <StatusIndicator color={current.color} />
+        {current.label}
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style={{ marginLeft: 2 }}>
+          <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        </svg>
+      </button>
+      {open && (
+        <div style={dropdownStyles.menu}>
+          {STATUS_OPTIONS.map((opt) => {
+            const isSelected = opt.value === selected;
+            return (
+              <button
+                key={opt.value}
+                className="contributor-dropdown-item"
+                style={{
+                  ...dropdownStyles.item,
+                  fontWeight: isSelected ? 600 : 400,
+                }}
+                onClick={() => {
+                  onChange(opt.value);
+                  setOpen(false);
+                }}
+              >
+                <StatusIndicator color={opt.color} />
+                <span>{opt.label}</span>
+                {isSelected && (
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--color-ready)" style={{ marginLeft: "auto", flexShrink: 0 }}>
+                    <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
