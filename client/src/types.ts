@@ -150,6 +150,8 @@ export interface EdgeFlags {
 
 // --- Component types ---
 
+export type PRStatusFilter = "all" | "ready" | "draft";
+
 export interface MergeStatus {
   hasConflict: boolean;
   isMergeable: boolean;
