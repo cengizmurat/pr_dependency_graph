@@ -87,7 +87,7 @@ export default function GraphPage() {
   const queryClient = useQueryClient();
   const { token, source } = useGithubToken();
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
-  const [authorFilter, setAuthorFilter] = useState<string | null>(null);
+  const [authorFilter, setAuthorFilter] = useState<string[]>([]);
   const [lookbackDays, setLookbackDays] = useState(getStoredLookbackDays);
   const [lookbackInput, setLookbackInput] = useState(String(lookbackDays));
   const [dateRange, setDateRange] = useState<DateRange>(() => buildDefaultRange(lookbackDays));
@@ -146,8 +146,8 @@ export default function GraphPage() {
   const data = useMemo(() => {
     if (allPRs.length === 0 || !owner || !repo) return null;
     let prs = allPRs;
-    if (authorFilter) {
-      prs = prs.filter((pr) => pr.authorLogin === authorFilter);
+    if (authorFilter.length > 0) {
+      prs = prs.filter((pr) => authorFilter.includes(pr.authorLogin));
     }
     const graph = buildDependencyGraph(prs, owner, repo);
     if (viewerLogin) graph.viewerLogin = viewerLogin;
@@ -202,7 +202,7 @@ export default function GraphPage() {
           contributors={contributors ?? []}
           prCountByAuthor={prCountByAuthor}
           selected={authorFilter}
-          onSelect={setAuthorFilter}
+          onChange={setAuthorFilter}
         />
         <Dropdown
           trigger={["click"]}
@@ -332,12 +332,12 @@ function ContributorDropdown({
   contributors,
   prCountByAuthor,
   selected,
-  onSelect,
+  onChange,
 }: {
   contributors: Contributor[];
   prCountByAuthor: Map<string, number>;
-  selected: string | null;
-  onSelect: (login: string | null) => void;
+  selected: string[];
+  onChange: (next: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -366,7 +366,21 @@ function ContributorDropdown({
       );
   }, [contributors, prCountByAuthor]);
 
-  const selectedContributor = contributors.find((c) => c.login === selected);
+  const toggle = useCallback(
+    (login: string) => {
+      onChange(
+        selected.includes(login)
+          ? selected.filter((l) => l !== login)
+          : [...selected, login],
+      );
+    },
+    [selected, onChange],
+  );
+
+  const soleSelected =
+    selected.length === 1
+      ? contributors.find((c) => c.login === selected[0])
+      : undefined;
 
   return (
     <div ref={ref} style={dropdownStyles.wrapper} onKeyDown={handleKeyDown}>
@@ -375,21 +389,28 @@ function ContributorDropdown({
         onClick={() => setOpen((o) => !o)}
         title="Filter by author"
       >
-        {selectedContributor ? (
+        {selected.length === 0 ? (
+          <>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M10.561 8.073a6.005 6.005 0 0 1 3.432 5.142.75.75 0 1 1-1.498.07 4.5 4.5 0 0 0-8.99 0 .75.75 0 0 1-1.498-.07 6.005 6.005 0 0 1 3.431-5.142 3.999 3.999 0 1 1 5.123 0ZM10.5 5a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z" />
+            </svg>
+            All authors
+          </>
+        ) : soleSelected ? (
           <>
             <img
-              src={selectedContributor.avatarUrl}
-              alt={selectedContributor.login}
+              src={soleSelected.avatarUrl}
+              alt={soleSelected.login}
               style={dropdownStyles.triggerAvatar}
             />
-            {selectedContributor.login}
+            {soleSelected.login}
           </>
         ) : (
           <>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
               <path d="M10.561 8.073a6.005 6.005 0 0 1 3.432 5.142.75.75 0 1 1-1.498.07 4.5 4.5 0 0 0-8.99 0 .75.75 0 0 1-1.498-.07 6.005 6.005 0 0 1 3.431-5.142 3.999 3.999 0 1 1 5.123 0ZM10.5 5a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z" />
             </svg>
-            All authors
+            {selected.length} authors
           </>
         )}
         <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style={{ marginLeft: 2 }}>
@@ -402,12 +423,9 @@ function ContributorDropdown({
             className="contributor-dropdown-item"
             style={{
               ...dropdownStyles.item,
-              fontWeight: selected === null ? 600 : 400,
+              fontWeight: selected.length === 0 ? 600 : 400,
             }}
-            onClick={() => {
-              onSelect(null);
-              setOpen(false);
-            }}
+            onClick={() => onChange([])}
           >
             All authors
           </button>
@@ -415,18 +433,16 @@ function ContributorDropdown({
           <div style={dropdownStyles.list}>
             {sortedContributors.map((c) => {
               const count = prCountByAuthor.get(c.login) ?? 0;
+              const isSelected = selected.includes(c.login);
               return (
                 <button
                   key={c.login}
                   className="contributor-dropdown-item"
                   style={{
                     ...dropdownStyles.item,
-                    fontWeight: selected === c.login ? 600 : 400,
+                    fontWeight: isSelected ? 600 : 400,
                   }}
-                  onClick={() => {
-                    onSelect(c.login);
-                    setOpen(false);
-                  }}
+                  onClick={() => toggle(c.login)}
                 >
                   <img
                     src={c.avatarUrl}
@@ -437,7 +453,7 @@ function ContributorDropdown({
                   {count > 0 && (
                     <span style={dropdownStyles.count}>({count})</span>
                   )}
-                  {selected === c.login && (
+                  {isSelected && (
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--color-ready)" style={{ marginLeft: "auto", flexShrink: 0 }}>
                       <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
                     </svg>
