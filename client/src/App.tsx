@@ -8,6 +8,7 @@ import { SpeedInsights } from "@vercel/speed-insights/react";
 import LandingPage from "./components/LandingPage";
 import GraphPage from "./components/GraphPage";
 import AuthCallback from "./components/AuthCallback";
+import FeatureAnnouncementPopup from "./components/FeatureAnnouncementPopup";
 
 function useIsDarkMode() {
   const [dark, setDark] = useState(
@@ -90,6 +91,7 @@ export default function App() {
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/:owner/:repo" element={<GraphPage />} />
       </Routes>
+      <FeatureAnnouncementPopup />
       <Analytics />
       <SpeedInsights />
     </ConfigProvider>

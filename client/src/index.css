@@ -82,6 +82,20 @@ body {
   to { transform: rotate(360deg); }
 }
 
+@keyframes featurePopupIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .contributor-dropdown-item:hover {
   background: var(--color-border-subtle);
+}
+
+.feature-popup-close:hover {
+  background: var(--color-border-subtle);
+  color: var(--color-text);
+}
+
+.feature-popup-dismiss:hover {
+  opacity: 0.9;
 }

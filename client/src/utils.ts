@@ -1,7 +1,7 @@
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import type { GraphNode, PRNode } from "./types";
-import { LOOKBACK_DAYS_KEY, DEFAULT_LOOKBACK_DAYS } from "./constants";
+import { LOOKBACK_DAYS_KEY, DEFAULT_LOOKBACK_DAYS, SEEN_FEATURE_VERSION_KEY } from "./constants";
 
 export function isPR(d: GraphNode): d is PRNode {
   return d.type === "pr";
@@ -59,6 +59,27 @@ export function getStoredLookbackDays(): number {
     if (!isNaN(parsed) && parsed > 0) return parsed;
   }
   return DEFAULT_LOOKBACK_DAYS;
+}
+
+// Returns the highest feature version the user has acknowledged, or null when
+// nothing is stored yet (a first-time / pre-existing user).
+export function getSeenFeatureVersion(): number | null {
+  try {
+    const stored = localStorage.getItem(SEEN_FEATURE_VERSION_KEY);
+    if (stored === null) return null;
+    const parsed = parseInt(stored, 10);
+    return isNaN(parsed) ? null : parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function setSeenFeatureVersion(version: number): void {
+  try {
+    localStorage.setItem(SEEN_FEATURE_VERSION_KEY, String(version));
+  } catch {
+    // localStorage unavailable (e.g. private mode); notifications won't persist.
+  }
 }
 
 export type DateRange = [Dayjs, Dayjs];
