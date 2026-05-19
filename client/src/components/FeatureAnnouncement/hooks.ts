@@ -13,8 +13,13 @@ export function useFeatureAnnouncements() {
   const [announcements, setAnnouncements] = useState<FeatureAnnouncement[]>(
     () => {
       const seen = getSeenFeatureVersion();
-      if (seen === null) return []; // first-time user: see the effect below
-      return FEATURE_ANNOUNCEMENTS.filter((f) => f.version > seen).sort(
+      // First-time user (nothing stored): only announcements explicitly opted
+      // in via `showWithoutStorage`. The effect below records the version.
+      const isUnseen =
+        seen === null
+          ? (f: FeatureAnnouncement) => f.showWithoutStorage === true
+          : (f: FeatureAnnouncement) => f.version > seen;
+      return FEATURE_ANNOUNCEMENTS.filter(isUnseen).sort(
         (a, b) => b.version - a.version,
       );
     },
