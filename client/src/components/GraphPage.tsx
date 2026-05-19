@@ -10,6 +10,7 @@ import { getStoredLookbackDays, buildDefaultRange } from "../utils";
 import type { DateRange } from "../utils";
 import { useGithubToken } from "../hooks/useGithubToken";
 import GraphView from "./GraphView";
+import FeatureAnnouncementPopup from "./FeatureAnnouncement";
 import { styles, dropdownStyles } from "./GraphPage.styles";
 
 function looksLikeRepoNotFound(message: string): boolean {
@@ -309,7 +310,10 @@ export default function GraphPage() {
           </div>
         )}
         {data && (
-          <GraphView data={data} orientation={orientation} token={token} />
+          <>
+            <GraphView data={data} orientation={orientation} token={token} />
+            <FeatureAnnouncementPopup />
+          </>
         )}
         {isFetchingMore && (() => {
           const oldestSoFar = dayjs(allPRs[allPRs.length - 1]?.createdAt);
