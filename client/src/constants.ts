@@ -28,39 +28,6 @@ export const COLORS = {
 export const LOOKBACK_DAYS_KEY = "pr-graph-lookback-days";
 export const DEFAULT_LOOKBACK_DAYS = 7;
 
-// --- Feature announcements ("What's new" popup) ---
-
-// localStorage key holding the highest feature-announcement version the user
-// has already seen. The key being absent marks a brand-new (or pre-existing)
-// user: it is bootstrapped silently so first-time users are NOT shown the
-// popup and only get notified about features released after their first visit.
-export const SEEN_FEATURE_VERSION_KEY = "pr-graph-seen-feature-version";
-
-export interface FeatureAnnouncement {
-  version: number;
-  title: string;
-  description: string;
-  date: string;
-}
-
-// To announce a newly released feature, prepend an entry whose `version` is
-// strictly greater than every existing one. Returning users whose stored
-// version is lower see the popup once, after which it is marked as seen.
-export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
-  {
-    version: 1,
-    title: "Filter pull requests by status",
-    description:
-      "Use the new status dropdown in the graph header to focus on Ready or Draft pull requests.",
-    date: "2026-05-19",
-  },
-];
-
-export const CURRENT_FEATURE_VERSION = FEATURE_ANNOUNCEMENTS.reduce(
-  (max, f) => Math.max(max, f.version),
-  0,
-);
-
 // --- PRCard reviewer display ---
 
 export const MAX_REVIEWER_AVATARS = 4;

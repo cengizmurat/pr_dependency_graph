@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
-import { CURRENT_FEATURE_VERSION, FEATURE_ANNOUNCEMENTS } from "../constants";
-import type { FeatureAnnouncement } from "../constants";
-import { getSeenFeatureVersion, setSeenFeatureVersion } from "../utils";
+import {
+  CURRENT_FEATURE_VERSION,
+  FEATURE_ANNOUNCEMENTS,
+  getSeenFeatureVersion,
+  setSeenFeatureVersion,
+} from "./utils";
+import type { FeatureAnnouncement } from "./utils";
 
 export function useFeatureAnnouncements() {
   // Snapshot localStorage exactly once so StrictMode's double render and the

@@ -8,7 +8,7 @@ import { SpeedInsights } from "@vercel/speed-insights/react";
 import LandingPage from "./components/LandingPage";
 import GraphPage from "./components/GraphPage";
 import AuthCallback from "./components/AuthCallback";
-import FeatureAnnouncementPopup from "./components/FeatureAnnouncementPopup";
+import FeatureAnnouncementPopup from "./components/FeatureAnnouncement";
 
 function useIsDarkMode() {
   const [dark, setDark] = useState(
