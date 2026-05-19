@@ -22,7 +22,7 @@ export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
     version: 1,
     title: "Filter pull requests by status",
     description:
-      "Use the new status dropdown in the graph header to focus on Ready or Draft pull requests.",
+      "Use the new status dropdown in the menu (top right corner) to focus on Ready or Draft pull requests.",
     date: "2026-05-19",
     showWithoutStorage: true,
   },
