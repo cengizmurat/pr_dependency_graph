@@ -6,7 +6,14 @@ import dayjs from "dayjs";
 import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, fetchBehindByCounts, buildDependencyGraph } from "../api";
 import type { GraphQLPullRequest, Contributor, Orientation, PRStatusFilter } from "../types";
 import { LOOKBACK_DAYS_KEY } from "../constants";
-import { getStoredLookbackDays, buildDefaultRange } from "../utils";
+import {
+  getStoredLookbackDays,
+  buildDefaultRange,
+  getStoredStatusFilter,
+  setStoredStatusFilter,
+  getStoredAuthorFilter,
+  setStoredAuthorFilter,
+} from "../utils";
 import type { DateRange } from "../utils";
 import { useGithubToken } from "../hooks/useGithubToken";
 import GraphView from "./GraphView";
@@ -88,8 +95,11 @@ export default function GraphPage() {
   const queryClient = useQueryClient();
   const { token, source } = useGithubToken();
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
-  const [authorFilter, setAuthorFilter] = useState<string[]>([]);
-  const [statusFilter, setStatusFilter] = useState<PRStatusFilter>("all");
+  const [authorFilter, setAuthorFilter] = useState<string[]>(() =>
+    owner && repo ? getStoredAuthorFilter(owner, repo) : [],
+  );
+  const [statusFilter, setStatusFilter] =
+    useState<PRStatusFilter>(getStoredStatusFilter);
   const [lookbackDays, setLookbackDays] = useState(getStoredLookbackDays);
   const [lookbackInput, setLookbackInput] = useState(String(lookbackDays));
   const [dateRange, setDateRange] = useState<DateRange>(() => buildDefaultRange(lookbackDays));
@@ -104,6 +114,14 @@ export default function GraphPage() {
     }, 500);
     return () => clearTimeout(timer);
   }, [lookbackInput]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setStoredStatusFilter(statusFilter);
+  }, [statusFilter]);
+
+  useEffect(() => {
+    if (owner && repo) setStoredAuthorFilter(owner, repo, authorFilter);
+  }, [owner, repo, authorFilter]);
 
   const startDate = dateRange[0].toISOString();
   const endDate = dateRange[1].toISOString();
