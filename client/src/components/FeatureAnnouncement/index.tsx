@@ -47,6 +47,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 15,
     fontWeight: 600,
   },
+  counter: {
+    fontSize: 12,
+    fontWeight: 500,
+    color: "var(--color-text-secondary)",
+  },
   closeBtn: {
     marginLeft: "auto",
     display: "flex",
@@ -96,33 +101,52 @@ const styles: Record<string, React.CSSProperties> = {
 
 export default function FeatureAnnouncementPopup() {
   const { announcements, markSeen } = useFeatureAnnouncements();
-  const [open, setOpen] = useState(true);
+  // Index of the announcement currently shown. Each is rendered in its own
+  // modal; dismissing one advances the index so they appear one-by-one.
+  const [index, setIndex] = useState(0);
 
-  if (announcements.length === 0 || !open) return null;
+  if (index >= announcements.length) return null;
+
+  const announcement = announcements[index];
 
   return (
+    // A unique key per announcement makes each modal a fresh mount/unmount, so
+    // advancing the index unmounts the current one (recording it as seen) and
+    // mounts the next.
     <FeatureAnnouncementModal
-      announcements={announcements}
-      onClose={() => setOpen(false)}
+      key={announcement.version}
+      announcement={announcement}
+      position={index + 1}
+      total={announcements.length}
+      onClose={() => setIndex((i) => i + 1)}
       onUnmount={markSeen}
     />
   );
 }
 
 function FeatureAnnouncementModal({
-  announcements,
+  announcement,
+  position,
+  total,
   onClose,
   onUnmount,
 }: {
-  announcements: FeatureAnnouncement[];
+  announcement: FeatureAnnouncement;
+  position: number;
+  total: number;
   onClose: () => void;
-  onUnmount: () => void;
+  onUnmount: (version: number) => void;
 }) {
-  // Record the announcements as seen only when this modal unmounts, i.e. after
-  // the user closes it (Got it / X / click outside) or leaves the page.
-  useEffect(() => onUnmount, [onUnmount]);
+  // Record this announcement as seen only when its modal unmounts, i.e. after
+  // the user dismisses it (Next / Got it / X / click outside) or leaves the
+  // page. Marking happens one-by-one so the stored version advances per modal.
+  useEffect(
+    () => () => onUnmount(announcement.version),
+    [announcement.version, onUnmount],
+  );
 
-  const multiple = announcements.length > 1;
+  const multiple = total > 1;
+  const isLast = position >= total;
 
   return (
     <div
@@ -136,7 +160,7 @@ function FeatureAnnouncementModal({
         style={styles.card}
         role="dialog"
         aria-modal="true"
-        aria-label="New features"
+        aria-label="New feature"
       >
         <div style={styles.header}>
           <span style={styles.sparkle} aria-hidden="true">
@@ -144,9 +168,12 @@ function FeatureAnnouncementModal({
               <path d="M8 0l1.79 6.21L16 8l-6.21 1.79L8 16l-1.79-6.21L0 8l6.21-1.79z" />
             </svg>
           </span>
-          <span style={styles.headerTitle}>
-            {multiple ? "What's new" : "New feature"}
-          </span>
+          <span style={styles.headerTitle}>New feature</span>
+          {multiple && (
+            <span style={styles.counter}>
+              {position} / {total}
+            </span>
+          )}
           <button
             type="button"
             onClick={onClose}
@@ -160,12 +187,10 @@ function FeatureAnnouncementModal({
           </button>
         </div>
         <ul style={styles.list}>
-          {announcements.map((f) => (
-            <li key={f.version} style={styles.item}>
-              <div style={styles.itemTitle}>{f.title}</div>
-              <div style={styles.itemDesc}>{f.description}</div>
-            </li>
-          ))}
+          <li style={styles.item}>
+            <div style={styles.itemTitle}>{announcement.title}</div>
+            <div style={styles.itemDesc}>{announcement.description}</div>
+          </li>
         </ul>
         <button
           type="button"
@@ -173,7 +198,7 @@ function FeatureAnnouncementModal({
           style={styles.dismissBtn}
           className="feature-popup-dismiss"
         >
-          Got it
+          {isLast ? "Got it" : "Next"}
         </button>
       </div>
     </div>
