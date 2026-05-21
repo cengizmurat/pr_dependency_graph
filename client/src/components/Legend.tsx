@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { COLORS } from "../constants";
+import { getStoredLegendCollapsed, setStoredLegendCollapsed } from "../utils";
 import { styles } from "./Legend.styles";
 
 const ARROW_ITEMS = [
@@ -8,9 +10,45 @@ const ARROW_ITEMS = [
 ];
 
 export default function Legend() {
+  const [collapsed, setCollapsed] = useState(getStoredLegendCollapsed);
+
+  const toggle = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    setStoredLegendCollapsed(next);
+  };
+
   return (
     <div style={styles.container}>
-      <div style={styles.title}>Legend</div>
+      <button
+        type="button"
+        style={{ ...styles.header, marginBottom: collapsed ? 0 : 6 }}
+        onClick={toggle}
+        aria-expanded={!collapsed}
+        title={collapsed ? "Expand legend" : "Collapse legend"}
+      >
+        <span style={styles.title}>Legend</span>
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 12 12"
+          fill="none"
+          style={{
+            transform: collapsed ? "rotate(-90deg)" : "none",
+            transition: "transform 0.15s ease",
+          }}
+        >
+          <path
+            d="M2 4L6 8L10 4"
+            stroke="var(--color-text-secondary)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      {collapsed ? null : (
+        <>
       <div style={styles.section}>Nodes</div>
       <div style={styles.row}>
         <span
@@ -98,6 +136,8 @@ export default function Legend() {
         </span>
         <span style={styles.label}>Behind base branch (click to update)</span>
       </div>
+        </>
+      )}
     </div>
   );
 }
