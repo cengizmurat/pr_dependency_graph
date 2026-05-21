@@ -208,7 +208,12 @@ export default function GraphView({ data, orientation, token }: Props) {
       }}
     >
       <Legend />
-      <svg ref={svgRef} width="100%" height="100%">
+      <svg
+        ref={svgRef}
+        width="100%"
+        height="100%"
+        style={{ touchAction: "none", display: "block" }}
+      >
         <defs>
           <marker
             id="arrowhead"

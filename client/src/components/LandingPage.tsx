@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Select } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { useGithubToken } from "../hooks/useGithubToken";
+import { useIsMobile } from "../hooks/useIsMobile";
 import { isOAuthConfigured, MANAGE_OAUTH_APPS_URL, startLogin } from "../auth";
 import { fetchUserRepos } from "../api";
 import type { UserRepo } from "../types";
@@ -15,6 +16,7 @@ export default function LandingPage() {
   const [error, setError] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const oauthEnabled = isOAuthConfigured();
 
   const {
@@ -89,8 +91,10 @@ export default function LandingPage() {
 
   return (
     <div style={styles.container}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>PR Dependency Graph</h1>
+      <div style={{ ...styles.card, ...(isMobile ? styles.cardMobile : {}) }}>
+        <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>
+          PR Dependency Graph
+        </h1>
         <p style={styles.subtitle}>
           Visualize pull request dependencies for any GitHub repository
         </p>

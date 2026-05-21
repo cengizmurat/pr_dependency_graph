@@ -16,6 +16,32 @@ export const styles: Record<string, React.CSSProperties> = {
     borderBottom: "1px solid var(--color-border-subtle)",
     background: "var(--color-header-bg)",
   },
+  headerMobile: {
+    gap: 8,
+    padding: "8px 12px",
+    flexWrap: "wrap" as const,
+  },
+  // On desktop the controls flow inline with the rest of the header. On mobile
+  // they stack into a full-width column below the title so nothing overflows.
+  controlsDesktop: {
+    display: "contents",
+  },
+  controlsMobile: {
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "stretch",
+    gap: 8,
+    width: "100%",
+  },
+  iconRowDesktop: {
+    display: "contents",
+  },
+  iconRowMobile: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 16,
+  },
   backLink: {
     color: "var(--color-link)",
     textDecoration: "none",
@@ -26,6 +52,14 @@ export const styles: Record<string, React.CSSProperties> = {
     fontSize: 18,
     fontWeight: 600,
     margin: 0,
+  },
+  titleMobile: {
+    fontSize: 16,
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap" as const,
   },
   viewer: {
     fontSize: 13,
@@ -185,6 +219,30 @@ export const styles: Record<string, React.CSSProperties> = {
 export const dropdownStyles: Record<string, React.CSSProperties> = {
   wrapper: {
     position: "relative",
+  },
+  // Full-width triggers/menus on mobile so taps are easy and menus can't spill
+  // off the edge of a narrow screen.
+  wrapperMobile: {
+    width: "100%",
+  },
+  triggerMobile: {
+    width: "100%",
+    justifyContent: "space-between",
+    padding: "8px 12px",
+    fontSize: 13,
+  },
+  triggerLabel: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap" as const,
+  },
+  menuMobile: {
+    width: "100%",
+    minWidth: 0,
   },
   trigger: {
     display: "flex",

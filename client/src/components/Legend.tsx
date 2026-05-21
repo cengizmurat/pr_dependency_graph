@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { COLORS } from "../constants";
+import { useIsMobile } from "../hooks/useIsMobile";
 import { styles } from "./Legend.styles";
 
 const ARROW_ITEMS = [
@@ -8,9 +10,53 @@ const ARROW_ITEMS = [
 ];
 
 export default function Legend() {
+  const isMobile = useIsMobile();
+  const [open, setOpen] = useState(false);
+
+  if (isMobile) {
+    return (
+      <div style={styles.mobileContainer}>
+        <button
+          type="button"
+          style={styles.toggle}
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+        >
+          <span>Legend</span>
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="none"
+            style={{
+              transform: open ? "rotate(180deg)" : "none",
+              transition: "transform 0.15s",
+            }}
+          >
+            <path
+              d="M2 3.5L5 6.5L8 3.5"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+        {open && <div style={styles.mobilePanel}>{legendBody}</div>}
+      </div>
+    );
+  }
+
   return (
     <div style={styles.container}>
       <div style={styles.title}>Legend</div>
+      {legendBody}
+    </div>
+  );
+}
+
+const legendBody = (
+  <>
       <div style={styles.section}>Nodes</div>
       <div style={styles.row}>
         <span
@@ -98,6 +144,5 @@ export default function Legend() {
         </span>
         <span style={styles.label}>Behind base branch (click to update)</span>
       </div>
-    </div>
-  );
-}
+  </>
+);
