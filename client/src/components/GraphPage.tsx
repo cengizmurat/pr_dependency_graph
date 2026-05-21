@@ -24,6 +24,14 @@ function looksLikeRepoNotFound(message: string): boolean {
 
 const { RangePicker } = DatePicker;
 
+// Open PRs are kept fresh by refetching on this interval. The graph updates in
+// place when newer data arrives, so a tab left open stays current on its own.
+const PR_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+
+// Stable reference for the empty case so dependent memos don't recompute on
+// every render before the first page lands.
+const EMPTY_PRS: GraphQLPullRequest[] = [];
+
 function useIncrementalPRs(
   token: string | null,
   owner: string | undefined,
@@ -31,56 +39,50 @@ function useIncrementalPRs(
   startDate: string,
   endDate: string,
 ) {
-  const [prs, setPRs] = useState<GraphQLPullRequest[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const queryClient = useQueryClient();
   const [isFetchingMore, setIsFetchingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [fetchKey, setFetchKey] = useState(0);
 
-  const refetch = useCallback(() => setFetchKey((k) => k + 1), []);
+  const query = useQuery({
+    queryKey: ["prs", owner, repo, startDate, endDate],
+    enabled: !!token && !!owner && !!repo,
+    refetchInterval: PR_REFRESH_INTERVAL_MS,
+    queryFn: async ({ queryKey, signal }) => {
+      // Stream pages into the cache so the graph renders progressively, but
+      // only on the first load. On a background auto-refresh the full graph is
+      // already on screen, so we keep it and swap atomically once the refetch
+      // finishes — otherwise the graph would collapse to the first page and
+      // visibly re-grow every interval.
+      const hasExisting =
+        (queryClient.getQueryData<GraphQLPullRequest[]>(queryKey)?.length ?? 0) > 0;
 
-  useEffect(() => {
-    if (!token || !owner || !repo) return;
-
-    const controller = new AbortController();
-    let receivedFirstPage = false;
-
-    setIsLoading(true);
-    setIsFetchingMore(false);
-    setError(null);
-    setPRs([]);
-
-    fetchPRsByDateRange(
-      token,
-      owner,
-      repo,
-      startDate,
-      endDate,
-      (accumulated) => {
-        setPRs(accumulated);
-        if (!receivedFirstPage) {
-          receivedFirstPage = true;
-          setIsLoading(false);
-          setIsFetchingMore(true);
-        }
-      },
-      controller.signal,
-    )
-      .then(() => {
-        if (!receivedFirstPage) setIsLoading(false);
+      try {
+        return await fetchPRsByDateRange(
+          token!,
+          owner!,
+          repo!,
+          startDate,
+          endDate,
+          hasExisting
+            ? undefined
+            : (accumulated) => {
+                queryClient.setQueryData(queryKey, accumulated);
+                setIsFetchingMore(true);
+              },
+          signal,
+        );
+      } finally {
         setIsFetchingMore(false);
-      })
-      .catch((err) => {
-        if ((err as DOMException).name === "AbortError") return;
-        setError((err as Error).message);
-        setIsLoading(false);
-        setIsFetchingMore(false);
-      });
+      }
+    },
+  });
 
-    return () => controller.abort();
-  }, [token, owner, repo, startDate, endDate, fetchKey]);
-
-  return { prs, isLoading, isFetchingMore, error, refetch };
+  return {
+    prs: query.data ?? EMPTY_PRS,
+    isLoading: query.isLoading,
+    isFetchingMore,
+    error: query.error ? (query.error as Error).message : null,
+    refetch: query.refetch,
+  };
 }
 
 export default function GraphPage() {
