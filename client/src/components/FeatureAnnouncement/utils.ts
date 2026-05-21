@@ -1,7 +1,7 @@
 // localStorage key holding the highest feature-announcement version the user
 // has already seen. When the key is absent (a brand-new / pre-existing user)
-// only announcements with `showWithoutStorage` are shown; the version is then
-// recorded so they are notified about features released from then on.
+// no announcement is shown; the current version is recorded immediately so
+// they are only notified about features released from then on.
 export const SEEN_FEATURE_VERSION_KEY = "pr-graph-seen-feature-version";
 
 export interface FeatureAnnouncement {
@@ -9,9 +9,6 @@ export interface FeatureAnnouncement {
   title: string;
   description: string;
   date: string;
-  // Also show this one to users who have nothing stored yet (first-time /
-  // pre-existing users). Defaults to hidden for them; opt in deliberately.
-  showWithoutStorage?: boolean;
 }
 
 // To announce a newly released feature, prepend an entry whose `version` is
@@ -24,7 +21,6 @@ export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
     description:
       "Use the new status dropdown in the menu (top right corner) to focus on Ready or Draft pull requests.",
     date: "2026-05-19",
-    showWithoutStorage: true,
   },
 ];
 
