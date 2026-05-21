@@ -1,5 +1,10 @@
 import { useState } from "react";
 import { COLORS } from "../constants";
+import {
+  getStoredLegendCollapsed,
+  hasStoredLegendPreference,
+  setStoredLegendCollapsed,
+} from "../utils";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { styles } from "./Legend.styles";
 
@@ -11,52 +16,49 @@ const ARROW_ITEMS = [
 
 export default function Legend() {
   const isMobile = useIsMobile();
-  const [open, setOpen] = useState(false);
+  // Default to collapsed on mobile so the legend doesn't cover the graph on a
+  // small screen, but honor an explicit preference once the user sets one.
+  const [collapsed, setCollapsed] = useState(() =>
+    hasStoredLegendPreference() ? getStoredLegendCollapsed() : isMobile,
+  );
 
-  if (isMobile) {
-    return (
-      <div style={styles.mobileContainer}>
-        <button
-          type="button"
-          style={styles.toggle}
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
-        >
-          <span>Legend</span>
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 10 10"
-            fill="none"
-            style={{
-              transform: open ? "rotate(180deg)" : "none",
-              transition: "transform 0.15s",
-            }}
-          >
-            <path
-              d="M2 3.5L5 6.5L8 3.5"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-        {open && <div style={styles.mobilePanel}>{legendBody}</div>}
-      </div>
-    );
-  }
+  const toggle = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    setStoredLegendCollapsed(next);
+  };
 
   return (
     <div style={styles.container}>
-      <div style={styles.title}>Legend</div>
-      {legendBody}
-    </div>
-  );
-}
-
-const legendBody = (
-  <>
+      <button
+        type="button"
+        style={{ ...styles.header, marginBottom: collapsed ? 0 : 6 }}
+        onClick={toggle}
+        aria-expanded={!collapsed}
+        title={collapsed ? "Expand legend" : "Collapse legend"}
+      >
+        <span style={styles.title}>Legend</span>
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 12 12"
+          fill="none"
+          style={{
+            transform: collapsed ? "rotate(-90deg)" : "none",
+            transition: "transform 0.15s ease",
+          }}
+        >
+          <path
+            d="M2 4L6 8L10 4"
+            stroke="var(--color-text-secondary)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      {collapsed ? null : (
+        <>
       <div style={styles.section}>Nodes</div>
       <div style={styles.row}>
         <span
@@ -144,5 +146,8 @@ const legendBody = (
         </span>
         <span style={styles.label}>Behind base branch (click to update)</span>
       </div>
-  </>
-);
+        </>
+      )}
+    </div>
+  );
+}

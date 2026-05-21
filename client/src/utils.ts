@@ -1,7 +1,7 @@
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import type { GraphNode, PRNode } from "./types";
-import { LOOKBACK_DAYS_KEY, DEFAULT_LOOKBACK_DAYS } from "./constants";
+import { LOOKBACK_DAYS_KEY, DEFAULT_LOOKBACK_DAYS, LEGEND_COLLAPSED_KEY } from "./constants";
 
 export function isPR(d: GraphNode): d is PRNode {
   return d.type === "pr";
@@ -59,6 +59,30 @@ export function getStoredLookbackDays(): number {
     if (!isNaN(parsed) && parsed > 0) return parsed;
   }
   return DEFAULT_LOOKBACK_DAYS;
+}
+
+export function getStoredLegendCollapsed(): boolean {
+  try {
+    return localStorage.getItem(LEGEND_COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function hasStoredLegendPreference(): boolean {
+  try {
+    return localStorage.getItem(LEGEND_COLLAPSED_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+export function setStoredLegendCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(LEGEND_COLLAPSED_KEY, String(collapsed));
+  } catch {
+    // localStorage unavailable (e.g. private mode); preference won't persist.
+  }
 }
 
 export type DateRange = [Dayjs, Dayjs];
