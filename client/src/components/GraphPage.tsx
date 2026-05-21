@@ -394,8 +394,9 @@ function ContributorDropdown({
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    // Capture phase: the d3-zoom graph canvas stops mousedown propagation, so a bubbling listener never sees clicks on it.
+    document.addEventListener("mousedown", handleClick, true);
+    return () => document.removeEventListener("mousedown", handleClick, true);
   }, [open]);
 
   const handleKeyDown = useCallback(
@@ -560,8 +561,9 @@ function StatusDropdown({
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    // Capture phase: the d3-zoom graph canvas stops mousedown propagation, so a bubbling listener never sees clicks on it.
+    document.addEventListener("mousedown", handleClick, true);
+    return () => document.removeEventListener("mousedown", handleClick, true);
   }, [open]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
