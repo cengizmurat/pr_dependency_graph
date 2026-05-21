@@ -22,7 +22,7 @@ export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
     version: 2,
     title: "Your filters are remembered",
     description:
-      "Your author and status (Ready/Draft) selections are now saved in your browser and restored automatically, so you no longer have to re-pick them after a refresh.",
+      "Your author and PR status (Ready/Draft) selections are now saved in your browser and restored automatically, so you no longer have to re-pick them after a refresh.",
     date: "2026-05-21",
   },
   {
