@@ -9,6 +9,7 @@ import { LOOKBACK_DAYS_KEY } from "../constants";
 import { getStoredLookbackDays, buildDefaultRange } from "../utils";
 import type { DateRange } from "../utils";
 import { useGithubToken } from "../hooks/useGithubToken";
+import { useIsMobile } from "../hooks/useIsMobile";
 import GraphView from "./GraphView";
 import FeatureAnnouncementPopup from "./FeatureAnnouncement";
 import { styles, dropdownStyles } from "./GraphPage.styles";
@@ -89,6 +90,7 @@ export default function GraphPage() {
   const { owner, repo } = useParams<{ owner: string; repo: string }>();
   const queryClient = useQueryClient();
   const { token, source } = useGithubToken();
+  const isMobile = useIsMobile();
   const [searchParams, setSearchParams] = useSearchParams();
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
 
@@ -216,11 +218,11 @@ export default function GraphPage() {
 
   return (
     <div style={styles.page}>
-      <header style={styles.header}>
+      <header style={{ ...styles.header, ...(isMobile ? styles.headerMobile : {}) }}>
         <Link to="/" style={styles.backLink}>
           &larr; Back
         </Link>
-        <h1 style={styles.title}>
+        <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>
           {owner}/{repo}
         </h1>
         {data?.viewerLogin && (
@@ -231,8 +233,9 @@ export default function GraphPage() {
             ? `${data.nodes.filter((n) => n.type === "pr").length}${isFetchingMore ? "+" : ""} open PRs`
             : ""}
         </span>
+        <div style={isMobile ? styles.controlsMobile : styles.controlsDesktop}>
         <RangePicker
-          showTime
+          showTime={!isMobile}
           value={dateRange}
           onChange={(dates) => {
             if (dates && dates[0] && dates[1]) {
@@ -241,15 +244,17 @@ export default function GraphPage() {
           }}
           allowClear={false}
           size="small"
-          style={{ fontSize: 12 }}
+          style={{ fontSize: 12, ...(isMobile ? { width: "100%" } : {}) }}
         />
         <ContributorDropdown
           contributors={contributors ?? []}
           prCountByAuthor={prCountByAuthor}
           selected={authorFilter}
           onChange={setAuthorFilter}
+          isMobile={isMobile}
         />
-        <StatusDropdown selected={statusFilter} onChange={setStatusFilter} />
+        <StatusDropdown selected={statusFilter} onChange={setStatusFilter} isMobile={isMobile} />
+        <div style={isMobile ? styles.iconRowMobile : styles.iconRowDesktop}>
         <Dropdown
           trigger={["click"]}
           menu={{
@@ -321,6 +326,8 @@ export default function GraphPage() {
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
           </svg>
         </a>
+        </div>
+        </div>
       </header>
 
       <div style={styles.content}>
@@ -382,11 +389,13 @@ function ContributorDropdown({
   prCountByAuthor,
   selected,
   onChange,
+  isMobile,
 }: {
   contributors: Contributor[];
   prCountByAuthor: Map<string, number>;
   selected: string[];
   onChange: (next: string[]) => void;
+  isMobile: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -433,15 +442,20 @@ function ContributorDropdown({
       : undefined;
 
   return (
-    <div ref={ref} style={dropdownStyles.wrapper} onKeyDown={handleKeyDown}>
+    <div
+      ref={ref}
+      style={{ ...dropdownStyles.wrapper, ...(isMobile ? dropdownStyles.wrapperMobile : {}) }}
+      onKeyDown={handleKeyDown}
+    >
       <button
-        style={dropdownStyles.trigger}
+        style={{ ...dropdownStyles.trigger, ...(isMobile ? dropdownStyles.triggerMobile : {}) }}
         onClick={() => setOpen((o) => !o)}
         title="Filter by author"
       >
+        <span style={dropdownStyles.triggerLabel}>
         {selected.length === 0 ? (
           <>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}>
               <path d="M10.561 8.073a6.005 6.005 0 0 1 3.432 5.142.75.75 0 1 1-1.498.07 4.5 4.5 0 0 0-8.99 0 .75.75 0 0 1-1.498-.07 6.005 6.005 0 0 1 3.431-5.142 3.999 3.999 0 1 1 5.123 0ZM10.5 5a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z" />
             </svg>
             All authors
@@ -457,18 +471,19 @@ function ContributorDropdown({
           </>
         ) : (
           <>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}>
               <path d="M10.561 8.073a6.005 6.005 0 0 1 3.432 5.142.75.75 0 1 1-1.498.07 4.5 4.5 0 0 0-8.99 0 .75.75 0 0 1-1.498-.07 6.005 6.005 0 0 1 3.431-5.142 3.999 3.999 0 1 1 5.123 0ZM10.5 5a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z" />
             </svg>
             {selected.length} authors
           </>
         )}
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style={{ marginLeft: 2 }}>
+        </span>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style={{ marginLeft: 2, flexShrink: 0 }}>
           <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
         </svg>
       </button>
       {open && (
-        <div style={dropdownStyles.menu}>
+        <div style={{ ...dropdownStyles.menu, ...(isMobile ? dropdownStyles.menuMobile : {}) }}>
           <button
             className="contributor-dropdown-item"
             style={{
@@ -551,9 +566,11 @@ function StatusIndicator({ color }: { color?: string }) {
 function StatusDropdown({
   selected,
   onChange,
+  isMobile,
 }: {
   selected: PRStatusFilter;
   onChange: (next: PRStatusFilter) => void;
+  isMobile: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -576,20 +593,26 @@ function StatusDropdown({
     STATUS_OPTIONS.find((o) => o.value === selected) ?? STATUS_OPTIONS[0];
 
   return (
-    <div ref={ref} style={dropdownStyles.wrapper} onKeyDown={handleKeyDown}>
+    <div
+      ref={ref}
+      style={{ ...dropdownStyles.wrapper, ...(isMobile ? dropdownStyles.wrapperMobile : {}) }}
+      onKeyDown={handleKeyDown}
+    >
       <button
-        style={dropdownStyles.trigger}
+        style={{ ...dropdownStyles.trigger, ...(isMobile ? dropdownStyles.triggerMobile : {}) }}
         onClick={() => setOpen((o) => !o)}
         title="Filter by status"
       >
-        <StatusIndicator color={current.color} />
-        {current.label}
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style={{ marginLeft: 2 }}>
+        <span style={dropdownStyles.triggerLabel}>
+          <StatusIndicator color={current.color} />
+          {current.label}
+        </span>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style={{ marginLeft: 2, flexShrink: 0 }}>
           <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
         </svg>
       </button>
       {open && (
-        <div style={dropdownStyles.menu}>
+        <div style={{ ...dropdownStyles.menu, ...(isMobile ? dropdownStyles.menuMobile : {}) }}>
           {STATUS_OPTIONS.map((opt) => {
             const isSelected = opt.value === selected;
             return (

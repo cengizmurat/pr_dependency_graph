@@ -4,6 +4,7 @@ export const styles: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     alignItems: "center",
     minHeight: "100vh",
+    padding: 16,
     background:
       "linear-gradient(135deg, var(--color-gradient-from) 0%, var(--color-gradient-to) 100%)",
     fontFamily:
@@ -18,11 +19,17 @@ export const styles: Record<string, React.CSSProperties> = {
     boxShadow: "0 8px 32px var(--color-shadow)",
     textAlign: "center" as const,
   },
+  cardMobile: {
+    padding: "32px 22px",
+  },
   title: {
     color: "var(--color-text)",
     fontSize: 28,
     margin: "0 0 8px",
     fontWeight: 600,
+  },
+  titleMobile: {
+    fontSize: 23,
   },
   subtitle: {
     color: "var(--color-text-secondary)",

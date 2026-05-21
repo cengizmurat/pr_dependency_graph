@@ -69,6 +69,14 @@ export function getStoredLegendCollapsed(): boolean {
   }
 }
 
+export function hasStoredLegendPreference(): boolean {
+  try {
+    return localStorage.getItem(LEGEND_COLLAPSED_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export function setStoredLegendCollapsed(collapsed: boolean): void {
   try {
     localStorage.setItem(LEGEND_COLLAPSED_KEY, String(collapsed));

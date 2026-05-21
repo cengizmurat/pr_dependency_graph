@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { COLORS } from "../constants";
-import { getStoredLegendCollapsed, setStoredLegendCollapsed } from "../utils";
+import {
+  getStoredLegendCollapsed,
+  hasStoredLegendPreference,
+  setStoredLegendCollapsed,
+} from "../utils";
+import { useIsMobile } from "../hooks/useIsMobile";
 import { styles } from "./Legend.styles";
 
 const ARROW_ITEMS = [
@@ -10,7 +15,12 @@ const ARROW_ITEMS = [
 ];
 
 export default function Legend() {
-  const [collapsed, setCollapsed] = useState(getStoredLegendCollapsed);
+  const isMobile = useIsMobile();
+  // Default to collapsed on mobile so the legend doesn't cover the graph on a
+  // small screen, but honor an explicit preference once the user sets one.
+  const [collapsed, setCollapsed] = useState(() =>
+    hasStoredLegendPreference() ? getStoredLegendCollapsed() : isMobile,
+  );
 
   const toggle = () => {
     const next = !collapsed;
