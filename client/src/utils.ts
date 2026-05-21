@@ -1,12 +1,7 @@
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
-import type { GraphNode, PRNode, PRStatusFilter } from "./types";
-import {
-  LOOKBACK_DAYS_KEY,
-  DEFAULT_LOOKBACK_DAYS,
-  STATUS_FILTER_KEY,
-  AUTHOR_FILTER_KEY_PREFIX,
-} from "./constants";
+import type { GraphNode, PRNode } from "./types";
+import { LOOKBACK_DAYS_KEY, DEFAULT_LOOKBACK_DAYS } from "./constants";
 
 export function isPR(d: GraphNode): d is PRNode {
   return d.type === "pr";
@@ -64,53 +59,6 @@ export function getStoredLookbackDays(): number {
     if (!isNaN(parsed) && parsed > 0) return parsed;
   }
   return DEFAULT_LOOKBACK_DAYS;
-}
-
-export function getStoredStatusFilter(): PRStatusFilter {
-  try {
-    const stored = localStorage.getItem(STATUS_FILTER_KEY);
-    if (stored === "all" || stored === "ready" || stored === "draft") {
-      return stored;
-    }
-  } catch {
-    // localStorage unavailable (e.g. private mode).
-  }
-  return "all";
-}
-
-export function setStoredStatusFilter(value: PRStatusFilter): void {
-  try {
-    localStorage.setItem(STATUS_FILTER_KEY, value);
-  } catch {
-    // localStorage unavailable; the preference just won't persist.
-  }
-}
-
-// Author selections are scoped to a repository because logins differ between
-// repos; reusing one repo's authors elsewhere would filter out every PR.
-export function getStoredAuthorFilter(owner: string, repo: string): string[] {
-  try {
-    const stored = localStorage.getItem(`${AUTHOR_FILTER_KEY_PREFIX}${owner}/${repo}`);
-    if (stored === null) return [];
-    const parsed = JSON.parse(stored);
-    if (Array.isArray(parsed) && parsed.every((v) => typeof v === "string")) {
-      return parsed;
-    }
-  } catch {
-    // Missing, malformed, or localStorage unavailable.
-  }
-  return [];
-}
-
-export function setStoredAuthorFilter(owner: string, repo: string, authors: string[]): void {
-  try {
-    localStorage.setItem(
-      `${AUTHOR_FILTER_KEY_PREFIX}${owner}/${repo}`,
-      JSON.stringify(authors),
-    );
-  } catch {
-    // localStorage unavailable; the preference just won't persist.
-  }
 }
 
 export type DateRange = [Dayjs, Dayjs];

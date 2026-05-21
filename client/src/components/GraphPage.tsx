@@ -1,19 +1,12 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
-import { useParams, Link, Navigate } from "react-router-dom";
+import { useParams, Link, Navigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DatePicker, Dropdown } from "antd";
 import dayjs from "dayjs";
 import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, fetchBehindByCounts, buildDependencyGraph } from "../api";
 import type { GraphQLPullRequest, Contributor, Orientation, PRStatusFilter } from "../types";
 import { LOOKBACK_DAYS_KEY } from "../constants";
-import {
-  getStoredLookbackDays,
-  buildDefaultRange,
-  getStoredStatusFilter,
-  setStoredStatusFilter,
-  getStoredAuthorFilter,
-  setStoredAuthorFilter,
-} from "../utils";
+import { getStoredLookbackDays, buildDefaultRange } from "../utils";
 import type { DateRange } from "../utils";
 import { useGithubToken } from "../hooks/useGithubToken";
 import GraphView from "./GraphView";
@@ -94,12 +87,45 @@ export default function GraphPage() {
   const { owner, repo } = useParams<{ owner: string; repo: string }>();
   const queryClient = useQueryClient();
   const { token, source } = useGithubToken();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
-  const [authorFilter, setAuthorFilter] = useState<string[]>(() =>
-    owner && repo ? getStoredAuthorFilter(owner, repo) : [],
+
+  // Author and status filters live in the URL query string so they survive a
+  // refresh and a filtered view can be bookmarked or shared.
+  const authorFilter = useMemo(() => searchParams.getAll("author"), [searchParams]);
+  const setAuthorFilter = useCallback(
+    (next: string[]) => {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          params.delete("author");
+          for (const login of next) params.append("author", login);
+          return params;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
   );
-  const [statusFilter, setStatusFilter] =
-    useState<PRStatusFilter>(getStoredStatusFilter);
+
+  const statusParam = searchParams.get("status");
+  const statusFilter: PRStatusFilter =
+    statusParam === "ready" || statusParam === "draft" ? statusParam : "all";
+  const setStatusFilter = useCallback(
+    (next: PRStatusFilter) => {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          if (next === "all") params.delete("status");
+          else params.set("status", next);
+          return params;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
   const [lookbackDays, setLookbackDays] = useState(getStoredLookbackDays);
   const [lookbackInput, setLookbackInput] = useState(String(lookbackDays));
   const [dateRange, setDateRange] = useState<DateRange>(() => buildDefaultRange(lookbackDays));
@@ -114,14 +140,6 @@ export default function GraphPage() {
     }, 500);
     return () => clearTimeout(timer);
   }, [lookbackInput]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    setStoredStatusFilter(statusFilter);
-  }, [statusFilter]);
-
-  useEffect(() => {
-    if (owner && repo) setStoredAuthorFilter(owner, repo, authorFilter);
-  }, [owner, repo, authorFilter]);
 
   const startDate = dateRange[0].toISOString();
   const endDate = dateRange[1].toISOString();

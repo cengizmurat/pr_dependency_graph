@@ -27,10 +27,6 @@ export const COLORS = {
 
 export const LOOKBACK_DAYS_KEY = "pr-graph-lookback-days";
 export const DEFAULT_LOOKBACK_DAYS = 7;
-export const STATUS_FILTER_KEY = "pr-graph-status-filter";
-// Author selections are stored per repository; the repo "owner/name" is
-// appended to this prefix.
-export const AUTHOR_FILTER_KEY_PREFIX = "pr-graph-author-filter:";
 
 // --- PRCard reviewer display ---
 
