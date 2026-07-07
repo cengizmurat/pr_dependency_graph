@@ -131,7 +131,8 @@ export default function GraphPage() {
   );
 
   const tabParam = searchParams.get("tab");
-  const activeTab: PRTab = tabParam === "other" ? "other" : "requested";
+  const activeTab: PRTab =
+    tabParam === "other" || tabParam === "mine" ? tabParam : "requested";
   const setActiveTab = useCallback(
     (next: PRTab) => {
       setSearchParams(
@@ -202,25 +203,44 @@ export default function GraphPage() {
     return counts;
   }, [allPRs]);
 
-  // Split PRs by whether the logged-in user has been requested to review them.
+  // Split PRs into three buckets based on the viewer:
+  //   requested — viewer is a pending reviewer (highest priority; actionable)
+  //   mine       — viewer is the author (and not already in requested)
+  //   other      — everything else
   // While the viewer login is still loading everything falls into "other" so
   // the graph can already render — the split re-runs as soon as it arrives.
-  const { requestedPRs, otherPRs } = useMemo(() => {
+  const { requestedPRs, minePRs, otherPRs } = useMemo(() => {
     if (!viewerLogin) {
-      return { requestedPRs: EMPTY_PRS, otherPRs: allPRs };
+      return {
+        requestedPRs: EMPTY_PRS,
+        minePRs: EMPTY_PRS,
+        otherPRs: allPRs,
+      };
     }
     const requested: GraphQLPullRequest[] = [];
+    const mine: GraphQLPullRequest[] = [];
     const other: GraphQLPullRequest[] = [];
     for (const pr of allPRs) {
       const isRequested = pr.reviewers.some(
         (r) => r.login === viewerLogin && r.state === "REQUESTED",
       );
-      (isRequested ? requested : other).push(pr);
+      if (isRequested) {
+        requested.push(pr);
+      } else if (pr.authorLogin === viewerLogin) {
+        mine.push(pr);
+      } else {
+        other.push(pr);
+      }
     }
-    return { requestedPRs: requested, otherPRs: other };
+    return { requestedPRs: requested, minePRs: mine, otherPRs: other };
   }, [allPRs, viewerLogin]);
 
-  const tabFilteredPRs = activeTab === "requested" ? requestedPRs : otherPRs;
+  const tabFilteredPRs =
+    activeTab === "requested"
+      ? requestedPRs
+      : activeTab === "mine"
+        ? minePRs
+        : otherPRs;
 
   const data = useMemo(() => {
     if (tabFilteredPRs.length === 0 || !owner || !repo) return null;
@@ -372,6 +392,7 @@ export default function GraphPage() {
           activeTab={activeTab}
           onChange={setActiveTab}
           requestedCount={requestedPRs.length}
+          mineCount={minePRs.length}
           otherCount={otherPRs.length}
           countsPending={!viewerLogin}
         />
@@ -389,7 +410,9 @@ export default function GraphPage() {
             <p style={styles.status}>
               {activeTab === "requested"
                 ? "No pull requests are waiting for your review."
-                : "No pull requests to show."}
+                : activeTab === "mine"
+                  ? "You don't have any open pull requests."
+                  : "No pull requests to show."}
             </p>
             {activeTab === "requested" && otherPRs.length > 0 && (
               <button
@@ -712,18 +735,21 @@ function PRTabsBar({
   activeTab,
   onChange,
   requestedCount,
+  mineCount,
   otherCount,
   countsPending,
 }: {
   activeTab: PRTab;
   onChange: (next: PRTab) => void;
   requestedCount: number;
+  mineCount: number;
   otherCount: number;
   countsPending: boolean;
 }) {
   const tabs: { value: PRTab; label: string; count: number }[] = [
-    { value: "requested", label: "Requested my review", count: requestedCount },
-    { value: "other", label: "Other PRs", count: otherCount },
+    { value: "requested", label: "Requested reviews", count: requestedCount },
+    { value: "mine", label: "My PRs", count: mineCount },
+    { value: "other", label: "Others", count: otherCount },
   ];
 
   return (
