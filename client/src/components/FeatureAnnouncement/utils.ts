@@ -19,7 +19,7 @@ export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
     version: 4,
     title: "Focus on PRs waiting for your review",
     description:
-      "The graph is now split into two tabs: pull requests that have requested your review, and everything else. The active tab is saved in the URL so you can bookmark or share the view.",
+      "The graph is now split into two tabs: pull requests that have requested your review, and everything else.",
     date: "2026-07-07",
   },
   {
