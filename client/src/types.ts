@@ -152,6 +152,8 @@ export interface EdgeFlags {
 
 export type PRStatusFilter = "all" | "ready" | "draft";
 
+export type PRTab = "requested" | "other";
+
 export interface MergeStatus {
   hasConflict: boolean;
   isMergeable: boolean;

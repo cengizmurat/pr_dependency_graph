@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DatePicker, Dropdown } from "antd";
 import dayjs from "dayjs";
 import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, fetchBehindByCounts, buildDependencyGraph } from "../api";
-import type { GraphQLPullRequest, Contributor, Orientation, PRStatusFilter } from "../types";
+import type { GraphQLPullRequest, Contributor, Orientation, PRStatusFilter, PRTab } from "../types";
 import { LOOKBACK_DAYS_KEY } from "../constants";
 import { getStoredLookbackDays, buildDefaultRange } from "../utils";
 import type { DateRange } from "../utils";
@@ -130,6 +130,23 @@ export default function GraphPage() {
     [setSearchParams],
   );
 
+  const tabParam = searchParams.get("tab");
+  const activeTab: PRTab = tabParam === "other" ? "other" : "requested";
+  const setActiveTab = useCallback(
+    (next: PRTab) => {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          if (next === "requested") params.delete("tab");
+          else params.set("tab", next);
+          return params;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
   const [lookbackDays, setLookbackDays] = useState(getStoredLookbackDays);
   const [lookbackInput, setLookbackInput] = useState(String(lookbackDays));
   const [dateRange, setDateRange] = useState<DateRange>(() => buildDefaultRange(lookbackDays));
@@ -185,9 +202,29 @@ export default function GraphPage() {
     return counts;
   }, [allPRs]);
 
+  // Split PRs by whether the logged-in user has been requested to review them.
+  // While the viewer login is still loading everything falls into "other" so
+  // the graph can already render — the split re-runs as soon as it arrives.
+  const { requestedPRs, otherPRs } = useMemo(() => {
+    if (!viewerLogin) {
+      return { requestedPRs: EMPTY_PRS, otherPRs: allPRs };
+    }
+    const requested: GraphQLPullRequest[] = [];
+    const other: GraphQLPullRequest[] = [];
+    for (const pr of allPRs) {
+      const isRequested = pr.reviewers.some(
+        (r) => r.login === viewerLogin && r.state === "REQUESTED",
+      );
+      (isRequested ? requested : other).push(pr);
+    }
+    return { requestedPRs: requested, otherPRs: other };
+  }, [allPRs, viewerLogin]);
+
+  const tabFilteredPRs = activeTab === "requested" ? requestedPRs : otherPRs;
+
   const data = useMemo(() => {
-    if (allPRs.length === 0 || !owner || !repo) return null;
-    let prs = allPRs;
+    if (tabFilteredPRs.length === 0 || !owner || !repo) return null;
+    let prs = tabFilteredPRs;
     if (authorFilter.length > 0) {
       prs = prs.filter((pr) => authorFilter.includes(pr.authorLogin));
     }
@@ -208,7 +245,7 @@ export default function GraphPage() {
       }
     }
     return graph;
-  }, [allPRs, owner, repo, viewerLogin, contributors, authorFilter, statusFilter, behindByData]);
+  }, [tabFilteredPRs, owner, repo, viewerLogin, contributors, authorFilter, statusFilter, behindByData]);
 
   const error = prError ?? null;
 
@@ -330,11 +367,38 @@ export default function GraphPage() {
         </div>
       </header>
 
+      <div style={styles.tabsBar}>
+        <PRTabsBar
+          activeTab={activeTab}
+          onChange={setActiveTab}
+          requestedCount={requestedPRs.length}
+          otherCount={otherPRs.length}
+          countsPending={!viewerLogin}
+        />
+      </div>
+
       <div style={styles.content}>
         {isLoading && (
           <div style={styles.statusContainer}>
             <Spinner />
             <p style={styles.status}>Loading pull requests...</p>
+          </div>
+        )}
+        {!isLoading && !error && !data && !!viewerLogin && (
+          <div style={styles.statusContainer}>
+            <p style={styles.status}>
+              {activeTab === "requested"
+                ? "No pull requests are waiting for your review."
+                : "No pull requests to show."}
+            </p>
+            {activeTab === "requested" && otherPRs.length > 0 && (
+              <button
+                style={styles.retryBtn}
+                onClick={() => setActiveTab("other")}
+              >
+                View other PRs ({otherPRs.length})
+              </button>
+            )}
           </div>
         )}
         {error && (
@@ -640,6 +704,55 @@ function StatusDropdown({
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function PRTabsBar({
+  activeTab,
+  onChange,
+  requestedCount,
+  otherCount,
+  countsPending,
+}: {
+  activeTab: PRTab;
+  onChange: (next: PRTab) => void;
+  requestedCount: number;
+  otherCount: number;
+  countsPending: boolean;
+}) {
+  const tabs: { value: PRTab; label: string; count: number }[] = [
+    { value: "requested", label: "Requested my review", count: requestedCount },
+    { value: "other", label: "Other PRs", count: otherCount },
+  ];
+
+  return (
+    <div style={styles.tabsRow} role="tablist">
+      {tabs.map((tab) => {
+        const isActive = tab.value === activeTab;
+        return (
+          <button
+            key={tab.value}
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => onChange(tab.value)}
+            style={{
+              ...styles.tabButton,
+              ...(isActive ? styles.tabButtonActive : {}),
+            }}
+          >
+            <span>{tab.label}</span>
+            <span
+              style={{
+                ...styles.tabCount,
+                ...(isActive ? styles.tabCountActive : {}),
+              }}
+            >
+              {countsPending ? "-" : tab.count}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
