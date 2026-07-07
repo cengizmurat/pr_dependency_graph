@@ -221,10 +221,13 @@ export default function GraphPage() {
     const mine: GraphQLPullRequest[] = [];
     const other: GraphQLPullRequest[] = [];
     for (const pr of allPRs) {
-      const isRequested = pr.reviewers.some(
-        (r) => r.login === viewerLogin && r.state === "REQUESTED",
-      );
-      if (isRequested) {
+      // Include the PR under "Requested reviews" whenever the viewer appears
+      // in the reviewers list — pending, commented, approved, changes
+      // requested, or dismissed. After approving, GitHub drops the viewer
+      // from reviewRequests but keeps them in latestReviews, so a state-only
+      // check would lose PRs the viewer has already touched.
+      const isReviewer = pr.reviewers.some((r) => r.login === viewerLogin);
+      if (isReviewer) {
         requested.push(pr);
       } else if (pr.authorLogin === viewerLogin) {
         mine.push(pr);
