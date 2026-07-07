@@ -228,52 +228,19 @@ export default function GraphView({ data, orientation, token }: Props) {
           >
             <path d="M0,-5L10,0L0,5" fill={COLORS.edge} />
           </marker>
-          <marker
-            id="arrowhead-approved"
-            viewBox="0 -5 10 10"
-            refX={10}
-            refY={0}
-            markerWidth={8}
-            markerHeight={8}
-            orient="auto"
-          >
-            <path d="M0,-5L10,0L0,5" fill={COLORS.ready} />
-          </marker>
-          <marker
-            id="arrowhead-changes-requested"
-            viewBox="0 -5 10 10"
-            refX={10}
-            refY={0}
-            markerWidth={8}
-            markerHeight={8}
-            orient="auto"
-          >
-            <path d="M0,-5L10,0L0,5" fill={COLORS.conflict} />
-          </marker>
         </defs>
 
         <g ref={gRef}>
-          {allEdges.map((e, i) => {
-            let edgeColor = COLORS.edge;
-            let marker = "url(#arrowhead)";
-            if (e.reviewStatus === "changes_requested") {
-              edgeColor = COLORS.conflict;
-              marker = "url(#arrowhead-changes-requested)";
-            } else if (e.reviewStatus === "approved") {
-              edgeColor = COLORS.ready;
-              marker = "url(#arrowhead-approved)";
-            }
-            return (
-              <path
-                key={i}
-                d={edgePath(e, orientation)}
-                fill="none"
-                stroke={edgeColor}
-                strokeWidth={2}
-                markerEnd={marker}
-              />
-            );
-          })}
+          {allEdges.map((e, i) => (
+            <path
+              key={i}
+              d={edgePath(e, orientation)}
+              fill="none"
+              stroke={COLORS.edge}
+              strokeWidth={2}
+              markerEnd="url(#arrowhead)"
+            />
+          ))}
 
           {allNodes.map((n) => {
             const w = nodeWidth(n.data);

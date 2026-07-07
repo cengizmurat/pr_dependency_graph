@@ -8,10 +8,11 @@ import {
 import { useIsMobile } from "../hooks/useIsMobile";
 import { styles } from "./Legend.styles";
 
-const ARROW_ITEMS = [
-  { color: COLORS.ready, id: "legend-approved", label: "Approved" },
-  { color: COLORS.conflict, id: "legend-changes", label: "Changes requested" },
-  { color: COLORS.edge, id: "legend-pending", label: "Pending review" },
+const REVIEW_OUTLINE_ITEMS = [
+  { color: COLORS.conflict, label: "Changes requested" },
+  { color: COLORS.ready, label: "Approved" },
+  { color: COLORS.reviewCommented, label: "Commented" },
+  { color: COLORS.reviewRequested, label: "Review requested" },
 ];
 
 export default function Legend() {
@@ -80,33 +81,17 @@ export default function Legend() {
         />
         <span style={styles.label}>Draft</span>
       </div>
-      <div style={{ ...styles.section, marginTop: 6 }}>Arrows</div>
-      {ARROW_ITEMS.map(({ color, id, label }) => (
-        <div key={id} style={styles.row}>
-          <svg width="28" height="12" viewBox="0 0 28 12">
-            <defs>
-              <marker
-                id={id}
-                viewBox="0 -4 8 8"
-                refX="0"
-                refY="0"
-                markerWidth="6"
-                markerHeight="6"
-                orient="auto"
-              >
-                <path d="M8,-4L0,0L8,4" fill={color} />
-              </marker>
-            </defs>
-            <line
-              x1="6"
-              y1="6"
-              x2="28"
-              y2="6"
-              stroke={color}
-              strokeWidth="2"
-              markerStart={`url(#${id})`}
-            />
-          </svg>
+      <div style={{ ...styles.section, marginTop: 6 }}>Review outline</div>
+      {REVIEW_OUTLINE_ITEMS.map(({ color, label }) => (
+        <div key={label} style={styles.row}>
+          <span
+            style={{
+              ...styles.nodeChip,
+              borderColor: color,
+              borderWidth: 3,
+              background: "transparent",
+            }}
+          />
           <span style={styles.label}>{label}</span>
         </div>
       ))}
