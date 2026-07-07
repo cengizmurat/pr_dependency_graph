@@ -21,6 +21,8 @@ export const COLORS = {
   conflict: "var(--color-conflict)",
   hover: "var(--color-hover)",
   behind: "var(--color-behind)",
+  reviewRequested: "var(--color-review-requested)",
+  reviewCommented: "var(--color-review-commented)",
 };
 
 // --- GraphPage settings ---

@@ -15,6 +15,8 @@ import {
   edgePath,
   strokeColor,
   bgColor,
+  reviewOutlineKind,
+  REVIEW_OUTLINE_COLOR,
 } from "../graphLayout";
 import PRCard from "./PRCard";
 import BranchCard from "./BranchCard";
@@ -277,13 +279,14 @@ export default function GraphView({ data, orientation, token }: Props) {
             const w = nodeWidth(n.data);
             const h = nodeHeight(n.data);
             const isHovered = hoveredId === n.data.id;
-            const stroke = isHovered ? COLORS.hover : strokeColor(n.data);
-            const needsAttention =
-              isPR(n.data) &&
-              !!data.viewerLogin &&
-              n.data.reviewers.some(
-                (r) => r.login === data.viewerLogin && r.state === "REQUESTED",
-              );
+            const outlineKind = isPR(n.data)
+              ? reviewOutlineKind(n.data, data.viewerLogin)
+              : null;
+            const stroke = isHovered
+              ? COLORS.hover
+              : outlineKind
+                ? REVIEW_OUTLINE_COLOR[outlineKind]
+                : strokeColor(n.data);
 
             return (
               <g
@@ -304,7 +307,7 @@ export default function GraphView({ data, orientation, token }: Props) {
                   ry={8}
                   fill={bgColor(n.data)}
                   stroke={stroke}
-                  strokeWidth={needsAttention ? 5 : 1.5}
+                  strokeWidth={outlineKind ? 5 : 1.5}
                 />
                 <foreignObject
                   x={-w / 2}

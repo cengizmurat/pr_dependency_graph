@@ -1,4 +1,4 @@
-import type { GraphData, GraphNode, PRNode, PRLabel, Orientation, LayoutNode, FlatEdge, EdgeFlags } from "./types";
+import type { GraphData, GraphNode, PRNode, PRLabel, Orientation, LayoutNode, FlatEdge, EdgeFlags, ReviewState } from "./types";
 import { PR_WIDTH, PR_HEIGHT, BRANCH_WIDTH, BRANCH_HEIGHT, SPACING, COLORS } from "./constants";
 import { isPR } from "./utils";
 
@@ -191,4 +191,78 @@ export function strokeColor(d: GraphNode): string {
 export function bgColor(d: GraphNode): string {
   if (!isPR(d)) return COLORS.branchBg;
   return d.isDraft ? COLORS.draftBg : COLORS.readyBg;
+}
+
+// Kinds of review-state highlight for a PR node's outer border, ordered by the
+// priority used when a PR carries multiple relevant states: red > green > gray
+// > yellow.
+export type ReviewOutlineKind =
+  | "changes_requested"
+  | "approved"
+  | "commented"
+  | "requested";
+
+const REVIEW_OUTLINE_PRIORITY: ReviewOutlineKind[] = [
+  "changes_requested",
+  "approved",
+  "commented",
+  "requested",
+];
+
+export const REVIEW_OUTLINE_COLOR: Record<ReviewOutlineKind, string> = {
+  changes_requested: COLORS.conflict,
+  approved: COLORS.ready,
+  commented: COLORS.reviewCommented,
+  requested: COLORS.reviewRequested,
+};
+
+function reviewStateToKind(state: ReviewState): ReviewOutlineKind | null {
+  switch (state) {
+    case "CHANGES_REQUESTED":
+      return "changes_requested";
+    case "APPROVED":
+      return "approved";
+    case "COMMENTED":
+    case "DISMISSED":
+      return "commented";
+    case "REQUESTED":
+      return "requested";
+    default:
+      return null;
+  }
+}
+
+function pickHighestKind(
+  kinds: (ReviewOutlineKind | null)[],
+): ReviewOutlineKind | null {
+  const seen = new Set(kinds.filter((k): k is ReviewOutlineKind => k !== null));
+  for (const k of REVIEW_OUTLINE_PRIORITY) {
+    if (seen.has(k)) return k;
+  }
+  return null;
+}
+
+// Which review-state color (if any) should highlight the outer border of this
+// PR node for the current viewer.
+//   - If the viewer is a reviewer, use their own review state.
+//   - If the viewer is only the author, aggregate across all reviewers.
+//   - Otherwise no highlight.
+// When multiple states apply, resolve by REVIEW_OUTLINE_PRIORITY.
+export function reviewOutlineKind(
+  pr: PRNode,
+  viewerLogin: string | undefined,
+): ReviewOutlineKind | null {
+  if (!viewerLogin) return null;
+
+  const viewerKinds = pr.reviewers
+    .filter((r) => r.login === viewerLogin)
+    .map((r) => reviewStateToKind(r.state));
+  if (viewerKinds.length > 0) return pickHighestKind(viewerKinds);
+
+  if (pr.author === viewerLogin) {
+    const allKinds = pr.reviewers.map((r) => reviewStateToKind(r.state));
+    return pickHighestKind(allKinds);
+  }
+
+  return null;
 }
