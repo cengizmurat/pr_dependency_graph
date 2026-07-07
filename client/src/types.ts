@@ -152,7 +152,14 @@ export interface EdgeFlags {
 
 export type PRStatusFilter = "all" | "ready" | "draft";
 
-export type PRTab = "requested" | "mine" | "other";
+export const REVIEW_STATE_FILTER_VALUES = [
+  "REQUESTED",
+  "APPROVED",
+  "CHANGES_REQUESTED",
+  "COMMENTED",
+  "DISMISSED",
+] as const;
+export type ReviewStateFilter = (typeof REVIEW_STATE_FILTER_VALUES)[number];
 
 export interface MergeStatus {
   hasConflict: boolean;

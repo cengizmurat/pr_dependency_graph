@@ -1,9 +1,5 @@
 export const styles: Record<string, React.CSSProperties> = {
   container: {
-    position: "absolute",
-    top: 12,
-    left: 12,
-    zIndex: 10,
     background: "var(--color-card-bg)",
     border: "1px solid var(--color-border-subtle)",
     borderRadius: 8,

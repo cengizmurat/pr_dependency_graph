@@ -21,6 +21,7 @@ import {
 import PRCard from "./PRCard";
 import BranchCard from "./BranchCard";
 import Legend from "./Legend";
+import FilterShortcuts from "./FilterShortcuts";
 
 export type { Orientation };
 
@@ -209,7 +210,21 @@ export default function GraphView({ data, orientation, token }: Props) {
         background: "var(--color-page-bg)",
       }}
     >
-      <Legend />
+      <div
+        style={{
+          position: "absolute",
+          top: 12,
+          left: 12,
+          zIndex: 10,
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 12,
+          pointerEvents: "none",
+        }}
+      >
+        <Legend />
+        <FilterShortcuts viewerLogin={data.viewerLogin} />
+      </div>
       <svg
         ref={svgRef}
         width="100%"
