@@ -1,7 +1,7 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import * as d3 from "d3";
 import { useQueryClient } from "@tanstack/react-query";
-import type { GraphData, PRNode, Orientation, EdgeFlags } from "../types";
+import type { GraphData, PRNode, Orientation, EdgeFlags, ReviewStateFilter } from "../types";
 import { mergeAndCascade, updatePRBranch } from "../github";
 import { collectDescendantPRs, isPR } from "../utils";
 import { PR_WIDTH, SPACING, COLORS } from "../constants";
@@ -21,6 +21,7 @@ import {
 import PRCard from "./PRCard";
 import BranchCard from "./BranchCard";
 import Legend from "./Legend";
+import FilterShortcuts from "./FilterShortcuts";
 
 export type { Orientation };
 
@@ -28,9 +29,21 @@ interface Props {
   data: GraphData;
   orientation: Orientation;
   token: string;
+  authorFilter: string[];
+  onAuthorFilterChange: (next: string[]) => void;
+  reviewStateFilter: ReviewStateFilter[];
+  onReviewStateFilterChange: (next: ReviewStateFilter[]) => void;
 }
 
-export default function GraphView({ data, orientation, token }: Props) {
+export default function GraphView({
+  data,
+  orientation,
+  token,
+  authorFilter,
+  onAuthorFilterChange,
+  reviewStateFilter,
+  onReviewStateFilterChange,
+}: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const gRef = useRef<SVGGElement>(null);
   const queryClient = useQueryClient();
@@ -209,7 +222,27 @@ export default function GraphView({ data, orientation, token }: Props) {
         background: "var(--color-page-bg)",
       }}
     >
-      <Legend />
+      <div
+        style={{
+          position: "absolute",
+          top: 12,
+          left: 12,
+          zIndex: 10,
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 12,
+          pointerEvents: "none",
+        }}
+      >
+        <Legend />
+        <FilterShortcuts
+          viewerLogin={data.viewerLogin}
+          authorFilter={authorFilter}
+          onAuthorFilterChange={onAuthorFilterChange}
+          reviewStateFilter={reviewStateFilter}
+          onReviewStateFilterChange={onReviewStateFilterChange}
+        />
+      </div>
       <svg
         ref={svgRef}
         width="100%"

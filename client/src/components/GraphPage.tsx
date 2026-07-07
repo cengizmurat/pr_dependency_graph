@@ -4,7 +4,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DatePicker, Dropdown } from "antd";
 import dayjs from "dayjs";
 import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, fetchBehindByCounts, buildDependencyGraph } from "../api";
-import type { GraphQLPullRequest, Contributor, Orientation, PRStatusFilter, PRTab } from "../types";
+import type { GraphQLPullRequest, Contributor, Orientation, PRStatusFilter, ReviewStateFilter } from "../types";
+import { REVIEW_STATE_FILTER_VALUES } from "../types";
 import { LOOKBACK_DAYS_KEY } from "../constants";
 import { getStoredLookbackDays, buildDefaultRange } from "../utils";
 import type { DateRange } from "../utils";
@@ -130,16 +131,20 @@ export default function GraphPage() {
     [setSearchParams],
   );
 
-  const tabParam = searchParams.get("tab");
-  const activeTab: PRTab =
-    tabParam === "other" || tabParam === "mine" ? tabParam : "requested";
-  const setActiveTab = useCallback(
-    (next: PRTab) => {
+  const reviewStateFilter = useMemo<ReviewStateFilter[]>(() => {
+    const allowed = new Set<string>(REVIEW_STATE_FILTER_VALUES);
+    return searchParams
+      .getAll("reviewState")
+      .map((v) => v.toUpperCase())
+      .filter((v): v is ReviewStateFilter => allowed.has(v));
+  }, [searchParams]);
+  const setReviewStateFilter = useCallback(
+    (next: ReviewStateFilter[]) => {
       setSearchParams(
         (prev) => {
           const params = new URLSearchParams(prev);
-          if (next === "requested") params.delete("tab");
-          else params.set("tab", next);
+          params.delete("reviewState");
+          for (const s of next) params.append("reviewState", s);
           return params;
         },
         { replace: true },
@@ -203,51 +208,9 @@ export default function GraphPage() {
     return counts;
   }, [allPRs]);
 
-  // Split PRs into three buckets based on the viewer:
-  //   requested — viewer is a pending reviewer (highest priority; actionable)
-  //   mine       — viewer is the author (and not already in requested)
-  //   other      — everything else
-  // While the viewer login is still loading everything falls into "other" so
-  // the graph can already render — the split re-runs as soon as it arrives.
-  const { requestedPRs, minePRs, otherPRs } = useMemo(() => {
-    if (!viewerLogin) {
-      return {
-        requestedPRs: EMPTY_PRS,
-        minePRs: EMPTY_PRS,
-        otherPRs: allPRs,
-      };
-    }
-    const requested: GraphQLPullRequest[] = [];
-    const mine: GraphQLPullRequest[] = [];
-    const other: GraphQLPullRequest[] = [];
-    for (const pr of allPRs) {
-      // Include the PR under "Requested reviews" whenever the viewer appears
-      // in the reviewers list — pending, commented, approved, changes
-      // requested, or dismissed. After approving, GitHub drops the viewer
-      // from reviewRequests but keeps them in latestReviews, so a state-only
-      // check would lose PRs the viewer has already touched.
-      const isReviewer = pr.reviewers.some((r) => r.login === viewerLogin);
-      if (isReviewer) {
-        requested.push(pr);
-      } else if (pr.authorLogin === viewerLogin) {
-        mine.push(pr);
-      } else {
-        other.push(pr);
-      }
-    }
-    return { requestedPRs: requested, minePRs: mine, otherPRs: other };
-  }, [allPRs, viewerLogin]);
-
-  const tabFilteredPRs =
-    activeTab === "requested"
-      ? requestedPRs
-      : activeTab === "mine"
-        ? minePRs
-        : otherPRs;
-
   const data = useMemo(() => {
-    if (tabFilteredPRs.length === 0 || !owner || !repo) return null;
-    let prs = tabFilteredPRs;
+    if (allPRs.length === 0 || !owner || !repo) return null;
+    let prs = allPRs;
     if (authorFilter.length > 0) {
       prs = prs.filter((pr) => authorFilter.includes(pr.authorLogin));
     }
@@ -256,6 +219,18 @@ export default function GraphPage() {
     } else if (statusFilter === "draft") {
       prs = prs.filter((pr) => pr.isDraft);
     }
+    // Reviewer-state filter: keep PRs where the viewer appears in the reviewer
+    // list with one of the selected states. Skipped until viewerLogin loads so
+    // it doesn't briefly wipe the graph out on first paint.
+    if (reviewStateFilter.length > 0 && viewerLogin) {
+      const wanted = new Set<string>(reviewStateFilter);
+      prs = prs.filter((pr) =>
+        pr.reviewers.some(
+          (r) => r.login === viewerLogin && wanted.has(r.state),
+        ),
+      );
+    }
+    if (prs.length === 0) return null;
     const graph = buildDependencyGraph(prs, owner, repo);
     if (viewerLogin) graph.viewerLogin = viewerLogin;
     if (contributors) graph.contributors = contributors;
@@ -268,7 +243,7 @@ export default function GraphPage() {
       }
     }
     return graph;
-  }, [tabFilteredPRs, owner, repo, viewerLogin, contributors, authorFilter, statusFilter, behindByData]);
+  }, [allPRs, owner, repo, viewerLogin, contributors, authorFilter, statusFilter, reviewStateFilter, behindByData]);
 
   const error = prError ?? null;
 
@@ -314,6 +289,12 @@ export default function GraphPage() {
           isMobile={isMobile}
         />
         <StatusDropdown selected={statusFilter} onChange={setStatusFilter} isMobile={isMobile} />
+        <ReviewStateDropdown
+          selected={reviewStateFilter}
+          onChange={setReviewStateFilter}
+          isMobile={isMobile}
+          viewerLogin={viewerLogin}
+        />
         <div style={isMobile ? styles.iconRowMobile : styles.iconRowDesktop}>
         <Dropdown
           trigger={["click"]}
@@ -390,17 +371,6 @@ export default function GraphPage() {
         </div>
       </header>
 
-      <div style={styles.tabsBar}>
-        <PRTabsBar
-          activeTab={activeTab}
-          onChange={setActiveTab}
-          requestedCount={requestedPRs.length}
-          mineCount={minePRs.length}
-          otherCount={otherPRs.length}
-          countsPending={!viewerLogin}
-        />
-      </div>
-
       <div style={styles.content}>
         {isLoading && (
           <div style={styles.statusContainer}>
@@ -408,23 +378,11 @@ export default function GraphPage() {
             <p style={styles.status}>Loading pull requests...</p>
           </div>
         )}
-        {!isLoading && !error && !data && !!viewerLogin && (
+        {!isLoading && !error && !data && allPRs.length > 0 && (
           <div style={styles.statusContainer}>
             <p style={styles.status}>
-              {activeTab === "requested"
-                ? "No pull requests are waiting for your review."
-                : activeTab === "mine"
-                  ? "You don't have any open pull requests."
-                  : "No pull requests to show."}
+              No pull requests match the active filters.
             </p>
-            {activeTab === "requested" && otherPRs.length > 0 && (
-              <button
-                style={styles.retryBtn}
-                onClick={() => setActiveTab("other")}
-              >
-                View other PRs ({otherPRs.length})
-              </button>
-            )}
           </div>
         )}
         {error && (
@@ -446,7 +404,15 @@ export default function GraphPage() {
         )}
         {data && (
           <>
-            <GraphView data={data} orientation={orientation} token={token} />
+            <GraphView
+              data={data}
+              orientation={orientation}
+              token={token}
+              authorFilter={authorFilter}
+              onAuthorFilterChange={setAuthorFilter}
+              reviewStateFilter={reviewStateFilter}
+              onReviewStateFilterChange={setReviewStateFilter}
+            />
             <FeatureAnnouncementPopup />
           </>
         )}
@@ -734,55 +700,150 @@ function StatusDropdown({
   );
 }
 
-function PRTabsBar({
-  activeTab,
+const REVIEW_STATE_OPTIONS: {
+  value: ReviewStateFilter;
+  label: string;
+  color: string;
+}[] = [
+  { value: "REQUESTED", label: "Review requested", color: "var(--color-review-requested)" },
+  { value: "APPROVED", label: "Approved", color: "var(--color-ready)" },
+  { value: "CHANGES_REQUESTED", label: "Changes requested", color: "var(--color-conflict)" },
+  { value: "COMMENTED", label: "Commented", color: "var(--color-review-commented)" },
+  { value: "DISMISSED", label: "Dismissed", color: "var(--color-review-commented)" },
+];
+
+function ReviewStateDropdown({
+  selected,
   onChange,
-  requestedCount,
-  mineCount,
-  otherCount,
-  countsPending,
+  isMobile,
+  viewerLogin,
 }: {
-  activeTab: PRTab;
-  onChange: (next: PRTab) => void;
-  requestedCount: number;
-  mineCount: number;
-  otherCount: number;
-  countsPending: boolean;
+  selected: ReviewStateFilter[];
+  onChange: (next: ReviewStateFilter[]) => void;
+  isMobile: boolean;
+  viewerLogin: string | undefined;
 }) {
-  const tabs: { value: PRTab; label: string; count: number }[] = [
-    { value: "requested", label: "Requested reviews", count: requestedCount },
-    { value: "mine", label: "My PRs", count: mineCount },
-    { value: "other", label: "Others", count: otherCount },
-  ];
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick, true);
+    return () => document.removeEventListener("mousedown", handleClick, true);
+  }, [open]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Escape") setOpen(false);
+  }, []);
+
+  const toggle = useCallback(
+    (state: ReviewStateFilter) => {
+      onChange(
+        selected.includes(state)
+          ? selected.filter((s) => s !== state)
+          : [...selected, state],
+      );
+    },
+    [selected, onChange],
+  );
+
+  const label =
+    selected.length === 0
+      ? "Any review state"
+      : selected.length === 1
+        ? REVIEW_STATE_OPTIONS.find((o) => o.value === selected[0])?.label ??
+          "Review state"
+        : `${selected.length} review states`;
+
+  const triggerTitle = viewerLogin
+    ? `Filter by your review state on each PR (as @${viewerLogin})`
+    : "Filter by your review state on each PR";
 
   return (
-    <div style={styles.tabsRow} role="tablist">
-      {tabs.map((tab) => {
-        const isActive = tab.value === activeTab;
-        return (
+    <div
+      ref={ref}
+      style={{ ...dropdownStyles.wrapper, ...(isMobile ? dropdownStyles.wrapperMobile : {}) }}
+      onKeyDown={handleKeyDown}
+    >
+      <button
+        style={{ ...dropdownStyles.trigger, ...(isMobile ? dropdownStyles.triggerMobile : {}) }}
+        onClick={() => setOpen((o) => !o)}
+        title={triggerTitle}
+      >
+        <span style={dropdownStyles.triggerLabel}>
+          <ReviewStateDot />
+          {label}
+        </span>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style={{ marginLeft: 2, flexShrink: 0 }}>
+          <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        </svg>
+      </button>
+      {open && (
+        <div style={{ ...dropdownStyles.menu, ...(isMobile ? dropdownStyles.menuMobile : {}) }}>
           <button
-            key={tab.value}
-            role="tab"
-            aria-selected={isActive}
-            onClick={() => onChange(tab.value)}
+            className="contributor-dropdown-item"
             style={{
-              ...styles.tabButton,
-              ...(isActive ? styles.tabButtonActive : {}),
+              ...dropdownStyles.item,
+              fontWeight: selected.length === 0 ? 600 : 400,
             }}
+            onClick={() => onChange([])}
           >
-            <span>{tab.label}</span>
-            <span
-              style={{
-                ...styles.tabCount,
-                ...(isActive ? styles.tabCountActive : {}),
-              }}
-            >
-              {countsPending ? "-" : tab.count}
-            </span>
+            <ReviewStateDot />
+            <span>Any review state</span>
           </button>
-        );
-      })}
+          <div style={dropdownStyles.divider} />
+          <div style={dropdownStyles.list}>
+            {REVIEW_STATE_OPTIONS.map((opt) => {
+              const isSelected = selected.includes(opt.value);
+              return (
+                <button
+                  key={opt.value}
+                  className="contributor-dropdown-item"
+                  style={{
+                    ...dropdownStyles.item,
+                    fontWeight: isSelected ? 600 : 400,
+                  }}
+                  onClick={() => toggle(opt.value)}
+                >
+                  <ReviewStateDot color={opt.color} />
+                  <span>{opt.label}</span>
+                  {isSelected && (
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--color-ready)" style={{ marginLeft: "auto", flexShrink: 0 }}>
+                      <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function ReviewStateDot({ color }: { color?: string }) {
+  if (color) {
+    return (
+      <span
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: color,
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}>
+      <path d="M11.28 6.78a.75.75 0 0 0-1.06-1.06L7.25 8.69 5.78 7.22a.75.75 0 0 0-1.06 1.06l2 2a.75.75 0 0 0 1.06 0l3.5-3.5Z" />
+      <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0Zm-1.5 0a6.5 6.5 0 1 0-13 0 6.5 6.5 0 0 0 13 0Z" />
+    </svg>
   );
 }
 

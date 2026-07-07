@@ -16,13 +16,6 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
-    version: 4,
-    title: "Focus on PRs waiting for your review",
-    description:
-      "The graph is now split into two tabs: pull requests that have requested your review, and everything else.",
-    date: "2026-07-07",
-  },
-  {
     version: 3,
     title: "Pull requests refresh automatically",
     description:
