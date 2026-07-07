@@ -1,7 +1,7 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import * as d3 from "d3";
 import { useQueryClient } from "@tanstack/react-query";
-import type { GraphData, PRNode, Orientation, EdgeFlags, ReviewStateFilter } from "../types";
+import type { GraphData, PRNode, Orientation, EdgeFlags } from "../types";
 import { mergeAndCascade, updatePRBranch } from "../github";
 import { collectDescendantPRs, isPR } from "../utils";
 import { PR_WIDTH, SPACING, COLORS } from "../constants";
@@ -29,21 +29,9 @@ interface Props {
   data: GraphData;
   orientation: Orientation;
   token: string;
-  authorFilter: string[];
-  onAuthorFilterChange: (next: string[]) => void;
-  reviewStateFilter: ReviewStateFilter[];
-  onReviewStateFilterChange: (next: ReviewStateFilter[]) => void;
 }
 
-export default function GraphView({
-  data,
-  orientation,
-  token,
-  authorFilter,
-  onAuthorFilterChange,
-  reviewStateFilter,
-  onReviewStateFilterChange,
-}: Props) {
+export default function GraphView({ data, orientation, token }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const gRef = useRef<SVGGElement>(null);
   const queryClient = useQueryClient();
@@ -235,13 +223,7 @@ export default function GraphView({
         }}
       >
         <Legend />
-        <FilterShortcuts
-          viewerLogin={data.viewerLogin}
-          authorFilter={authorFilter}
-          onAuthorFilterChange={onAuthorFilterChange}
-          reviewStateFilter={reviewStateFilter}
-          onReviewStateFilterChange={onReviewStateFilterChange}
-        />
+        <FilterShortcuts viewerLogin={data.viewerLogin} />
       </div>
       <svg
         ref={svgRef}

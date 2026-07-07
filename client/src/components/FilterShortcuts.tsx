@@ -1,36 +1,54 @@
-import type { ReviewStateFilter } from "../types";
+import { useSearchParams } from "react-router-dom";
 
 interface Props {
   viewerLogin: string | undefined;
-  authorFilter: string[];
-  onAuthorFilterChange: (next: string[]) => void;
-  reviewStateFilter: ReviewStateFilter[];
-  onReviewStateFilterChange: (next: ReviewStateFilter[]) => void;
 }
 
-// Sits next to the Legend on the graph canvas and offers one-click toggles for
-// the two filters the user reaches for most: "PRs where my review is pending"
-// and "PRs I authored". Each button applies the underlying filter exactly when
-// pressed and clears it when pressed again.
-export default function FilterShortcuts({
-  viewerLogin,
-  authorFilter,
-  onAuthorFilterChange,
-  reviewStateFilter,
-  onReviewStateFilterChange,
-}: Props) {
+// Filter shortcuts next to the Legend. Each button represents a mutually
+// exclusive one-click filter preset. Clicking a shortcut wipes all
+// author/status/reviewState filters first and then applies just its own — the
+// two shortcuts can never be active at the same time, and there is never a
+// leftover filter from a previous selection sneaking in. Clicking an already
+// active shortcut clears back to no filters.
+export default function FilterShortcuts({ viewerLogin }: Props) {
+  const [searchParams, setSearchParams] = useSearchParams();
+
   if (!viewerLogin) return null;
 
-  const requestedActive =
-    reviewStateFilter.length === 1 && reviewStateFilter[0] === "REQUESTED";
-  const mineActive =
-    authorFilter.length === 1 && authorFilter[0] === viewerLogin;
+  const authorParams = searchParams.getAll("author");
+  const reviewStateParams = searchParams
+    .getAll("reviewState")
+    .map((v) => v.toUpperCase());
+  const statusParam = searchParams.get("status");
+  const hasStatus = statusParam === "ready" || statusParam === "draft";
 
-  const toggleRequested = () => {
-    onReviewStateFilterChange(requestedActive ? [] : ["REQUESTED"]);
-  };
-  const toggleMine = () => {
-    onAuthorFilterChange(mineActive ? [] : [viewerLogin]);
+  const requestedActive =
+    !hasStatus &&
+    authorParams.length === 0 &&
+    reviewStateParams.length === 1 &&
+    reviewStateParams[0] === "REQUESTED";
+  const mineActive =
+    !hasStatus &&
+    reviewStateParams.length === 0 &&
+    authorParams.length === 1 &&
+    authorParams[0] === viewerLogin;
+
+  const apply = (kind: "requested" | "mine") => {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        params.delete("author");
+        params.delete("status");
+        params.delete("reviewState");
+        if (kind === "requested" && !requestedActive) {
+          params.append("reviewState", "REQUESTED");
+        } else if (kind === "mine" && !mineActive) {
+          params.append("author", viewerLogin);
+        }
+        return params;
+      },
+      { replace: true },
+    );
   };
 
   return (
@@ -38,7 +56,7 @@ export default function FilterShortcuts({
       <div style={styles.section}>Shortcuts</div>
       <button
         type="button"
-        onClick={toggleRequested}
+        onClick={() => apply("requested")}
         aria-pressed={requestedActive}
         style={{
           ...styles.button,
@@ -49,7 +67,7 @@ export default function FilterShortcuts({
       </button>
       <button
         type="button"
-        onClick={toggleMine}
+        onClick={() => apply("mine")}
         aria-pressed={mineActive}
         style={{
           ...styles.button,

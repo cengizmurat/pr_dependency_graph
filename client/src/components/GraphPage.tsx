@@ -404,15 +404,7 @@ export default function GraphPage() {
         )}
         {data && (
           <>
-            <GraphView
-              data={data}
-              orientation={orientation}
-              token={token}
-              authorFilter={authorFilter}
-              onAuthorFilterChange={setAuthorFilter}
-              reviewStateFilter={reviewStateFilter}
-              onReviewStateFilterChange={setReviewStateFilter}
-            />
+            <GraphView data={data} orientation={orientation} token={token} />
             <FeatureAnnouncementPopup />
           </>
         )}
