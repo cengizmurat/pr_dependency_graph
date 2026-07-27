@@ -1,81 +1,51 @@
 import { useSearchParams } from "react-router-dom";
+import {
+  SHORTCUT_KEYS,
+  SHORTCUT_LABELS,
+  applyShortcut,
+  getActiveShortcut,
+} from "../filterShortcuts";
 
 interface Props {
   viewerLogin: string | undefined;
 }
 
-// Filter shortcuts next to the Legend. Each button represents a mutually
-// exclusive one-click filter preset. Clicking a shortcut wipes all
-// author/status/reviewState filters first and then applies just its own — the
-// two shortcuts can never be active at the same time, and there is never a
-// leftover filter from a previous selection sneaking in. Clicking an already
-// active shortcut clears back to no filters.
+// Filter shortcuts next to the Legend. Each button is a mutually exclusive
+// one-click filter preset: clicking one clears the values the previously
+// active shortcut had put in the URL and applies its own, while filters the
+// user picked by hand in the dropdowns stay exactly as they are. The URL
+// records which shortcut is active in the `shortcut` param, which is what
+// makes that distinction possible. Clicking the active shortcut clears it.
 export default function FilterShortcuts({ viewerLogin }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
 
   if (!viewerLogin) return null;
 
-  const authorParams = searchParams.getAll("author");
-  const reviewStateParams = searchParams
-    .getAll("reviewState")
-    .map((v) => v.toUpperCase());
-  const statusParam = searchParams.get("status");
-  const hasStatus = statusParam === "ready" || statusParam === "draft";
+  const active = getActiveShortcut(searchParams, viewerLogin);
 
-  const requestedActive =
-    !hasStatus &&
-    authorParams.length === 0 &&
-    reviewStateParams.length === 1 &&
-    reviewStateParams[0] === "REQUESTED";
-  const mineActive =
-    !hasStatus &&
-    reviewStateParams.length === 0 &&
-    authorParams.length === 1 &&
-    authorParams[0] === viewerLogin;
-
-  const apply = (kind: "requested" | "mine") => {
-    setSearchParams(
-      (prev) => {
-        const params = new URLSearchParams(prev);
-        params.delete("author");
-        params.delete("status");
-        params.delete("reviewState");
-        if (kind === "requested" && !requestedActive) {
-          params.append("reviewState", "REQUESTED");
-        } else if (kind === "mine" && !mineActive) {
-          params.append("author", viewerLogin);
-        }
-        return params;
-      },
-      { replace: true },
-    );
+  const apply = (key: (typeof SHORTCUT_KEYS)[number]) => {
+    setSearchParams((prev) => applyShortcut(prev, key, viewerLogin), {
+      replace: true,
+    });
   };
 
   return (
     <div style={styles.container}>
       <div style={styles.section}>Shortcuts</div>
-      <button
-        type="button"
-        onClick={() => apply("requested")}
-        aria-pressed={requestedActive}
-        style={{
-          ...styles.button,
-          ...(requestedActive ? styles.buttonActive : {}),
-        }}
-      >
-        Requested reviews
-      </button>
-      <button
-        type="button"
-        onClick={() => apply("mine")}
-        aria-pressed={mineActive}
-        style={{
-          ...styles.button,
-          ...(mineActive ? styles.buttonActive : {}),
-        }}
-      >
-        My PRs
-      </button>
+      {SHORTCUT_KEYS.map((key) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => apply(key)}
+          aria-pressed={active === key}
+          style={{
+            ...styles.button,
+            ...(active === key ? styles.buttonActive : {}),
+          }}
+        >
+          {SHORTCUT_LABELS[key]}
+        </button>
+      ))}
     </div>
   );
 }

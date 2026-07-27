@@ -8,6 +8,7 @@ import type { GraphQLPullRequest, Contributor, Orientation, PRStatusFilter, Revi
 import { REVIEW_STATE_FILTER_VALUES } from "../types";
 import { LOOKBACK_DAYS_KEY } from "../constants";
 import { getStoredLookbackDays, buildDefaultRange } from "../utils";
+import { pruneStaleShortcut } from "../filterShortcuts";
 import type { DateRange } from "../utils";
 import { useGithubToken } from "../hooks/useGithubToken";
 import { useIsMobile } from "../hooks/useIsMobile";
@@ -95,8 +96,16 @@ export default function GraphPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
 
+  const { data: viewerLogin } = useQuery({
+    queryKey: ["viewer", token],
+    queryFn: () => fetchViewerLogin(token!),
+    enabled: !!token,
+  });
+
   // Author and status filters live in the URL query string so they survive a
-  // refresh and a filtered view can be bookmarked or shared.
+  // refresh and a filtered view can be bookmarked or shared. Editing one by
+  // hand drops the `shortcut` marker once the filters no longer match the
+  // shortcut it names, so the value counts as manually set from then on.
   const authorFilter = useMemo(() => searchParams.getAll("author"), [searchParams]);
   const setAuthorFilter = useCallback(
     (next: string[]) => {
@@ -105,12 +114,12 @@ export default function GraphPage() {
           const params = new URLSearchParams(prev);
           params.delete("author");
           for (const login of next) params.append("author", login);
-          return params;
+          return pruneStaleShortcut(params, viewerLogin);
         },
         { replace: true },
       );
     },
-    [setSearchParams],
+    [setSearchParams, viewerLogin],
   );
 
   const statusParam = searchParams.get("status");
@@ -123,12 +132,12 @@ export default function GraphPage() {
           const params = new URLSearchParams(prev);
           if (next === "all") params.delete("status");
           else params.set("status", next);
-          return params;
+          return pruneStaleShortcut(params, viewerLogin);
         },
         { replace: true },
       );
     },
-    [setSearchParams],
+    [setSearchParams, viewerLogin],
   );
 
   const reviewStateFilter = useMemo<ReviewStateFilter[]>(() => {
@@ -145,12 +154,12 @@ export default function GraphPage() {
           const params = new URLSearchParams(prev);
           params.delete("reviewState");
           for (const s of next) params.append("reviewState", s);
-          return params;
+          return pruneStaleShortcut(params, viewerLogin);
         },
         { replace: true },
       );
     },
-    [setSearchParams],
+    [setSearchParams, viewerLogin],
   );
 
   const [lookbackDays, setLookbackDays] = useState(getStoredLookbackDays);
@@ -178,12 +187,6 @@ export default function GraphPage() {
     error: prError,
     refetch,
   } = useIncrementalPRs(token, owner, repo, startDate, endDate);
-
-  const { data: viewerLogin } = useQuery({
-    queryKey: ["viewer", token],
-    queryFn: () => fetchViewerLogin(token!),
-    enabled: !!token,
-  });
 
   const { data: contributors } = useQuery({
     queryKey: ["contributors", owner, repo],
