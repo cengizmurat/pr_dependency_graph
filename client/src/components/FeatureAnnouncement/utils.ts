@@ -19,7 +19,7 @@ export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
     version: 6,
     title: "Browse GitHub Actions workflows and run timelines",
     description:
-      "A new tab bar at the top of the page switches between the PR dependency graph and a Workflows view. Pick a workflow to list its recent runs, then pick a run to see a Gantt-style timeline of every job and step, including time spent waiting for a runner.",
+      "A new tab bar at the top of the page switches between the PR dependency graph and a Workflows view. Pick a workflow to browse its recent runs (\"Load more\" fetches older ones), then pick a run to see a Gantt-style timeline. Jobs start collapsed as single bars — queue wait plus run time, colored by outcome — and expand to per-step detail. Matrix jobs and reusable-workflow calls (\" / \" in the job name) are grouped, nested groups included, and in-progress runs update live.",
     date: "2026-07-31",
   },
   {
