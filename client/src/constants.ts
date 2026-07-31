@@ -32,6 +32,13 @@ export const DEFAULT_LOOKBACK_DAYS = 7;
 
 export const LEGEND_COLLAPSED_KEY = "pr-graph-legend-collapsed";
 
+// --- Workflows tab ---
+
+// Batch sizes for the sidebar lists; a "Load more" button fetches the next
+// batch when the repository has more.
+export const WORKFLOWS_PAGE_SIZE = 30;
+export const WORKFLOW_RUNS_PAGE_SIZE = 20;
+
 // --- PRCard reviewer display ---
 
 export const MAX_REVIEWER_AVATARS = 4;
