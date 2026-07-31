@@ -96,6 +96,16 @@ export interface WorkflowRunInfo {
   htmlUrl: string;
 }
 
+export interface WorkflowsPage {
+  workflows: WorkflowInfo[];
+  hasMore: boolean;
+}
+
+export interface WorkflowRunsPage {
+  runs: WorkflowRunInfo[];
+  hasMore: boolean;
+}
+
 export interface WorkflowStep {
   name: string;
   number: number;

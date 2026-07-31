@@ -1,6 +1,6 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
   fetchWorkflows,
   fetchWorkflowRun,
@@ -8,7 +8,7 @@ import {
   fetchWorkflowRuns,
 } from "../api";
 import type { WorkflowInfo, WorkflowJob, WorkflowRunInfo } from "../types";
-import { WORKFLOW_RUNS_COUNT } from "../constants";
+import { WORKFLOWS_PAGE_SIZE, WORKFLOW_RUNS_PAGE_SIZE } from "../constants";
 import { timeAgo } from "../utils";
 import RunTimeline, { formatDuration } from "./RunTimeline";
 import { styles } from "./WorkflowsView.styles";
@@ -18,6 +18,18 @@ import { styles } from "./WorkflowsView.styles";
 // timeline grows live.
 const RUNS_REFRESH_MS = 30_000;
 const ACTIVE_RUN_REFRESH_MS = 10_000;
+
+function dedupeById<T extends { id: number }>(items: T[] | undefined): T[] | undefined {
+  if (!items) return undefined;
+  const seen = new Set<number>();
+  const out: T[] = [];
+  for (const item of items) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    out.push(item);
+  }
+  return out;
+}
 
 function runDurationSeconds(run: WorkflowRunInfo): number {
   const start = Date.parse(run.runStartedAt);
@@ -82,26 +94,50 @@ export default function WorkflowsView({
     [setSearchParams],
   );
 
-  const workflowsQuery = useQuery({
+  const workflowsQuery = useInfiniteQuery({
     queryKey: ["workflows", owner, repo],
-    queryFn: () => fetchWorkflows(token, owner, repo),
+    queryFn: ({ pageParam }) =>
+      fetchWorkflows(token, owner, repo, pageParam, WORKFLOWS_PAGE_SIZE),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, _pages, lastPageParam) =>
+      lastPage.hasMore ? lastPageParam + 1 : undefined,
     staleTime: 5 * 60 * 1000,
   });
 
-  const runsQuery = useQuery({
+  const runsQuery = useInfiniteQuery({
     queryKey: ["workflowRuns", owner, repo, selectedWorkflowId],
-    queryFn: () =>
-      fetchWorkflowRuns(token, owner, repo, selectedWorkflowId!, WORKFLOW_RUNS_COUNT),
+    queryFn: ({ pageParam }) =>
+      fetchWorkflowRuns(
+        token,
+        owner,
+        repo,
+        selectedWorkflowId!,
+        pageParam,
+        WORKFLOW_RUNS_PAGE_SIZE,
+      ),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, _pages, lastPageParam) =>
+      lastPage.hasMore ? lastPageParam + 1 : undefined,
     enabled: selectedWorkflowId !== null,
     refetchInterval: RUNS_REFRESH_MS,
     staleTime: 10_000,
   });
 
-  const workflows = workflowsQuery.data;
+  const workflows = useMemo(
+    () => dedupeById(workflowsQuery.data?.pages.flatMap((p) => p.workflows)),
+    [workflowsQuery.data],
+  );
+  // New runs pushed while paging shift the page boundaries, so the same run
+  // can appear at the tail of one page and the head of the next; keep the
+  // first occurrence.
+  const runs = useMemo(
+    () => dedupeById(runsQuery.data?.pages.flatMap((p) => p.runs)),
+    [runsQuery.data],
+  );
+
   const selectedWorkflow =
     workflows?.find((w) => w.id === selectedWorkflowId) ?? null;
-  const seedRun =
-    runsQuery.data?.find((r) => r.id === selectedRunId) ?? undefined;
+  const seedRun = runs?.find((r) => r.id === selectedRunId) ?? undefined;
 
   return (
     <div style={{ ...styles.container, ...(isMobile ? styles.containerMobile : {}) }}>
@@ -143,10 +179,10 @@ export default function WorkflowsView({
                     </button>
                   </div>
                 )}
-                {runsQuery.data && runsQuery.data.length === 0 && (
+                {runs && runs.length === 0 && (
                   <div style={styles.sidebarMessage}>No runs for this workflow yet.</div>
                 )}
-                {runsQuery.data?.map((run) => (
+                {runs?.map((run) => (
                   <RunListItem
                     key={run.id}
                     run={run}
@@ -154,10 +190,30 @@ export default function WorkflowsView({
                     onSelect={() => selectRun(run.id)}
                   />
                 ))}
+                {runsQuery.hasNextPage && (
+                  <button
+                    className="workflow-run-item"
+                    style={styles.loadMoreRunsBtn}
+                    onClick={() => runsQuery.fetchNextPage()}
+                    disabled={runsQuery.isFetchingNextPage}
+                  >
+                    {runsQuery.isFetchingNextPage ? "Loading…" : "Load more runs"}
+                  </button>
+                )}
               </div>
             )}
           </WorkflowListItem>
         ))}
+        {workflowsQuery.hasNextPage && (
+          <button
+            className="workflow-list-item"
+            style={styles.loadMoreBtn}
+            onClick={() => workflowsQuery.fetchNextPage()}
+            disabled={workflowsQuery.isFetchingNextPage}
+          >
+            {workflowsQuery.isFetchingNextPage ? "Loading…" : "Load more workflows"}
+          </button>
+        )}
       </aside>
 
       <main style={{ ...styles.detail, ...(isMobile ? styles.detailMobile : {}) }}>

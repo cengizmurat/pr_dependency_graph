@@ -8,9 +8,10 @@ import type {
   PRPageResult,
   Contributor,
   UserRepo,
-  WorkflowInfo,
   WorkflowJob,
   WorkflowRunInfo,
+  WorkflowRunsPage,
+  WorkflowsPage,
 } from "./types";
 import { getToken } from "./auth";
 
@@ -634,36 +635,36 @@ function processRawRun(run: RawWorkflowRun): WorkflowRunInfo {
   };
 }
 
+// Both list endpoints report a total_count, so a page knows whether more
+// batches exist without an extra request. The batch-length guard keeps a
+// misreported total from ever promising a next page that would come back
+// empty.
 export async function fetchWorkflows(
   token: string,
   owner: string,
   repo: string,
-): Promise<WorkflowInfo[]> {
-  const workflows: WorkflowInfo[] = [];
-  let page = 1;
+  page: number,
+  perPage: number,
+): Promise<WorkflowsPage> {
+  const data = await fetchRestJson<{
+    total_count?: number;
+    workflows?: RawWorkflow[] | null;
+  }>(
+    token,
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/workflows?per_page=${perPage}&page=${page}`,
+  );
 
-  while (true) {
-    const data = await fetchRestJson<{ workflows?: RawWorkflow[] | null }>(
-      token,
-      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/workflows?per_page=100&page=${page}`,
-    );
-
-    const batch = data.workflows ?? [];
-    for (const w of batch) {
-      workflows.push({
-        id: w.id,
-        name: w.name,
-        path: w.path,
-        state: w.state,
-        htmlUrl: w.html_url,
-      });
-    }
-
-    if (batch.length < 100) break;
-    page++;
-  }
-
-  return workflows;
+  const batch = data.workflows ?? [];
+  return {
+    workflows: batch.map((w) => ({
+      id: w.id,
+      name: w.name,
+      path: w.path,
+      state: w.state,
+      htmlUrl: w.html_url,
+    })),
+    hasMore: batch.length > 0 && page * perPage < (data.total_count ?? 0),
+  };
 }
 
 export async function fetchWorkflowRuns(
@@ -671,14 +672,22 @@ export async function fetchWorkflowRuns(
   owner: string,
   repo: string,
   workflowId: number,
-  count: number,
-): Promise<WorkflowRunInfo[]> {
-  const data = await fetchRestJson<{ workflow_runs?: RawWorkflowRun[] | null }>(
+  page: number,
+  perPage: number,
+): Promise<WorkflowRunsPage> {
+  const data = await fetchRestJson<{
+    total_count?: number;
+    workflow_runs?: RawWorkflowRun[] | null;
+  }>(
     token,
-    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/workflows/${workflowId}/runs?per_page=${count}`,
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/workflows/${workflowId}/runs?per_page=${perPage}&page=${page}`,
   );
 
-  return (data.workflow_runs ?? []).map(processRawRun);
+  const batch = data.workflow_runs ?? [];
+  return {
+    runs: batch.map(processRawRun),
+    hasMore: batch.length > 0 && page * perPage < (data.total_count ?? 0),
+  };
 }
 
 export async function fetchWorkflowRun(

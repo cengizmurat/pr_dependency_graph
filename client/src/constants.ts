@@ -34,8 +34,10 @@ export const LEGEND_COLLAPSED_KEY = "pr-graph-legend-collapsed";
 
 // --- Workflows tab ---
 
-// How many recent runs to list under an expanded workflow.
-export const WORKFLOW_RUNS_COUNT = 20;
+// Batch sizes for the sidebar lists; a "Load more" button fetches the next
+// batch when the repository has more.
+export const WORKFLOWS_PAGE_SIZE = 30;
+export const WORKFLOW_RUNS_PAGE_SIZE = 20;
 
 // --- PRCard reviewer display ---
 
