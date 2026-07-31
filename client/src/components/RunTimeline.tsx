@@ -337,8 +337,8 @@ function buildGroupSummary(base: string, members: TimelineSection[]): SectionSum
 // a group and their labels shrink to the variant.
 const MATRIX_NAME = /^(.*\S) \((.+)\)$/;
 
-// Jobs from a reusable-workflow call are named "caller / job"; the segment
-// before the first " / " is a group by itself, even with a single member.
+// Jobs from a reusable-workflow call are named "caller / job"; two or more
+// jobs sharing the segment before the first " / " form a group.
 function splitSlash(name: string): { base: string; rest: string } | null {
   const idx = name.indexOf(" / ");
   if (idx <= 0) return null;
@@ -351,10 +351,21 @@ function splitSlash(name: string): { base: string; rest: string } | null {
 function buildNodes(jobs: WorkflowJob[], nowMs: number): TopNode[] {
   const nodes: TopNode[] = [];
   const groups = new Map<string, SectionGroup>();
+  const slashCounts = new Map<string, number>();
   const baseCounts = new Map<string, number>();
 
   for (const job of jobs) {
-    if (splitSlash(job.name)) continue;
+    const s = splitSlash(job.name);
+    if (s) slashCounts.set(s.base, (slashCounts.get(s.base) ?? 0) + 1);
+  }
+
+  const slashGrouped = (name: string): boolean => {
+    const s = splitSlash(name);
+    return s !== null && (slashCounts.get(s.base) ?? 0) >= 2;
+  };
+
+  for (const job of jobs) {
+    if (slashGrouped(job.name)) continue;
     const m = MATRIX_NAME.exec(job.name);
     if (m) baseCounts.set(m[1], (baseCounts.get(m[1]) ?? 0) + 1);
   }
@@ -376,9 +387,11 @@ function buildNodes(jobs: WorkflowJob[], nowMs: number): TopNode[] {
     if (!section) continue;
 
     // Members display just their variant / called-job part; tooltips keep the
-    // full name. Grouping is derived from names only — purely visual.
+    // full name. Grouping is derived from names only — purely visual. A lone
+    // job keeps its full name as a standalone row rather than forming a
+    // one-member group.
     const slash = splitSlash(job.name);
-    if (slash) {
+    if (slash && (slashCounts.get(slash.base) ?? 0) >= 2) {
       ensureGroup(`s:${slash.base}`, slash.base).members.push({ ...section, name: slash.rest });
       continue;
     }
