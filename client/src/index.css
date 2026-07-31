@@ -177,6 +177,34 @@ body {
 .gantt-row-hit { fill: transparent; }
 .gantt-row:hover .gantt-row-hit { fill: var(--gantt-row-hover); }
 
+.gantt-toggle { cursor: pointer; outline: none; }
+.gantt-toggle:focus-visible .gantt-toggle-hit,
+.gantt-toggle:focus-visible .gantt-row-hit {
+  stroke: var(--color-link);
+  stroke-width: 1.5;
+}
+.gantt-toggle-hit { fill: transparent; }
+.gantt-toggle:hover .gantt-toggle-hit { fill: var(--gantt-row-hover); }
+
+.gantt-chevron {
+  fill: none;
+  stroke: var(--color-text-secondary);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.gantt-expand-all {
+  border: none;
+  background: transparent;
+  padding: 2px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-link);
+  cursor: pointer;
+}
+.gantt-expand-all:hover { text-decoration: underline; }
+
 .workflow-list-item:hover,
 .workflow-run-item:hover {
   background: var(--color-border-subtle);

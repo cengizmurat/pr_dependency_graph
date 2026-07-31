@@ -368,6 +368,9 @@ function RunDetail({
         )}
         {jobs && jobs.length > 0 && (
           <RunTimeline
+            // Keyed by run so per-job expansion state resets when the viewer
+            // switches to a different run.
+            key={runId}
             jobs={jobs}
             title={workflowName ?? run?.displayTitle ?? `Run #${runId}`}
           />

@@ -2,8 +2,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { WorkflowJob } from "../types";
 
 // Gantt-style timeline of a workflow run, in the spirit of a Mermaid gantt
-// chart: one section per job (alternating band tints), one row per step, plus a
-// synthetic "Waiting for a runner" row per job (created_at -> started_at).
+// chart: one section per job (alternating band tints). Sections start
+// collapsed — a single row with the queue wait and an overall job bar — and
+// expand to one row per step (plus a synthetic "Waiting for a runner" row,
+// created_at -> started_at) for the details.
 
 const TITLE_H = 34;
 const ROW_H = 24;
@@ -13,9 +15,10 @@ const AXIS_H = 30;
 // SVG instead of clipping at the right edge.
 const RIGHT_PAD = 30;
 const GUTTER_MIN = 56;
-const GUTTER_MAX = 150;
+const GUTTER_MAX = 170;
 const MIN_CHART_W = 480;
 const LABEL_FONT = 11;
+const CHEVRON_SPACE = 13;
 const FONT_STACK =
   '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
 
@@ -30,9 +33,23 @@ interface TimelineRow {
   tooltip: string;
 }
 
+// Collapsed representation of a job: the queue wait plus one bar covering the
+// whole job, colored by its outcome.
+interface SectionSummary {
+  waitStart: number | null;
+  waitEnd: number | null;
+  mainStart: number | null;
+  mainEnd: number | null;
+  kind: BarKind;
+  label: string;
+  tooltip: string;
+}
+
 interface TimelineSection {
+  jobId: number;
   name: string;
   rows: TimelineRow[];
+  summary: SectionSummary;
 }
 
 // Candidate axis-tick steps in seconds; the first one producing a readable
@@ -95,6 +112,44 @@ function stepKind(status: string, conclusion: string | null): BarKind {
   return "bar";
 }
 
+function buildSummary(job: WorkflowJob, nowMs: number): SectionSummary {
+  const created = parseTime(job.createdAt);
+  const started = parseTime(job.startedAt);
+  const completed = parseTime(job.completedAt);
+
+  const waitStart = created;
+  const waitEnd = created !== null ? (started ?? Math.max(created, nowMs)) : null;
+
+  let mainStart: number | null = null;
+  let mainEnd: number | null = null;
+  let kind = stepKind(job.status, job.conclusion);
+  let label: string;
+  const parts: string[] = [];
+
+  if (created !== null && waitEnd !== null && waitEnd > created) {
+    parts.push(`Queued ${formatDuration((waitEnd - created) / 1000)}`);
+  }
+
+  if (started !== null) {
+    mainStart = started;
+    mainEnd = completed ?? Math.max(started, nowMs);
+    const durSec = (mainEnd - mainStart) / 1000;
+    parts.push(`${job.status === "completed" ? "Ran" : "Running"} ${formatDuration(durSec)}`);
+    label = `${kind === "failed" ? "✗ " : ""}${formatDuration(durSec)}`;
+  } else {
+    // Not started: the wait bar is the whole story.
+    kind = "active";
+    const waitedSec = waitStart !== null && waitEnd !== null ? (waitEnd - waitStart) / 1000 : 0;
+    label = `Queued (${formatDuration(waitedSec)})`;
+  }
+
+  const statusText = job.status === "completed" ? (job.conclusion ?? "completed") : job.status.replace("_", " ");
+  const stepCount = job.steps.length;
+  const tooltip = `${job.name} — ${statusText}\n${parts.join(" · ") || "No timing data"}\nClick to ${stepCount > 0 ? `expand ${stepCount} steps` : "expand"}`;
+
+  return { waitStart, waitEnd, mainStart, mainEnd, kind, label, tooltip };
+}
+
 function buildSections(jobs: WorkflowJob[], nowMs: number): TimelineSection[] {
   const sections: TimelineSection[] = [];
 
@@ -142,7 +197,9 @@ function buildSections(jobs: WorkflowJob[], nowMs: number): TimelineSection[] {
       });
     }
 
-    if (rows.length > 0) sections.push({ name: job.name, rows });
+    if (rows.length > 0) {
+      sections.push({ jobId: job.id, name: job.name, rows, summary: buildSummary(job, nowMs) });
+    }
   }
 
   return sections;
@@ -182,6 +239,18 @@ export default function RunTimeline({
 }) {
   const [containerRef, containerWidth] = useContainerWidth();
 
+  // Jobs start collapsed so the run reads at a glance; the set holds the ids
+  // the viewer has drilled into.
+  const [expandedJobs, setExpandedJobs] = useState<ReadonlySet<number>>(() => new Set());
+  const toggleSection = (jobId: number) => {
+    setExpandedJobs((prev) => {
+      const next = new Set(prev);
+      if (next.has(jobId)) next.delete(jobId);
+      else next.add(jobId);
+      return next;
+    });
+  };
+
   // While any bar is open-ended (job or step still running) the chart tracks
   // wall-clock time so bars visibly grow between refetches.
   const hasOpenEnd = useMemo(
@@ -204,12 +273,25 @@ export default function RunTimeline({
 
   const width = Math.max(containerWidth, MIN_CHART_W);
 
+  // The time domain covers every step and job span regardless of what is
+  // expanded, so toggling a section never rescales the axis.
   const layout = useMemo(() => {
     if (sections.length === 0) return null;
 
-    const allRows = sections.flatMap((s) => s.rows);
-    const t0 = Math.min(...allRows.map((r) => r.start));
-    const rawEnd = Math.max(...allRows.map((r) => r.end));
+    const starts: number[] = [];
+    const ends: number[] = [];
+    for (const s of sections) {
+      for (const r of s.rows) {
+        starts.push(r.start);
+        ends.push(r.end);
+      }
+      if (s.summary.waitStart !== null) starts.push(s.summary.waitStart);
+      if (s.summary.waitEnd !== null) ends.push(s.summary.waitEnd);
+      if (s.summary.mainStart !== null) starts.push(s.summary.mainStart);
+      if (s.summary.mainEnd !== null) ends.push(s.summary.mainEnd);
+    }
+    const t0 = Math.min(...starts);
+    const rawEnd = Math.max(...ends);
     const rawSpanSec = Math.max(1, (rawEnd - t0) / 1000);
     const tickStep = pickTickStep(rawSpanSec);
     const spanSec = Math.max(tickStep, Math.ceil(rawSpanSec / tickStep) * tickStep);
@@ -218,7 +300,9 @@ export default function RunTimeline({
       GUTTER_MAX,
       Math.max(
         GUTTER_MIN,
-        Math.ceil(Math.max(...sections.map((s) => measureText(s.name, `600 ${LABEL_FONT}px ${FONT_STACK}`)))) + 20,
+        Math.ceil(
+          Math.max(...sections.map((s) => measureText(s.name, `600 ${LABEL_FONT}px ${FONT_STACK}`))),
+        ) + 20 + CHEVRON_SPACE,
       ),
     );
 
@@ -226,15 +310,10 @@ export default function RunTimeline({
     const chartW = Math.max(50, width - gutterW - RIGHT_PAD);
     const x = (t: number) => chartX + ((t - t0) / (spanSec * 1000)) * chartW;
 
-    const rowCount = allRows.length;
-    const bandsTop = TITLE_H;
-    const bandsBottom = bandsTop + rowCount * ROW_H;
-    const height = bandsBottom + AXIS_H;
-
     const ticks: number[] = [];
     for (let t = 0; t <= spanSec; t += tickStep) ticks.push(t);
 
-    return { t0, spanSec, tickStep, gutterW, chartX, chartW, x, bandsTop, bandsBottom, height, ticks };
+    return { t0, gutterW, x, ticks };
   }, [sections, width]);
 
   if (!layout) {
@@ -247,34 +326,169 @@ export default function RunTimeline({
     );
   }
 
-  const { t0, gutterW, x, bandsTop, bandsBottom, height, ticks } = layout;
+  const { t0, gutterW, x, ticks } = layout;
+
+  const allExpanded = sections.every((s) => expandedJobs.has(s.jobId));
+  const setAll = (expand: boolean) =>
+    setExpandedJobs(expand ? new Set(sections.map((s) => s.jobId)) : new Set());
+
+  const rowCount = sections.reduce(
+    (sum, s) => sum + (expandedJobs.has(s.jobId) ? s.rows.length : 1),
+    0,
+  );
+  const bandsTop = TITLE_H;
+  const bandsBottom = bandsTop + rowCount * ROW_H;
+  const height = bandsBottom + AXIS_H;
+
+  // Places a bar's label inside it when it fits, otherwise beside it on
+  // whichever side has room.
+  const placeLabel = (
+    label: string,
+    startX: number,
+    barW: number,
+    rowY: number,
+    kind: BarKind,
+    allowInside: boolean,
+  ): React.ReactNode => {
+    const labelW = measureText(label);
+    if (allowInside && kind !== "muted" && barW >= labelW + 14) {
+      const inkClass = kind === "active" ? "gantt-label-inside-soft" : "gantt-label-inside";
+      return (
+        <text className={inkClass} x={startX + barW / 2} y={rowY + ROW_H / 2} textAnchor="middle" dominantBaseline="central">
+          {label}
+        </text>
+      );
+    }
+    if (startX + barW + 8 + labelW <= width - 6) {
+      return (
+        <text className="gantt-label" x={startX + barW + 6} y={rowY + ROW_H / 2} textAnchor="start" dominantBaseline="central">
+          {label}
+        </text>
+      );
+    }
+    return (
+      <text className="gantt-label" x={startX - 6} y={rowY + ROW_H / 2} textAnchor="end" dominantBaseline="central">
+        {label}
+      </text>
+    );
+  };
+
+  const sectionNameNodes = (name: string, open: boolean, centerY: number): React.ReactNode => {
+    const display = truncateToWidth(name, gutterW - 16 - CHEVRON_SPACE, `600 ${LABEL_FONT}px ${FONT_STACK}`);
+    return (
+      <>
+        <path
+          className="gantt-chevron"
+          d={
+            open
+              ? `M7 ${centerY - 1.5}l3 3 3-3`
+              : `M8.5 ${centerY - 3}l3 3-3 3`
+          }
+        />
+        <text className="gantt-section-label" x={8 + CHEVRON_SPACE} y={centerY} dominantBaseline="central">
+          {display}
+        </text>
+      </>
+    );
+  };
 
   let rowIndex = 0;
   const bands: React.ReactNode[] = [];
   const rowNodes: React.ReactNode[] = [];
-  const sectionLabels: React.ReactNode[] = [];
+  const toggleNodes: React.ReactNode[] = [];
 
   sections.forEach((section, sectionIndex) => {
+    const isExpanded = expandedJobs.has(section.jobId);
+    const rowSpan = isExpanded ? section.rows.length : 1;
     const bandY = bandsTop + rowIndex * ROW_H;
-    const bandH = section.rows.length * ROW_H;
+    const bandH = rowSpan * ROW_H;
     const bandClass = `gantt-band-${sectionIndex % 3}`;
 
     bands.push(
-      <rect key={`band-${sectionIndex}`} className={bandClass} x={0} y={bandY} width={width} height={bandH} />,
+      <rect key={`band-${section.jobId}`} className={bandClass} x={0} y={bandY} width={width} height={bandH} />,
     );
 
-    const sectionLabel = truncateToWidth(section.name, gutterW - 16, `600 ${LABEL_FONT}px ${FONT_STACK}`);
-    sectionLabels.push(
-      <text
-        key={`section-${sectionIndex}`}
-        className="gantt-section-label"
-        x={8}
-        y={bandY + bandH / 2}
-        dominantBaseline="central"
+    if (!isExpanded) {
+      // Collapsed: one row summarizing the job — wait segment plus an overall
+      // bar — clickable anywhere to expand.
+      const { summary } = section;
+      const rowY = bandY;
+      const barY = rowY + (ROW_H - BAR_H) / 2;
+
+      const segments: React.ReactNode[] = [];
+      if (summary.waitStart !== null && summary.waitEnd !== null && summary.waitEnd > summary.waitStart) {
+        const wx = x(summary.waitStart);
+        const ww = Math.max(x(summary.waitEnd) - wx, 2);
+        segments.push(
+          <rect key="wait" className="gantt-bar-active" x={wx} y={barY} width={ww} height={BAR_H} rx={3} ry={3} />,
+        );
+      }
+
+      let labelNode: React.ReactNode = null;
+      if (summary.mainStart !== null && summary.mainEnd !== null) {
+        const mx = x(summary.mainStart);
+        const durSec = (summary.mainEnd - summary.mainStart) / 1000;
+        const mw = durSec > 0 ? Math.max(x(summary.mainEnd) - mx, 2) : 0;
+        if (mw > 0) {
+          segments.push(
+            <rect key="main" className={`gantt-bar-${summary.kind}`} x={mx} y={barY} width={mw} height={BAR_H} rx={3} ry={3} />,
+          );
+        }
+        labelNode = placeLabel(summary.label, mx, mw, rowY, summary.kind, true);
+      } else if (summary.waitStart !== null && summary.waitEnd !== null) {
+        const wx = x(summary.waitStart);
+        const ww = Math.max(x(summary.waitEnd) - wx, 2);
+        labelNode = placeLabel(summary.label, wx, ww, rowY, "active", true);
+      }
+
+      rowNodes.push(
+        <g
+          key={`summary-${section.jobId}`}
+          className="gantt-row gantt-toggle"
+          role="button"
+          tabIndex={0}
+          aria-expanded={false}
+          onClick={() => toggleSection(section.jobId)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              toggleSection(section.jobId);
+            }
+          }}
+        >
+          <rect className="gantt-row-hit" x={0} y={rowY} width={width} height={ROW_H} />
+          {segments}
+          {labelNode}
+          {sectionNameNodes(section.name, false, rowY + ROW_H / 2)}
+          <title>{summary.tooltip}</title>
+        </g>,
+      );
+
+      rowIndex += 1;
+      return;
+    }
+
+    // Expanded: the gutter acts as the collapse control; each step row keeps
+    // its own hover/tooltip.
+    toggleNodes.push(
+      <g
+        key={`toggle-${section.jobId}`}
+        className="gantt-toggle"
+        role="button"
+        tabIndex={0}
+        aria-expanded={true}
+        onClick={() => toggleSection(section.jobId)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggleSection(section.jobId);
+          }
+        }}
       >
-        {sectionLabel}
-        <title>{section.name}</title>
-      </text>,
+        <rect className="gantt-toggle-hit" x={0} y={bandY} width={gutterW} height={bandH} />
+        {sectionNameNodes(section.name, true, bandY + bandH / 2)}
+        <title>{`${section.name} — click to collapse`}</title>
+      </g>,
     );
 
     for (const row of section.rows) {
@@ -289,37 +503,13 @@ export default function RunTimeline({
 
       const failed = row.kind === "failed";
       const label = `${failed ? "✗ " : ""}${row.label} (${formatDuration(durSec)})`;
-      const labelW = measureText(label);
-
-      let labelNode: React.ReactNode;
-      const fitsInside = row.kind !== "muted" && barW >= labelW + 14;
-      if (fitsInside) {
-        const inkClass = row.kind === "active" ? "gantt-label-inside-soft" : "gantt-label-inside";
-        labelNode = (
-          <text className={inkClass} x={startX + barW / 2} y={rowY + ROW_H / 2} textAnchor="middle" dominantBaseline="central">
-            {label}
-          </text>
-        );
-      } else if (startX + barW + 8 + labelW <= width - 6) {
-        labelNode = (
-          <text className="gantt-label" x={startX + barW + 6} y={rowY + ROW_H / 2} textAnchor="start" dominantBaseline="central">
-            {label}
-          </text>
-        );
-      } else {
-        labelNode = (
-          <text className="gantt-label" x={startX - 6} y={rowY + ROW_H / 2} textAnchor="end" dominantBaseline="central">
-            {label}
-          </text>
-        );
-      }
 
       const startOffset = (row.start - t0) / 1000;
       const endOffset = (row.end - t0) / 1000;
       const tooltip = `${row.tooltip}\n${formatClock(startOffset)} → ${formatClock(endOffset)} · ${formatDuration(durSec)}`;
 
       rowNodes.push(
-        <g key={`row-${rowIndex}`} className="gantt-row">
+        <g key={`row-${section.jobId}-${rowIndex}`} className="gantt-row">
           <rect className="gantt-row-hit" x={0} y={rowY} width={width} height={ROW_H} />
           {barW > 0 && (
             <rect
@@ -332,7 +522,7 @@ export default function RunTimeline({
               ry={3}
             />
           )}
-          {labelNode}
+          {placeLabel(label, startX, barW, rowY, row.kind, true)}
           <title>{tooltip}</title>
         </g>,
       );
@@ -343,6 +533,11 @@ export default function RunTimeline({
 
   return (
     <div ref={containerRef} style={{ width: "100%", overflowX: "auto" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 8px" }}>
+        <button className="gantt-expand-all" onClick={() => setAll(!allExpanded)}>
+          {allExpanded ? "Collapse all jobs" : "Expand all jobs"}
+        </button>
+      </div>
       <svg
         width={width}
         height={height}
@@ -368,7 +563,7 @@ export default function RunTimeline({
           })}
         </g>
         {rowNodes}
-        {sectionLabels}
+        {toggleNodes}
       </svg>
     </div>
   );
