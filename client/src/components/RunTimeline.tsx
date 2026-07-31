@@ -20,6 +20,7 @@ const GUTTER_MIN = 56;
 const GUTTER_MAX_FRACTION = 0.35;
 const MIN_CHART_W = 480;
 const LABEL_FONT = 11;
+const LINE_H = 14;
 const CHEVRON_SPACE = 13;
 const GROUP_INDENT = 12;
 const FONT_STACK =
@@ -121,6 +122,66 @@ function truncateToWidth(text: string, maxWidth: number, font?: string): string 
     else hi = mid - 1;
   }
   return text.slice(0, lo) + "…";
+}
+
+// Word-wraps a label for the gutter. Lines may break after whitespace or a
+// hyphen/underscore/slash/comma (job names are often hyphenated with no
+// spaces); a single chunk wider than the column is hard-broken. When the text
+// needs more than maxLines, the last line is ellipsized.
+function wrapToWidth(
+  text: string,
+  maxWidth: number,
+  font: string,
+  maxLines: number,
+): string[] {
+  if (maxLines <= 1) return [truncateToWidth(text, maxWidth, font)];
+
+  const chunks = text.split(/(?<=[\s\-_/,])/);
+  const lines: string[] = [];
+  let current = "";
+  let overflowed = false;
+
+  outer: for (let chunk of chunks) {
+    while (chunk.length > 0) {
+      const candidate = current + chunk;
+      if (measureText(candidate.trimEnd(), font) <= maxWidth) {
+        current = candidate;
+        break;
+      }
+      if (current.trimEnd()) {
+        lines.push(current.trimEnd());
+        current = "";
+        chunk = chunk.trimStart();
+        if (lines.length >= maxLines) {
+          overflowed = true;
+          break outer;
+        }
+        continue;
+      }
+      // The chunk alone is wider than the column: hard-break it.
+      let lo = 1;
+      let hi = chunk.length;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        if (measureText(chunk.slice(0, mid), font) <= maxWidth) lo = mid;
+        else hi = mid - 1;
+      }
+      lines.push(chunk.slice(0, lo));
+      chunk = chunk.slice(lo);
+      if (lines.length >= maxLines) {
+        overflowed = true;
+        break outer;
+      }
+    }
+  }
+
+  if (overflowed) {
+    lines.length = maxLines;
+    lines[maxLines - 1] = truncateToWidth(lines[maxLines - 1] + "…", maxWidth, font);
+    return lines;
+  }
+  if (current.trimEnd()) lines.push(current.trimEnd());
+  return lines.length > 0 ? lines : [text];
 }
 
 function stepKind(status: string, conclusion: string | null): BarKind {
@@ -511,29 +572,40 @@ export default function RunTimeline({
     );
   };
 
+  // Renders the chevron + name in the gutter. With room for more than one
+  // line (an expanded section's band) the name wraps; a single row keeps the
+  // one-line ellipsis. The chevron sits beside the first line.
   const gutterName = (
     name: string,
     open: boolean,
     centerY: number,
     indent: number,
     member: boolean,
+    maxLines = 1,
   ): React.ReactNode => {
     const font = member ? MEMBER_FONT : SECTION_FONT;
-    const display = truncateToWidth(name, gutterW - 16 - CHEVRON_SPACE - indent, font);
+    const maxW = gutterW - 16 - CHEVRON_SPACE - indent;
+    const lines = wrapToWidth(name, maxW, font, maxLines);
     const cx = 8 + indent;
+    const textX = cx + CHEVRON_SPACE;
+    const firstY = centerY - ((lines.length - 1) * LINE_H) / 2;
     return (
       <>
         <path
           className="gantt-chevron"
-          d={open ? `M${cx - 1} ${centerY - 1.5}l3 3 3-3` : `M${cx + 0.5} ${centerY - 3}l3 3-3 3`}
+          d={open ? `M${cx - 1} ${firstY - 1.5}l3 3 3-3` : `M${cx + 0.5} ${firstY - 3}l3 3-3 3`}
         />
         <text
           className={member ? "gantt-section-label gantt-section-label-member" : "gantt-section-label"}
-          x={cx + CHEVRON_SPACE}
-          y={centerY}
+          x={textX}
+          y={firstY}
           dominantBaseline="central"
         >
-          {display}
+          {lines.map((line, i) => (
+            <tspan key={i} x={textX} dy={i === 0 ? 0 : LINE_H}>
+              {line}
+            </tspan>
+          ))}
         </text>
       </>
     );
@@ -621,9 +693,10 @@ export default function RunTimeline({
     }
 
     // Expanded: the gutter acts as the collapse control; each step row keeps
-    // its own hover/tooltip.
+    // its own hover/tooltip. The band's height gives the name room to wrap.
     const bandY = bandsTop + rowIndex * ROW_H;
     const bandH = section.rows.length * ROW_H;
+    const nameLines = Math.max(1, Math.floor((bandH - 4) / LINE_H));
     toggleNodes.push(
       <g
         key={`toggle-${section.jobId}`}
@@ -631,7 +704,7 @@ export default function RunTimeline({
         {...toggleProps(() => toggleJob(section.jobId), true)}
       >
         <rect className="gantt-toggle-hit" x={0} y={bandY} width={gutterW} height={bandH} />
-        {gutterName(section.name, true, bandY + bandH / 2, indent, member)}
+        {gutterName(section.name, true, bandY + bandH / 2, indent, member, nameLines)}
         <title>{`${section.name} — click to collapse`}</title>
       </g>,
     );
