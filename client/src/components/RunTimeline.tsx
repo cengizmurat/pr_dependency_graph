@@ -2,10 +2,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { WorkflowJob } from "../types";
 
 // Gantt-style timeline of a workflow run, in the spirit of a Mermaid gantt
-// chart: one section per job (alternating band tints). Sections start
-// collapsed — a single row with the queue wait and an overall job bar — and
-// expand to one row per step (plus a synthetic "Waiting for a runner" row,
-// created_at -> started_at) for the details.
+// chart. Jobs sharing a matrix-style name ("build (ubuntu, 18.x)") are grouped
+// under their base name. Everything starts collapsed for an at-a-glance view
+// and drills down on click: group -> member jobs -> steps. Collapsed rows keep
+// a timeline bar — the queue wait plus an overall bar colored by outcome.
 
 const TITLE_H = 34;
 const ROW_H = 24;
@@ -15,12 +15,17 @@ const AXIS_H = 30;
 // SVG instead of clipping at the right edge.
 const RIGHT_PAD = 30;
 const GUTTER_MIN = 56;
-const GUTTER_MAX = 170;
+// The gutter grows to fit the longest job name, up to this share of the
+// chart's width.
+const GUTTER_MAX_FRACTION = 0.35;
 const MIN_CHART_W = 480;
 const LABEL_FONT = 11;
 const CHEVRON_SPACE = 13;
+const GROUP_INDENT = 12;
 const FONT_STACK =
   '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
+const SECTION_FONT = `600 ${LABEL_FONT}px ${FONT_STACK}`;
+const MEMBER_FONT = `${LABEL_FONT}px ${FONT_STACK}`;
 
 type BarKind = "bar" | "active" | "failed" | "muted";
 
@@ -33,8 +38,8 @@ interface TimelineRow {
   tooltip: string;
 }
 
-// Collapsed representation of a job: the queue wait plus one bar covering the
-// whole job, colored by its outcome.
+// Collapsed representation of a job or group: the queue wait plus one bar
+// covering the whole span, colored by outcome.
 interface SectionSummary {
   waitStart: number | null;
   waitEnd: number | null;
@@ -48,9 +53,22 @@ interface SectionSummary {
 interface TimelineSection {
   jobId: number;
   name: string;
+  status: string;
+  conclusion: string | null;
   rows: TimelineRow[];
   summary: SectionSummary;
 }
+
+interface SectionGroup {
+  key: string;
+  name: string;
+  members: TimelineSection[];
+  summary: SectionSummary;
+}
+
+type TopNode =
+  | { type: "single"; section: TimelineSection }
+  | { type: "group"; group: SectionGroup };
 
 // Candidate axis-tick steps in seconds; the first one producing a readable
 // number of grid lines wins.
@@ -143,66 +161,152 @@ function buildSummary(job: WorkflowJob, nowMs: number): SectionSummary {
     label = `Queued (${formatDuration(waitedSec)})`;
   }
 
-  const statusText = job.status === "completed" ? (job.conclusion ?? "completed") : job.status.replace("_", " ");
+  const statusText =
+    job.status === "completed" ? (job.conclusion ?? "completed") : job.status.replace("_", " ");
   const stepCount = job.steps.length;
   const tooltip = `${job.name} — ${statusText}\n${parts.join(" · ") || "No timing data"}\nClick to ${stepCount > 0 ? `expand ${stepCount} steps` : "expand"}`;
 
   return { waitStart, waitEnd, mainStart, mainEnd, kind, label, tooltip };
 }
 
-function buildSections(jobs: WorkflowJob[], nowMs: number): TimelineSection[] {
-  const sections: TimelineSection[] = [];
+function buildSection(job: WorkflowJob, nowMs: number): TimelineSection | null {
+  const rows: TimelineRow[] = [];
+  const created = parseTime(job.createdAt);
+  const jobStarted = parseTime(job.startedAt);
+
+  if (created !== null) {
+    const end = jobStarted ?? Math.max(created, nowMs);
+    rows.push({
+      label: "Waiting for a runner",
+      start: created,
+      end: Math.max(created, end),
+      kind: "active",
+      tooltip: `${job.name} — Waiting for a runner`,
+    });
+  }
+
+  for (const step of job.steps) {
+    const start = parseTime(step.startedAt);
+    if (start === null) continue;
+    let end = parseTime(step.completedAt);
+    const kind = stepKind(step.status, step.conclusion);
+    if (end === null) end = Math.max(start, nowMs);
+    rows.push({
+      label: step.name,
+      start,
+      end: Math.max(start, end),
+      kind,
+      tooltip: `${job.name} — ${step.name} (${step.conclusion ?? step.status})`,
+    });
+  }
+
+  // A job that is queued but has produced no rows yet still deserves a
+  // section so the viewer sees it exists.
+  if (rows.length === 0 && jobStarted === null) {
+    const start = created ?? nowMs;
+    rows.push({
+      label: "Queued",
+      start,
+      end: Math.max(start, nowMs),
+      kind: "active",
+      tooltip: `${job.name} — queued`,
+    });
+  }
+
+  if (rows.length === 0) return null;
+  return {
+    jobId: job.id,
+    name: job.name,
+    status: job.status,
+    conclusion: job.conclusion,
+    rows,
+    summary: buildSummary(job, nowMs),
+  };
+}
+
+function aggregateKind(members: TimelineSection[]): BarKind {
+  if (members.some((m) => m.summary.kind === "failed")) return "failed";
+  if (members.some((m) => m.status !== "completed")) return "active";
+  if (members.every((m) => m.summary.kind === "muted")) return "muted";
+  return "bar";
+}
+
+function buildGroupSummary(base: string, members: TimelineSection[]): SectionSummary {
+  const min = (vals: (number | null)[]): number | null => {
+    const nums = vals.filter((v): v is number => v !== null);
+    return nums.length ? Math.min(...nums) : null;
+  };
+  const max = (vals: (number | null)[]): number | null => {
+    const nums = vals.filter((v): v is number => v !== null);
+    return nums.length ? Math.max(...nums) : null;
+  };
+
+  const waitStart = min(members.map((m) => m.summary.waitStart));
+  const mainStart = min(members.map((m) => m.summary.mainStart));
+  const mainEnd = max(members.map((m) => m.summary.mainEnd));
+  // The group's wait segment runs until its first job starts.
+  const waitEnd = mainStart ?? max(members.map((m) => m.summary.waitEnd));
+
+  const kind = aggregateKind(members);
+
+  let label: string;
+  if (mainStart !== null && mainEnd !== null) {
+    const durSec = (mainEnd - mainStart) / 1000;
+    label = `${kind === "failed" ? "✗ " : ""}${members.length} jobs · ${formatDuration(durSec)}`;
+  } else {
+    label = `${members.length} jobs queued`;
+  }
+
+  const counts = new Map<string, number>();
+  for (const m of members) {
+    const s = m.status === "completed" ? (m.conclusion ?? "completed") : m.status.replace("_", " ");
+    counts.set(s, (counts.get(s) ?? 0) + 1);
+  }
+  const countText = [...counts.entries()].map(([s, n]) => `${n} ${s}`).join(" · ");
+  const tooltip = `${base} — ${members.length} jobs\n${countText}\nClick to expand jobs`;
+
+  return { waitStart, waitEnd, mainStart, mainEnd, kind, label, tooltip };
+}
+
+// Matrix jobs are named "base (variant)"; two or more jobs sharing a base form
+// a group and their labels shrink to the variant.
+const MATRIX_NAME = /^(.*\S) \((.+)\)$/;
+
+function buildNodes(jobs: WorkflowJob[], nowMs: number): TopNode[] {
+  const nodes: TopNode[] = [];
+  const groups = new Map<string, SectionGroup>();
+  const baseCounts = new Map<string, number>();
 
   for (const job of jobs) {
-    const rows: TimelineRow[] = [];
-    const created = parseTime(job.createdAt);
-    const jobStarted = parseTime(job.startedAt);
+    const m = MATRIX_NAME.exec(job.name);
+    if (m) baseCounts.set(m[1], (baseCounts.get(m[1]) ?? 0) + 1);
+  }
 
-    if (created !== null) {
-      const end = jobStarted ?? Math.max(created, nowMs);
-      rows.push({
-        label: "Waiting for a runner",
-        start: created,
-        end: Math.max(created, end),
-        kind: "active",
-        tooltip: `${job.name} — Waiting for a runner`,
-      });
-    }
+  for (const job of jobs) {
+    const section = buildSection(job, nowMs);
+    if (!section) continue;
 
-    for (const step of job.steps) {
-      const start = parseTime(step.startedAt);
-      if (start === null) continue;
-      let end = parseTime(step.completedAt);
-      const kind = stepKind(step.status, step.conclusion);
-      if (end === null) end = Math.max(start, nowMs);
-      rows.push({
-        label: step.name,
-        start,
-        end: Math.max(start, end),
-        kind,
-        tooltip: `${job.name} — ${step.name} (${step.conclusion ?? step.status})`,
-      });
-    }
-
-    // A job that is queued but has produced no rows yet still deserves a
-    // section so the viewer sees it exists.
-    if (rows.length === 0 && jobStarted === null) {
-      const start = created ?? nowMs;
-      rows.push({
-        label: "Queued",
-        start,
-        end: Math.max(start, nowMs),
-        kind: "active",
-        tooltip: `${job.name} — queued`,
-      });
-    }
-
-    if (rows.length > 0) {
-      sections.push({ jobId: job.id, name: job.name, rows, summary: buildSummary(job, nowMs) });
+    const m = MATRIX_NAME.exec(job.name);
+    if (m && (baseCounts.get(m[1]) ?? 0) >= 2) {
+      const base = m[1];
+      let group = groups.get(base);
+      if (!group) {
+        group = { key: base, name: base, members: [], summary: null as unknown as SectionSummary };
+        groups.set(base, group);
+        nodes.push({ type: "group", group });
+      }
+      // Members display just their matrix variant; tooltips keep the full name.
+      group.members.push({ ...section, name: m[2] });
+    } else {
+      nodes.push({ type: "single", section });
     }
   }
 
-  return sections;
+  for (const group of groups.values()) {
+    group.summary = buildGroupSummary(group.name, group.members);
+  }
+
+  return nodes;
 }
 
 function pickTickStep(spanSeconds: number): number {
@@ -239,14 +343,23 @@ export default function RunTimeline({
 }) {
   const [containerRef, containerWidth] = useContainerWidth();
 
-  // Jobs start collapsed so the run reads at a glance; the set holds the ids
-  // the viewer has drilled into.
+  // Everything starts collapsed so the run reads at a glance; these sets hold
+  // what the viewer has drilled into.
   const [expandedJobs, setExpandedJobs] = useState<ReadonlySet<number>>(() => new Set());
-  const toggleSection = (jobId: number) => {
+  const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleJob = (jobId: number) => {
     setExpandedJobs((prev) => {
       const next = new Set(prev);
       if (next.has(jobId)) next.delete(jobId);
       else next.add(jobId);
+      return next;
+    });
+  };
+  const toggleGroup = (key: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -269,42 +382,52 @@ export default function RunTimeline({
     return () => clearInterval(timer);
   }, [hasOpenEnd]);
 
-  const sections = useMemo(() => buildSections(jobs, nowMs), [jobs, nowMs]);
+  const nodes = useMemo(() => buildNodes(jobs, nowMs), [jobs, nowMs]);
 
   const width = Math.max(containerWidth, MIN_CHART_W);
 
   // The time domain covers every step and job span regardless of what is
   // expanded, so toggling a section never rescales the axis.
   const layout = useMemo(() => {
-    if (sections.length === 0) return null;
+    if (nodes.length === 0) return null;
 
     const starts: number[] = [];
     const ends: number[] = [];
-    for (const s of sections) {
+    const gutterNeeds: number[] = [];
+
+    const collectSection = (s: TimelineSection, indent: number, font: string) => {
       for (const r of s.rows) {
         starts.push(r.start);
         ends.push(r.end);
       }
-      if (s.summary.waitStart !== null) starts.push(s.summary.waitStart);
-      if (s.summary.waitEnd !== null) ends.push(s.summary.waitEnd);
-      if (s.summary.mainStart !== null) starts.push(s.summary.mainStart);
-      if (s.summary.mainEnd !== null) ends.push(s.summary.mainEnd);
+      const su = s.summary;
+      if (su.waitStart !== null) starts.push(su.waitStart);
+      if (su.waitEnd !== null) ends.push(su.waitEnd);
+      if (su.mainStart !== null) starts.push(su.mainStart);
+      if (su.mainEnd !== null) ends.push(su.mainEnd);
+      gutterNeeds.push(indent + CHEVRON_SPACE + measureText(s.name, font) + 20);
+    };
+
+    for (const node of nodes) {
+      if (node.type === "single") {
+        collectSection(node.section, 0, SECTION_FONT);
+      } else {
+        const headerLabel = `${node.group.name} (${node.group.members.length})`;
+        gutterNeeds.push(CHEVRON_SPACE + measureText(headerLabel, SECTION_FONT) + 20);
+        for (const member of node.group.members) {
+          collectSection(member, GROUP_INDENT, MEMBER_FONT);
+        }
+      }
     }
+
     const t0 = Math.min(...starts);
     const rawEnd = Math.max(...ends);
     const rawSpanSec = Math.max(1, (rawEnd - t0) / 1000);
     const tickStep = pickTickStep(rawSpanSec);
     const spanSec = Math.max(tickStep, Math.ceil(rawSpanSec / tickStep) * tickStep);
 
-    const gutterW = Math.min(
-      GUTTER_MAX,
-      Math.max(
-        GUTTER_MIN,
-        Math.ceil(
-          Math.max(...sections.map((s) => measureText(s.name, `600 ${LABEL_FONT}px ${FONT_STACK}`))),
-        ) + 20 + CHEVRON_SPACE,
-      ),
-    );
+    const gutterCap = Math.max(GUTTER_MIN, Math.floor(width * GUTTER_MAX_FRACTION));
+    const gutterW = Math.min(gutterCap, Math.max(GUTTER_MIN, Math.ceil(Math.max(...gutterNeeds))));
 
     const chartX = gutterW;
     const chartW = Math.max(50, width - gutterW - RIGHT_PAD);
@@ -314,7 +437,7 @@ export default function RunTimeline({
     for (let t = 0; t <= spanSec; t += tickStep) ticks.push(t);
 
     return { t0, gutterW, x, ticks };
-  }, [sections, width]);
+  }, [nodes, width]);
 
   if (!layout) {
     return (
@@ -328,14 +451,29 @@ export default function RunTimeline({
 
   const { t0, gutterW, x, ticks } = layout;
 
-  const allExpanded = sections.every((s) => expandedJobs.has(s.jobId));
-  const setAll = (expand: boolean) =>
-    setExpandedJobs(expand ? new Set(sections.map((s) => s.jobId)) : new Set());
+  const allJobIds: number[] = [];
+  const allGroupKeys: string[] = [];
+  for (const node of nodes) {
+    if (node.type === "single") allJobIds.push(node.section.jobId);
+    else {
+      allGroupKeys.push(node.group.key);
+      for (const m of node.group.members) allJobIds.push(m.jobId);
+    }
+  }
+  const allExpanded =
+    allJobIds.every((id) => expandedJobs.has(id)) &&
+    allGroupKeys.every((k) => expandedGroups.has(k));
+  const setAll = (expand: boolean) => {
+    setExpandedJobs(expand ? new Set(allJobIds) : new Set());
+    setExpandedGroups(expand ? new Set(allGroupKeys) : new Set());
+  };
 
-  const rowCount = sections.reduce(
-    (sum, s) => sum + (expandedJobs.has(s.jobId) ? s.rows.length : 1),
-    0,
-  );
+  const sectionRowSpan = (s: TimelineSection) => (expandedJobs.has(s.jobId) ? s.rows.length : 1);
+  const rowCount = nodes.reduce((sum, node) => {
+    if (node.type === "single") return sum + sectionRowSpan(node.section);
+    if (!expandedGroups.has(node.group.key)) return sum + 1;
+    return sum + 1 + node.group.members.reduce((s, m) => s + sectionRowSpan(m), 0);
+  }, 0);
   const bandsTop = TITLE_H;
   const bandsBottom = bandsTop + rowCount * ROW_H;
   const height = bandsBottom + AXIS_H;
@@ -373,23 +511,84 @@ export default function RunTimeline({
     );
   };
 
-  const sectionNameNodes = (name: string, open: boolean, centerY: number): React.ReactNode => {
-    const display = truncateToWidth(name, gutterW - 16 - CHEVRON_SPACE, `600 ${LABEL_FONT}px ${FONT_STACK}`);
+  const gutterName = (
+    name: string,
+    open: boolean,
+    centerY: number,
+    indent: number,
+    member: boolean,
+  ): React.ReactNode => {
+    const font = member ? MEMBER_FONT : SECTION_FONT;
+    const display = truncateToWidth(name, gutterW - 16 - CHEVRON_SPACE - indent, font);
+    const cx = 8 + indent;
     return (
       <>
         <path
           className="gantt-chevron"
-          d={
-            open
-              ? `M7 ${centerY - 1.5}l3 3 3-3`
-              : `M8.5 ${centerY - 3}l3 3-3 3`
-          }
+          d={open ? `M${cx - 1} ${centerY - 1.5}l3 3 3-3` : `M${cx + 0.5} ${centerY - 3}l3 3-3 3`}
         />
-        <text className="gantt-section-label" x={8 + CHEVRON_SPACE} y={centerY} dominantBaseline="central">
+        <text
+          className={member ? "gantt-section-label gantt-section-label-member" : "gantt-section-label"}
+          x={cx + CHEVRON_SPACE}
+          y={centerY}
+          dominantBaseline="central"
+        >
           {display}
         </text>
       </>
     );
+  };
+
+  const toggleProps = (onToggle: () => void, expanded: boolean) => ({
+    role: "button" as const,
+    tabIndex: 0,
+    "aria-expanded": expanded,
+    onClick: onToggle,
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onToggle();
+      }
+    },
+  });
+
+  // Renders a summary bar pair (wait + main) for a collapsed job or group.
+  const summaryBarNodes = (summary: SectionSummary, rowY: number): React.ReactNode[] => {
+    const barY = rowY + (ROW_H - BAR_H) / 2;
+    const out: React.ReactNode[] = [];
+    if (summary.waitStart !== null && summary.waitEnd !== null && summary.waitEnd > summary.waitStart) {
+      const wx = x(summary.waitStart);
+      const ww = Math.max(x(summary.waitEnd) - wx, 2);
+      out.push(
+        <rect key="wait" className="gantt-bar-active" x={wx} y={barY} width={ww} height={BAR_H} rx={3} ry={3} />,
+      );
+    }
+    if (summary.mainStart !== null && summary.mainEnd !== null) {
+      const mx = x(summary.mainStart);
+      const durSec = (summary.mainEnd - summary.mainStart) / 1000;
+      const mw = durSec > 0 ? Math.max(x(summary.mainEnd) - mx, 2) : 0;
+      if (mw > 0) {
+        out.push(
+          <rect key="main" className={`gantt-bar-${summary.kind}`} x={mx} y={barY} width={mw} height={BAR_H} rx={3} ry={3} />,
+        );
+      }
+    }
+    return out;
+  };
+
+  const summaryLabelNode = (summary: SectionSummary, rowY: number): React.ReactNode => {
+    if (summary.mainStart !== null && summary.mainEnd !== null) {
+      const mx = x(summary.mainStart);
+      const durSec = (summary.mainEnd - summary.mainStart) / 1000;
+      const mw = durSec > 0 ? Math.max(x(summary.mainEnd) - mx, 2) : 0;
+      return placeLabel(summary.label, mx, mw, rowY, summary.kind, true);
+    }
+    if (summary.waitStart !== null && summary.waitEnd !== null) {
+      const wx = x(summary.waitStart);
+      const ww = Math.max(x(summary.waitEnd) - wx, 2);
+      return placeLabel(summary.label, wx, ww, rowY, "active", true);
+    }
+    return null;
   };
 
   let rowIndex = 0;
@@ -397,96 +596,42 @@ export default function RunTimeline({
   const rowNodes: React.ReactNode[] = [];
   const toggleNodes: React.ReactNode[] = [];
 
-  sections.forEach((section, sectionIndex) => {
+  // Renders one job section starting at the current rowIndex; returns nothing,
+  // advances rowIndex. Member sections are indented and share the group band.
+  const renderSection = (section: TimelineSection, indent: number, member: boolean) => {
     const isExpanded = expandedJobs.has(section.jobId);
-    const rowSpan = isExpanded ? section.rows.length : 1;
-    const bandY = bandsTop + rowIndex * ROW_H;
-    const bandH = rowSpan * ROW_H;
-    const bandClass = `gantt-band-${sectionIndex % 3}`;
-
-    bands.push(
-      <rect key={`band-${section.jobId}`} className={bandClass} x={0} y={bandY} width={width} height={bandH} />,
-    );
 
     if (!isExpanded) {
-      // Collapsed: one row summarizing the job — wait segment plus an overall
-      // bar — clickable anywhere to expand.
-      const { summary } = section;
-      const rowY = bandY;
-      const barY = rowY + (ROW_H - BAR_H) / 2;
-
-      const segments: React.ReactNode[] = [];
-      if (summary.waitStart !== null && summary.waitEnd !== null && summary.waitEnd > summary.waitStart) {
-        const wx = x(summary.waitStart);
-        const ww = Math.max(x(summary.waitEnd) - wx, 2);
-        segments.push(
-          <rect key="wait" className="gantt-bar-active" x={wx} y={barY} width={ww} height={BAR_H} rx={3} ry={3} />,
-        );
-      }
-
-      let labelNode: React.ReactNode = null;
-      if (summary.mainStart !== null && summary.mainEnd !== null) {
-        const mx = x(summary.mainStart);
-        const durSec = (summary.mainEnd - summary.mainStart) / 1000;
-        const mw = durSec > 0 ? Math.max(x(summary.mainEnd) - mx, 2) : 0;
-        if (mw > 0) {
-          segments.push(
-            <rect key="main" className={`gantt-bar-${summary.kind}`} x={mx} y={barY} width={mw} height={BAR_H} rx={3} ry={3} />,
-          );
-        }
-        labelNode = placeLabel(summary.label, mx, mw, rowY, summary.kind, true);
-      } else if (summary.waitStart !== null && summary.waitEnd !== null) {
-        const wx = x(summary.waitStart);
-        const ww = Math.max(x(summary.waitEnd) - wx, 2);
-        labelNode = placeLabel(summary.label, wx, ww, rowY, "active", true);
-      }
-
+      const rowY = bandsTop + rowIndex * ROW_H;
       rowNodes.push(
         <g
           key={`summary-${section.jobId}`}
           className="gantt-row gantt-toggle"
-          role="button"
-          tabIndex={0}
-          aria-expanded={false}
-          onClick={() => toggleSection(section.jobId)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              toggleSection(section.jobId);
-            }
-          }}
+          {...toggleProps(() => toggleJob(section.jobId), false)}
         >
           <rect className="gantt-row-hit" x={0} y={rowY} width={width} height={ROW_H} />
-          {segments}
-          {labelNode}
-          {sectionNameNodes(section.name, false, rowY + ROW_H / 2)}
-          <title>{summary.tooltip}</title>
+          {summaryBarNodes(section.summary, rowY)}
+          {summaryLabelNode(section.summary, rowY)}
+          {gutterName(section.name, false, rowY + ROW_H / 2, indent, member)}
+          <title>{section.summary.tooltip}</title>
         </g>,
       );
-
       rowIndex += 1;
       return;
     }
 
     // Expanded: the gutter acts as the collapse control; each step row keeps
     // its own hover/tooltip.
+    const bandY = bandsTop + rowIndex * ROW_H;
+    const bandH = section.rows.length * ROW_H;
     toggleNodes.push(
       <g
         key={`toggle-${section.jobId}`}
         className="gantt-toggle"
-        role="button"
-        tabIndex={0}
-        aria-expanded={true}
-        onClick={() => toggleSection(section.jobId)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            toggleSection(section.jobId);
-          }
-        }}
+        {...toggleProps(() => toggleJob(section.jobId), true)}
       >
         <rect className="gantt-toggle-hit" x={0} y={bandY} width={gutterW} height={bandH} />
-        {sectionNameNodes(section.name, true, bandY + bandH / 2)}
+        {gutterName(section.name, true, bandY + bandH / 2, indent, member)}
         <title>{`${section.name} — click to collapse`}</title>
       </g>,
     );
@@ -529,6 +674,75 @@ export default function RunTimeline({
 
       rowIndex++;
     }
+  };
+
+  nodes.forEach((node, nodeIndex) => {
+    const bandClass = `gantt-band-${nodeIndex % 3}`;
+    const bandStartRow = rowIndex;
+
+    if (node.type === "single") {
+      renderSection(node.section, 0, false);
+    } else {
+      const { group } = node;
+      const isOpen = expandedGroups.has(group.key);
+      const headerLabel = `${group.name} (${group.members.length})`;
+
+      if (!isOpen) {
+        const rowY = bandsTop + rowIndex * ROW_H;
+        rowNodes.push(
+          <g
+            key={`group-${group.key}`}
+            className="gantt-row gantt-toggle"
+            {...toggleProps(() => toggleGroup(group.key), false)}
+          >
+            <rect className="gantt-row-hit" x={0} y={rowY} width={width} height={ROW_H} />
+            {summaryBarNodes(group.summary, rowY)}
+            {summaryLabelNode(group.summary, rowY)}
+            {gutterName(headerLabel, false, rowY + ROW_H / 2, 0, false)}
+            <title>{group.summary.tooltip}</title>
+          </g>,
+        );
+        rowIndex += 1;
+      } else {
+        // Header row collapses the group; members follow, indented.
+        const rowY = bandsTop + rowIndex * ROW_H;
+        rowNodes.push(
+          <g
+            key={`group-${group.key}`}
+            className="gantt-row gantt-toggle"
+            {...toggleProps(() => toggleGroup(group.key), true)}
+          >
+            <rect className="gantt-row-hit" x={0} y={rowY} width={width} height={ROW_H} />
+            {gutterName(headerLabel, true, rowY + ROW_H / 2, 0, false)}
+            <title>{`${group.name} — click to collapse the group`}</title>
+          </g>,
+        );
+        rowIndex += 1;
+
+        group.members.forEach((memberSection, memberIndex) => {
+          if (memberIndex > 0) {
+            const sepY = bandsTop + rowIndex * ROW_H;
+            rowNodes.push(
+              <line
+                key={`sep-${group.key}-${memberSection.jobId}`}
+                className="gantt-grid"
+                x1={GROUP_INDENT}
+                y1={sepY}
+                x2={width - 6}
+                y2={sepY}
+              />,
+            );
+          }
+          renderSection(memberSection, GROUP_INDENT, true);
+        });
+      }
+    }
+
+    const bandY = bandsTop + bandStartRow * ROW_H;
+    const bandH = (rowIndex - bandStartRow) * ROW_H;
+    bands.push(
+      <rect key={`band-${nodeIndex}`} className={bandClass} x={0} y={bandY} width={width} height={bandH} />,
+    );
   });
 
   return (

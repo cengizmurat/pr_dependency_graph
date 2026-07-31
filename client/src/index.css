@@ -144,6 +144,10 @@ body {
   fill: var(--color-text);
 }
 
+.gantt-section-label-member {
+  font-weight: 400;
+}
+
 .gantt-bar-bar { fill: var(--gantt-bar); }
 .gantt-bar-failed { fill: var(--gantt-bar-failed); }
 .gantt-bar-muted { fill: var(--gantt-bar-muted); }

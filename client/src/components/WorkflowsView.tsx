@@ -7,7 +7,7 @@ import {
   fetchWorkflowRunJobs,
   fetchWorkflowRuns,
 } from "../api";
-import type { WorkflowInfo, WorkflowJob, WorkflowRunInfo } from "../types";
+import type { WorkflowInfo, WorkflowRunInfo } from "../types";
 import { WORKFLOWS_PAGE_SIZE, WORKFLOW_RUNS_PAGE_SIZE } from "../constants";
 import { timeAgo } from "../utils";
 import RunTimeline, { formatDuration } from "./RunTimeline";
@@ -36,14 +36,6 @@ function runDurationSeconds(run: WorkflowRunInfo): number {
   const end =
     run.status === "completed" ? Date.parse(run.updatedAt) : Date.now();
   if (isNaN(start) || isNaN(end)) return 0;
-  return Math.max(0, (end - start) / 1000);
-}
-
-function jobDurationSeconds(job: WorkflowJob): number | null {
-  if (!job.startedAt) return null;
-  const start = Date.parse(job.startedAt);
-  const end = job.completedAt ? Date.parse(job.completedAt) : Date.now();
-  if (isNaN(start) || isNaN(end)) return null;
   return Math.max(0, (end - start) / 1000);
 }
 
@@ -379,39 +371,6 @@ function RunDetail({
       )}
       {runQuery.error && !run && (
         <p style={styles.cardError}>{(runQuery.error as Error).message}</p>
-      )}
-
-      {jobs && jobs.length > 0 && (
-        <div style={styles.jobChips}>
-          {jobs.map((job) => {
-            const duration = jobDurationSeconds(job);
-            const chip = (
-              <>
-                <RunStatusIcon status={job.status} conclusion={job.conclusion} size={14} />
-                <span style={styles.jobChipName}>{job.name}</span>
-                {duration !== null && (
-                  <span style={styles.jobChipDuration}>{formatDuration(duration)}</span>
-                )}
-              </>
-            );
-            return job.htmlUrl ? (
-              <a
-                key={job.id}
-                href={job.htmlUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={styles.jobChip}
-                title={`${job.name} — open logs on GitHub`}
-              >
-                {chip}
-              </a>
-            ) : (
-              <span key={job.id} style={styles.jobChip}>
-                {chip}
-              </span>
-            );
-          })}
-        </div>
       )}
 
       <div style={styles.timelineCard}>
