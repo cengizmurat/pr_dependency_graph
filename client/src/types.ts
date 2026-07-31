@@ -69,6 +69,55 @@ export interface UserRepo {
   pushedAt: string | null;
 }
 
+// --- GitHub Actions types ---
+
+export interface WorkflowInfo {
+  id: number;
+  name: string;
+  // Repo-relative file path, e.g. ".github/workflows/ci.yml".
+  path: string;
+  state: string;
+  htmlUrl: string;
+}
+
+export interface WorkflowRunInfo {
+  id: number;
+  runNumber: number;
+  event: string;
+  status: string;
+  conclusion: string | null;
+  headBranch: string | null;
+  displayTitle: string;
+  actorLogin: string;
+  actorAvatarUrl: string;
+  createdAt: string;
+  runStartedAt: string;
+  updatedAt: string;
+  htmlUrl: string;
+}
+
+export interface WorkflowStep {
+  name: string;
+  number: number;
+  status: string;
+  conclusion: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface WorkflowJob {
+  id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  // When the job was queued; started_at - created_at is the runner wait.
+  createdAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  htmlUrl: string | null;
+  steps: WorkflowStep[];
+}
+
 // --- Graph data model types ---
 
 export interface PRNode {

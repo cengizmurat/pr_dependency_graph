@@ -32,6 +32,11 @@ export const DEFAULT_LOOKBACK_DAYS = 7;
 
 export const LEGEND_COLLAPSED_KEY = "pr-graph-legend-collapsed";
 
+// --- Workflows tab ---
+
+// How many recent runs to list under an expanded workflow.
+export const WORKFLOW_RUNS_COUNT = 20;
+
 // --- PRCard reviewer display ---
 
 export const MAX_REVIEWER_AVATARS = 4;

@@ -32,6 +32,19 @@
   --color-deletions: #cf222e;
   --color-avatar-border: #ffffff;
   --color-shadow: rgba(0, 0, 0, 0.1);
+
+  /* Workflow run timeline (gantt) */
+  --gantt-band-a: rgba(102, 102, 255, 0.11);
+  --gantt-band-b: transparent;
+  --gantt-band-c: rgba(255, 244, 0, 0.13);
+  --gantt-bar: #5865c9;
+  --gantt-bar-ink: #ffffff;
+  --gantt-bar-failed: #d1372f;
+  --gantt-bar-muted: #8b949e;
+  --gantt-active-fill: #bfc7ff;
+  --gantt-active-stroke: #5865c9;
+  --gantt-grid: rgba(110, 118, 129, 0.35);
+  --gantt-row-hover: rgba(9, 105, 218, 0.08);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -67,6 +80,19 @@
     --color-deletions: #f85149;
     --color-avatar-border: #0d1117;
     --color-shadow: rgba(0, 0, 0, 0.4);
+
+    /* Workflow run timeline (gantt) */
+    --gantt-band-a: rgba(125, 136, 226, 0.14);
+    --gantt-band-b: transparent;
+    --gantt-band-c: rgba(255, 244, 0, 0.07);
+    --gantt-bar: #7d88e2;
+    --gantt-bar-ink: #0d1117;
+    --gantt-bar-failed: #e8635c;
+    --gantt-bar-muted: #6e7681;
+    --gantt-active-fill: #333c6e;
+    --gantt-active-stroke: #7d88e2;
+    --gantt-grid: rgba(139, 148, 158, 0.3);
+    --gantt-row-hover: rgba(88, 166, 255, 0.1);
   }
 }
 
@@ -98,6 +124,66 @@ body {
 
 .contributor-dropdown-item:hover {
   background: var(--color-border-subtle);
+}
+
+/* --- Workflow run timeline (gantt) --- */
+
+.gantt-title {
+  font-size: 14px;
+  font-weight: 600;
+  fill: var(--color-text);
+}
+
+.gantt-band-0 { fill: var(--gantt-band-a); }
+.gantt-band-1 { fill: var(--gantt-band-b); }
+.gantt-band-2 { fill: var(--gantt-band-c); }
+
+.gantt-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--color-text);
+}
+
+.gantt-bar-bar { fill: var(--gantt-bar); }
+.gantt-bar-failed { fill: var(--gantt-bar-failed); }
+.gantt-bar-muted { fill: var(--gantt-bar-muted); }
+.gantt-bar-active {
+  fill: var(--gantt-active-fill);
+  stroke: var(--gantt-active-stroke);
+  stroke-width: 1;
+}
+
+.gantt-label,
+.gantt-label-inside,
+.gantt-label-inside-soft {
+  font-size: 11px;
+  pointer-events: none;
+}
+.gantt-label { fill: var(--color-text); }
+.gantt-label-inside { fill: var(--gantt-bar-ink); }
+.gantt-label-inside-soft { fill: var(--color-text); }
+
+.gantt-grid {
+  stroke: var(--gantt-grid);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.gantt-axis-label {
+  font-size: 10px;
+  fill: var(--color-text-secondary);
+}
+
+.gantt-row-hit { fill: transparent; }
+.gantt-row:hover .gantt-row-hit { fill: var(--gantt-row-hover); }
+
+.workflow-list-item:hover,
+.workflow-run-item:hover {
+  background: var(--color-border-subtle);
+}
+
+.page-tab:hover {
+  color: var(--color-text);
 }
 
 .feature-popup-close:hover {

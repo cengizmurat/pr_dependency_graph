@@ -16,6 +16,13 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
+    version: 6,
+    title: "Browse GitHub Actions workflows and run timelines",
+    description:
+      "A new tab bar at the top of the page switches between the PR dependency graph and a Workflows view. Pick a workflow to list its recent runs, then pick a run to see a Gantt-style timeline of every job and step, including time spent waiting for a runner.",
+    date: "2026-07-31",
+  },
+  {
     version: 5,
     title: "Filter pull requests by your review state",
     description:

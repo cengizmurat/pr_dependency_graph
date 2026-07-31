@@ -14,6 +14,9 @@ import { useGithubToken } from "../hooks/useGithubToken";
 import { useIsMobile } from "../hooks/useIsMobile";
 import GraphView from "./GraphView";
 import FeatureAnnouncementPopup from "./FeatureAnnouncement";
+import PageTabs from "./PageTabs";
+import type { PageTab } from "./PageTabs";
+import WorkflowsView from "./WorkflowsView";
 import { styles, dropdownStyles } from "./GraphPage.styles";
 
 function looksLikeRepoNotFound(message: string): boolean {
@@ -41,13 +44,14 @@ function useIncrementalPRs(
   repo: string | undefined,
   startDate: string,
   endDate: string,
+  active: boolean,
 ) {
   const queryClient = useQueryClient();
   const [isFetchingMore, setIsFetchingMore] = useState(false);
 
   const query = useQuery({
     queryKey: ["prs", owner, repo, startDate, endDate],
-    enabled: !!token && !!owner && !!repo,
+    enabled: !!token && !!owner && !!repo && active,
     refetchInterval: PR_REFRESH_INTERVAL_MS,
     queryFn: async ({ queryKey, signal }) => {
       // Stream pages into the cache so the graph renders progressively, but
@@ -95,6 +99,24 @@ export default function GraphPage() {
   const isMobile = useIsMobile();
   const [searchParams, setSearchParams] = useSearchParams();
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
+
+  // The page has two views selected by a tab bar: the PR dependency graph
+  // (default) and the GitHub Actions workflows browser. The active tab lives in
+  // the URL so a view can be bookmarked or shared; switching pushes history so
+  // the back button walks out of the drill-down.
+  const activeTab: PageTab =
+    searchParams.get("tab") === "workflows" ? "workflows" : "prs";
+  const setActiveTab = useCallback(
+    (next: PageTab) => {
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev);
+        if (next === "workflows") params.set("tab", "workflows");
+        else params.delete("tab");
+        return params;
+      });
+    },
+    [setSearchParams],
+  );
 
   const { data: viewerLogin } = useQuery({
     queryKey: ["viewer", token],
@@ -186,12 +208,12 @@ export default function GraphPage() {
     isFetchingMore,
     error: prError,
     refetch,
-  } = useIncrementalPRs(token, owner, repo, startDate, endDate);
+  } = useIncrementalPRs(token, owner, repo, startDate, endDate, activeTab === "prs");
 
   const { data: contributors } = useQuery({
     queryKey: ["contributors", owner, repo],
     queryFn: () => fetchContributors(token!, owner!, repo!),
-    enabled: !!owner && !!repo && !!token,
+    enabled: !!owner && !!repo && !!token && activeTab === "prs",
     staleTime: 5 * 60 * 1000,
   });
 
@@ -199,7 +221,7 @@ export default function GraphPage() {
   const { data: behindByData } = useQuery({
     queryKey: ["behindBy", owner, repo, prKeys],
     queryFn: () => fetchBehindByCounts(token!, owner!, repo!, allPRs, queryClient),
-    enabled: !!owner && !!repo && !!token && allPRs.length > 0,
+    enabled: !!owner && !!repo && !!token && allPRs.length > 0 && activeTab === "prs",
     staleTime: 60 * 1000,
   });
 
@@ -267,11 +289,13 @@ export default function GraphPage() {
           <span style={styles.viewer}>@{data.viewerLogin}</span>
         )}
         <span style={styles.badge}>
-          {data
+          {activeTab === "prs" && data
             ? `${data.nodes.filter((n) => n.type === "pr").length}${isFetchingMore ? "+" : ""} open PRs`
             : ""}
         </span>
         <div style={isMobile ? styles.controlsMobile : styles.controlsDesktop}>
+        {activeTab === "prs" && (
+          <>
         <RangePicker
           showTime={!isMobile}
           value={dateRange}
@@ -298,7 +322,10 @@ export default function GraphPage() {
           isMobile={isMobile}
           viewerLogin={viewerLogin}
         />
+          </>
+        )}
         <div style={isMobile ? styles.iconRowMobile : styles.iconRowDesktop}>
+        {activeTab === "prs" && (
         <Dropdown
           trigger={["click"]}
           menu={{
@@ -359,6 +386,7 @@ export default function GraphPage() {
             </svg>
           </button>
         </Dropdown>
+        )}
         <a
           href="https://github.com/cengizmurat/pr_dependency_graph"
           target="_blank"
@@ -374,7 +402,14 @@ export default function GraphPage() {
         </div>
       </header>
 
+      <PageTabs active={activeTab} onChange={setActiveTab} />
+
       <div style={styles.content}>
+        {activeTab === "workflows" && owner && repo && (
+          <WorkflowsView token={token} owner={owner} repo={repo} isMobile={isMobile} />
+        )}
+        {activeTab === "prs" && (
+          <>
         {isLoading && (
           <div style={styles.statusContainer}>
             <Spinner />
@@ -430,6 +465,8 @@ export default function GraphPage() {
             </div>
           );
         })()}
+          </>
+        )}
       </div>
     </div>
   );

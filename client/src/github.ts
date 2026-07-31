@@ -8,6 +8,9 @@ import type {
   PRPageResult,
   Contributor,
   UserRepo,
+  WorkflowInfo,
+  WorkflowJob,
+  WorkflowRunInfo,
 } from "./types";
 import { getToken } from "./auth";
 
@@ -549,6 +552,190 @@ export async function fetchPRsByDateRange(
   }
 
   return all;
+}
+
+// --- GitHub Actions (workflows / runs / jobs) ---
+
+interface RawWorkflow {
+  id: number;
+  name: string;
+  path: string;
+  state: string;
+  html_url: string;
+}
+
+interface RawWorkflowRun {
+  id: number;
+  run_number: number;
+  event: string;
+  status: string | null;
+  conclusion: string | null;
+  head_branch: string | null;
+  display_title?: string;
+  name?: string | null;
+  actor?: { login?: string; avatar_url?: string } | null;
+  created_at: string;
+  run_started_at?: string;
+  updated_at: string;
+  html_url: string;
+}
+
+interface RawWorkflowStep {
+  name: string;
+  number: number;
+  status: string;
+  conclusion: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+interface RawWorkflowJob {
+  id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  created_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  html_url?: string | null;
+  steps?: RawWorkflowStep[] | null;
+}
+
+async function fetchRestJson<T>(token: string, url: string): Promise<T> {
+  const res = await fetchWithAuth(token, url, {
+    headers: {
+      Accept: "application/vnd.github+json",
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message ?? `GitHub API returned ${res.status}`);
+  }
+
+  return res.json() as Promise<T>;
+}
+
+function processRawRun(run: RawWorkflowRun): WorkflowRunInfo {
+  return {
+    id: run.id,
+    runNumber: run.run_number,
+    event: run.event,
+    status: run.status ?? "completed",
+    conclusion: run.conclusion,
+    headBranch: run.head_branch,
+    displayTitle: run.display_title ?? run.name ?? `Run #${run.run_number}`,
+    actorLogin: run.actor?.login ?? "",
+    actorAvatarUrl: run.actor?.avatar_url ?? "",
+    createdAt: run.created_at,
+    runStartedAt: run.run_started_at ?? run.created_at,
+    updatedAt: run.updated_at,
+    htmlUrl: run.html_url,
+  };
+}
+
+export async function fetchWorkflows(
+  token: string,
+  owner: string,
+  repo: string,
+): Promise<WorkflowInfo[]> {
+  const workflows: WorkflowInfo[] = [];
+  let page = 1;
+
+  while (true) {
+    const data = await fetchRestJson<{ workflows?: RawWorkflow[] | null }>(
+      token,
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/workflows?per_page=100&page=${page}`,
+    );
+
+    const batch = data.workflows ?? [];
+    for (const w of batch) {
+      workflows.push({
+        id: w.id,
+        name: w.name,
+        path: w.path,
+        state: w.state,
+        htmlUrl: w.html_url,
+      });
+    }
+
+    if (batch.length < 100) break;
+    page++;
+  }
+
+  return workflows;
+}
+
+export async function fetchWorkflowRuns(
+  token: string,
+  owner: string,
+  repo: string,
+  workflowId: number,
+  count: number,
+): Promise<WorkflowRunInfo[]> {
+  const data = await fetchRestJson<{ workflow_runs?: RawWorkflowRun[] | null }>(
+    token,
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/workflows/${workflowId}/runs?per_page=${count}`,
+  );
+
+  return (data.workflow_runs ?? []).map(processRawRun);
+}
+
+export async function fetchWorkflowRun(
+  token: string,
+  owner: string,
+  repo: string,
+  runId: number,
+): Promise<WorkflowRunInfo> {
+  const data = await fetchRestJson<RawWorkflowRun>(
+    token,
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/runs/${runId}`,
+  );
+  return processRawRun(data);
+}
+
+export async function fetchWorkflowRunJobs(
+  token: string,
+  owner: string,
+  repo: string,
+  runId: number,
+): Promise<WorkflowJob[]> {
+  const jobs: WorkflowJob[] = [];
+  let page = 1;
+
+  while (true) {
+    const data = await fetchRestJson<{ jobs?: RawWorkflowJob[] | null }>(
+      token,
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/runs/${runId}/jobs?filter=latest&per_page=100&page=${page}`,
+    );
+
+    const batch = data.jobs ?? [];
+    for (const j of batch) {
+      jobs.push({
+        id: j.id,
+        name: j.name,
+        status: j.status,
+        conclusion: j.conclusion,
+        createdAt: j.created_at ?? null,
+        startedAt: j.started_at ?? null,
+        completedAt: j.completed_at ?? null,
+        htmlUrl: j.html_url ?? null,
+        steps: (j.steps ?? []).map((s) => ({
+          name: s.name,
+          number: s.number,
+          status: s.status,
+          conclusion: s.conclusion,
+          startedAt: s.started_at ?? null,
+          completedAt: s.completed_at ?? null,
+        })),
+      });
+    }
+
+    if (batch.length < 100) break;
+    page++;
+  }
+
+  return jobs;
 }
 
 interface RawUserRepo {
