@@ -292,6 +292,10 @@ function aggregateKind(members: TimelineSection[]): BarKind {
   return "bar";
 }
 
+function jobsWord(n: number): string {
+  return `${n} job${n === 1 ? "" : "s"}`;
+}
+
 function buildGroupSummary(base: string, members: TimelineSection[]): SectionSummary {
   const min = (vals: (number | null)[]): number | null => {
     const nums = vals.filter((v): v is number => v !== null);
@@ -313,9 +317,9 @@ function buildGroupSummary(base: string, members: TimelineSection[]): SectionSum
   let label: string;
   if (mainStart !== null && mainEnd !== null) {
     const durSec = (mainEnd - mainStart) / 1000;
-    label = `${kind === "failed" ? "✗ " : ""}${members.length} jobs · ${formatDuration(durSec)}`;
+    label = `${kind === "failed" ? "✗ " : ""}${jobsWord(members.length)} · ${formatDuration(durSec)}`;
   } else {
-    label = `${members.length} jobs queued`;
+    label = `${jobsWord(members.length)} queued`;
   }
 
   const counts = new Map<string, number>();
@@ -324,7 +328,7 @@ function buildGroupSummary(base: string, members: TimelineSection[]): SectionSum
     counts.set(s, (counts.get(s) ?? 0) + 1);
   }
   const countText = [...counts.entries()].map(([s, n]) => `${n} ${s}`).join(" · ");
-  const tooltip = `${base} — ${members.length} jobs\n${countText}\nClick to expand jobs`;
+  const tooltip = `${base} — ${jobsWord(members.length)}\n${countText}\nClick to expand ${members.length === 1 ? "the job" : "jobs"}`;
 
   return { waitStart, waitEnd, mainStart, mainEnd, kind, label, tooltip };
 }
@@ -333,34 +337,59 @@ function buildGroupSummary(base: string, members: TimelineSection[]): SectionSum
 // a group and their labels shrink to the variant.
 const MATRIX_NAME = /^(.*\S) \((.+)\)$/;
 
+// Jobs from a reusable-workflow call are named "caller / job"; the segment
+// before the first " / " is a group by itself, even with a single member.
+function splitSlash(name: string): { base: string; rest: string } | null {
+  const idx = name.indexOf(" / ");
+  if (idx <= 0) return null;
+  const base = name.slice(0, idx).trim();
+  const rest = name.slice(idx + 3).trim();
+  if (!base || !rest) return null;
+  return { base, rest };
+}
+
 function buildNodes(jobs: WorkflowJob[], nowMs: number): TopNode[] {
   const nodes: TopNode[] = [];
   const groups = new Map<string, SectionGroup>();
   const baseCounts = new Map<string, number>();
 
   for (const job of jobs) {
+    if (splitSlash(job.name)) continue;
     const m = MATRIX_NAME.exec(job.name);
     if (m) baseCounts.set(m[1], (baseCounts.get(m[1]) ?? 0) + 1);
   }
+
+  // Groups are keyed with a namespace so a "build / …" job and a
+  // "build (…)" matrix can't collapse into one group by name collision.
+  const ensureGroup = (key: string, name: string): SectionGroup => {
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, name, members: [], summary: null as unknown as SectionSummary };
+      groups.set(key, group);
+      nodes.push({ type: "group", group });
+    }
+    return group;
+  };
 
   for (const job of jobs) {
     const section = buildSection(job, nowMs);
     if (!section) continue;
 
+    // Members display just their variant / called-job part; tooltips keep the
+    // full name. Grouping is derived from names only — purely visual.
+    const slash = splitSlash(job.name);
+    if (slash) {
+      ensureGroup(`s:${slash.base}`, slash.base).members.push({ ...section, name: slash.rest });
+      continue;
+    }
+
     const m = MATRIX_NAME.exec(job.name);
     if (m && (baseCounts.get(m[1]) ?? 0) >= 2) {
-      const base = m[1];
-      let group = groups.get(base);
-      if (!group) {
-        group = { key: base, name: base, members: [], summary: null as unknown as SectionSummary };
-        groups.set(base, group);
-        nodes.push({ type: "group", group });
-      }
-      // Members display just their matrix variant; tooltips keep the full name.
-      group.members.push({ ...section, name: m[2] });
-    } else {
-      nodes.push({ type: "single", section });
+      ensureGroup(`m:${m[1]}`, m[1]).members.push({ ...section, name: m[2] });
+      continue;
     }
+
+    nodes.push({ type: "single", section });
   }
 
   for (const group of groups.values()) {
