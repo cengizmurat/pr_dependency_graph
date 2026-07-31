@@ -60,15 +60,19 @@ interface TimelineSection {
   summary: SectionSummary;
 }
 
+// Groups nest: a job named "ci / lint / eslint" lives under group "ci" ->
+// subgroup "lint". Children are groups or jobs; summaries aggregate over the
+// subtree's leaf jobs.
 interface SectionGroup {
   key: string;
   name: string;
-  members: TimelineSection[];
+  children: TreeNode[];
   summary: SectionSummary;
+  jobCount: number;
 }
 
-type TopNode =
-  | { type: "single"; section: TimelineSection }
+type TreeNode =
+  | { type: "job"; section: TimelineSection }
   | { type: "group"; group: SectionGroup };
 
 // Candidate axis-tick steps in seconds; the first one producing a readable
@@ -337,65 +341,110 @@ function buildGroupSummary(base: string, members: TimelineSection[]): SectionSum
 // a group and their labels shrink to the variant.
 const MATRIX_NAME = /^(.*\S) \((.+)\)$/;
 
-// Jobs from a reusable-workflow call are named "caller / job"; the segment
-// before the first " / " is a group by itself, even with a single member.
-function splitSlash(name: string): { base: string; rest: string } | null {
-  const idx = name.indexOf(" / ");
-  if (idx <= 0) return null;
-  const base = name.slice(0, idx).trim();
-  const rest = name.slice(idx + 3).trim();
-  if (!base || !rest) return null;
-  return { base, rest };
+function leafSections(children: TreeNode[]): TimelineSection[] {
+  const out: TimelineSection[] = [];
+  const walk = (nodes: TreeNode[]) => {
+    for (const n of nodes) {
+      if (n.type === "job") out.push(n.section);
+      else walk(n.group.children);
+    }
+  };
+  walk(children);
+  return out;
 }
 
-function buildNodes(jobs: WorkflowJob[], nowMs: number): TopNode[] {
-  const nodes: TopNode[] = [];
-  const groups = new Map<string, SectionGroup>();
-  const baseCounts = new Map<string, number>();
-
-  for (const job of jobs) {
-    if (splitSlash(job.name)) continue;
-    const m = MATRIX_NAME.exec(job.name);
-    if (m) baseCounts.set(m[1], (baseCounts.get(m[1]) ?? 0) + 1);
+// Among sibling jobs at any level, two or more sharing a "base (variant)"
+// name still fold into a matrix group whose members show the variant.
+function applyMatrixGrouping(children: TreeNode[], parentKey: string): TreeNode[] {
+  const counts = new Map<string, number>();
+  for (const c of children) {
+    if (c.type !== "job") continue;
+    const m = MATRIX_NAME.exec(c.section.name);
+    if (m) counts.set(m[1], (counts.get(m[1]) ?? 0) + 1);
   }
 
-  // Groups are keyed with a namespace so a "build / …" job and a
-  // "build (…)" matrix can't collapse into one group by name collision.
-  const ensureGroup = (key: string, name: string): SectionGroup => {
-    let group = groups.get(key);
-    if (!group) {
-      group = { key, name, members: [], summary: null as unknown as SectionSummary };
-      groups.set(key, group);
-      nodes.push({ type: "group", group });
+  const result: TreeNode[] = [];
+  const matrixGroups = new Map<string, SectionGroup>();
+  for (const c of children) {
+    if (c.type === "group") {
+      c.group.children = applyMatrixGrouping(c.group.children, c.group.key);
+      result.push(c);
+      continue;
     }
-    return group;
-  };
+    const m = MATRIX_NAME.exec(c.section.name);
+    if (m && (counts.get(m[1]) ?? 0) >= 2) {
+      let group = matrixGroups.get(m[1]);
+      if (!group) {
+        group = {
+          key: `${parentKey}|m:${m[1]}`,
+          name: m[1],
+          children: [],
+          summary: null as unknown as SectionSummary,
+          jobCount: 0,
+        };
+        matrixGroups.set(m[1], group);
+        result.push({ type: "group", group });
+      }
+      group.children.push({ type: "job", section: { ...c.section, name: m[2] } });
+      continue;
+    }
+    result.push(c);
+  }
+  return result;
+}
+
+function finalizeGroups(node: TreeNode): void {
+  if (node.type === "job") return;
+  for (const child of node.group.children) finalizeGroups(child);
+  const leaves = leafSections(node.group.children);
+  node.group.jobCount = leaves.length;
+  node.group.summary = buildGroupSummary(node.group.name, leaves);
+}
+
+// Jobs from reusable-workflow calls are named "caller / job" (nesting
+// arbitrarily deep, "a / b / c"); every " / " segment before the last opens a
+// group, even for a single member. Grouping is derived from names only —
+// purely visual. Group keys are full paths (matrix groups namespaced with
+// "|m:") so same-named groups at different depths can't collide.
+function buildNodes(jobs: WorkflowJob[], nowMs: number): TreeNode[] {
+  const root: TreeNode[] = [];
+  const groupsByKey = new Map<string, SectionGroup>();
 
   for (const job of jobs) {
     const section = buildSection(job, nowMs);
     if (!section) continue;
 
-    // Members display just their variant / called-job part; tooltips keep the
-    // full name. Grouping is derived from names only — purely visual.
-    const slash = splitSlash(job.name);
-    if (slash) {
-      ensureGroup(`s:${slash.base}`, slash.base).members.push({ ...section, name: slash.rest });
+    const segments = job.name.split(" / ").map((s) => s.trim()).filter(Boolean);
+    if (segments.length <= 1) {
+      root.push({ type: "job", section });
       continue;
     }
 
-    const m = MATRIX_NAME.exec(job.name);
-    if (m && (baseCounts.get(m[1]) ?? 0) >= 2) {
-      ensureGroup(`m:${m[1]}`, m[1]).members.push({ ...section, name: m[2] });
-      continue;
+    let container = root;
+    let path = "";
+    for (let i = 0; i < segments.length - 1; i++) {
+      path = path ? `${path} / ${segments[i]}` : segments[i];
+      const key = `g:${path}`;
+      let group = groupsByKey.get(key);
+      if (!group) {
+        group = {
+          key,
+          name: segments[i],
+          children: [],
+          summary: null as unknown as SectionSummary,
+          jobCount: 0,
+        };
+        groupsByKey.set(key, group);
+        container.push({ type: "group", group });
+      }
+      container = group.children;
     }
-
-    nodes.push({ type: "single", section });
+    // Members display just their last segment; tooltips keep the full name.
+    container.push({ type: "job", section: { ...section, name: segments[segments.length - 1] } });
   }
 
-  for (const group of groups.values()) {
-    group.summary = buildGroupSummary(group.name, group.members);
-  }
-
+  const nodes = applyMatrixGrouping(root, "");
+  for (const node of nodes) finalizeGroups(node);
   return nodes;
 }
 
@@ -498,17 +547,18 @@ export default function RunTimeline({
       gutterNeeds.push(indent + CHEVRON_SPACE + measureText(s.name, font) + 20);
     };
 
-    for (const node of nodes) {
-      if (node.type === "single") {
-        collectSection(node.section, 0, SECTION_FONT);
-      } else {
-        const headerLabel = `${node.group.name} (${node.group.members.length})`;
-        gutterNeeds.push(CHEVRON_SPACE + measureText(headerLabel, SECTION_FONT) + 20);
-        for (const member of node.group.members) {
-          collectSection(member, GROUP_INDENT, MEMBER_FONT);
-        }
+    const collectNode = (node: TreeNode, indent: number, depth: number) => {
+      if (node.type === "job") {
+        collectSection(node.section, indent, depth > 0 ? MEMBER_FONT : SECTION_FONT);
+        return;
       }
-    }
+      const headerLabel = `${node.group.name} (${node.group.jobCount})`;
+      gutterNeeds.push(indent + CHEVRON_SPACE + measureText(headerLabel, SECTION_FONT) + 20);
+      for (const child of node.group.children) {
+        collectNode(child, indent + GROUP_INDENT, depth + 1);
+      }
+    };
+    for (const node of nodes) collectNode(node, 0, 0);
 
     const t0 = Math.min(...starts);
     const rawEnd = Math.max(...ends);
@@ -543,13 +593,15 @@ export default function RunTimeline({
 
   const allJobIds: number[] = [];
   const allGroupKeys: string[] = [];
-  for (const node of nodes) {
-    if (node.type === "single") allJobIds.push(node.section.jobId);
-    else {
-      allGroupKeys.push(node.group.key);
-      for (const m of node.group.members) allJobIds.push(m.jobId);
+  const collectIds = (node: TreeNode) => {
+    if (node.type === "job") {
+      allJobIds.push(node.section.jobId);
+      return;
     }
-  }
+    allGroupKeys.push(node.group.key);
+    for (const child of node.group.children) collectIds(child);
+  };
+  for (const node of nodes) collectIds(node);
   const allExpanded =
     allJobIds.every((id) => expandedJobs.has(id)) &&
     allGroupKeys.every((k) => expandedGroups.has(k));
@@ -559,11 +611,12 @@ export default function RunTimeline({
   };
 
   const sectionRowSpan = (s: TimelineSection) => (expandedJobs.has(s.jobId) ? s.rows.length : 1);
-  const rowCount = nodes.reduce((sum, node) => {
-    if (node.type === "single") return sum + sectionRowSpan(node.section);
-    if (!expandedGroups.has(node.group.key)) return sum + 1;
-    return sum + 1 + node.group.members.reduce((s, m) => s + sectionRowSpan(m), 0);
-  }, 0);
+  const nodeRowCount = (node: TreeNode): number => {
+    if (node.type === "job") return sectionRowSpan(node.section);
+    if (!expandedGroups.has(node.group.key)) return 1;
+    return 1 + node.group.children.reduce((s, c) => s + nodeRowCount(c), 0);
+  };
+  const rowCount = nodes.reduce((sum, node) => sum + nodeRowCount(node), 0);
   const bandsTop = TITLE_H;
   const bandsBottom = bandsTop + rowCount * ROW_H;
   const height = bandsBottom + AXIS_H;
@@ -778,67 +831,75 @@ export default function RunTimeline({
     }
   };
 
+  // Renders a job or a (possibly nested) group at the given indent, advancing
+  // rowIndex as rows are emitted.
+  const renderNode = (node: TreeNode, indent: number, depth: number) => {
+    if (node.type === "job") {
+      renderSection(node.section, indent, depth > 0);
+      return;
+    }
+
+    const { group } = node;
+    const isOpen = expandedGroups.has(group.key);
+    const headerLabel = `${group.name} (${group.jobCount})`;
+    const rowY = bandsTop + rowIndex * ROW_H;
+
+    if (!isOpen) {
+      rowNodes.push(
+        <g
+          key={`group-${group.key}`}
+          className="gantt-row gantt-toggle"
+          {...toggleProps(() => toggleGroup(group.key), false)}
+        >
+          <rect className="gantt-row-hit" x={0} y={rowY} width={width} height={ROW_H} />
+          {summaryBarNodes(group.summary, rowY)}
+          {summaryLabelNode(group.summary, rowY)}
+          {gutterName(headerLabel, false, rowY + ROW_H / 2, indent, false)}
+          <title>{group.summary.tooltip}</title>
+        </g>,
+      );
+      rowIndex += 1;
+      return;
+    }
+
+    // Header row collapses the group; children (jobs or subgroups) follow,
+    // indented one level deeper.
+    rowNodes.push(
+      <g
+        key={`group-${group.key}`}
+        className="gantt-row gantt-toggle"
+        {...toggleProps(() => toggleGroup(group.key), true)}
+      >
+        <rect className="gantt-row-hit" x={0} y={rowY} width={width} height={ROW_H} />
+        {gutterName(headerLabel, true, rowY + ROW_H / 2, indent, false)}
+        <title>{`${group.name} — click to collapse the group`}</title>
+      </g>,
+    );
+    rowIndex += 1;
+
+    group.children.forEach((child, childIndex) => {
+      if (childIndex > 0) {
+        const sepY = bandsTop + rowIndex * ROW_H;
+        rowNodes.push(
+          <line
+            key={`sep-${group.key}-${childIndex}`}
+            className="gantt-grid"
+            x1={indent + GROUP_INDENT}
+            y1={sepY}
+            x2={width - 6}
+            y2={sepY}
+          />,
+        );
+      }
+      renderNode(child, indent + GROUP_INDENT, depth + 1);
+    });
+  };
+
   nodes.forEach((node, nodeIndex) => {
     const bandClass = `gantt-band-${nodeIndex % 3}`;
     const bandStartRow = rowIndex;
 
-    if (node.type === "single") {
-      renderSection(node.section, 0, false);
-    } else {
-      const { group } = node;
-      const isOpen = expandedGroups.has(group.key);
-      const headerLabel = `${group.name} (${group.members.length})`;
-
-      if (!isOpen) {
-        const rowY = bandsTop + rowIndex * ROW_H;
-        rowNodes.push(
-          <g
-            key={`group-${group.key}`}
-            className="gantt-row gantt-toggle"
-            {...toggleProps(() => toggleGroup(group.key), false)}
-          >
-            <rect className="gantt-row-hit" x={0} y={rowY} width={width} height={ROW_H} />
-            {summaryBarNodes(group.summary, rowY)}
-            {summaryLabelNode(group.summary, rowY)}
-            {gutterName(headerLabel, false, rowY + ROW_H / 2, 0, false)}
-            <title>{group.summary.tooltip}</title>
-          </g>,
-        );
-        rowIndex += 1;
-      } else {
-        // Header row collapses the group; members follow, indented.
-        const rowY = bandsTop + rowIndex * ROW_H;
-        rowNodes.push(
-          <g
-            key={`group-${group.key}`}
-            className="gantt-row gantt-toggle"
-            {...toggleProps(() => toggleGroup(group.key), true)}
-          >
-            <rect className="gantt-row-hit" x={0} y={rowY} width={width} height={ROW_H} />
-            {gutterName(headerLabel, true, rowY + ROW_H / 2, 0, false)}
-            <title>{`${group.name} — click to collapse the group`}</title>
-          </g>,
-        );
-        rowIndex += 1;
-
-        group.members.forEach((memberSection, memberIndex) => {
-          if (memberIndex > 0) {
-            const sepY = bandsTop + rowIndex * ROW_H;
-            rowNodes.push(
-              <line
-                key={`sep-${group.key}-${memberSection.jobId}`}
-                className="gantt-grid"
-                x1={GROUP_INDENT}
-                y1={sepY}
-                x2={width - 6}
-                y2={sepY}
-              />,
-            );
-          }
-          renderSection(memberSection, GROUP_INDENT, true);
-        });
-      }
-    }
+    renderNode(node, 0, 0);
 
     const bandY = bandsTop + bandStartRow * ROW_H;
     const bandH = (rowIndex - bandStartRow) * ROW_H;
