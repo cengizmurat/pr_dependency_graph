@@ -19,7 +19,7 @@ export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
     version: 7,
     title: "Filter pull requests by reviewer",
     description:
-      "A new reviewer dropdown next to the author filter lists everyone assigned to review a PR, with the number of PRs on each person's plate, so you can see how the review load is spread and narrow the graph to one reviewer. When a reviewer is selected, the review state filter applies to them instead of you.",
+      "A new reviewer dropdown next to the author filter narrows the graph to the pull requests assigned to the reviewers you pick.",
     date: "2026-08-03",
   },
   {
