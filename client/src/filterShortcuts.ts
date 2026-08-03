@@ -6,7 +6,8 @@
 // bookmarked link keeps working, and records which shortcut produced them in
 // the `shortcut` param. That marker is what lets a later shortcut click
 // override only the values it put in the URL itself and leave manually picked
-// filters untouched.
+// filters untouched — except for params a shortcut declares `exclusive`, which
+// it takes over completely (see `Entry`).
 
 export const SHORTCUT_PARAM = "shortcut";
 
@@ -18,15 +19,28 @@ export const SHORTCUT_LABELS: Record<ShortcutKey, string> = {
   mine: "My PRs",
 };
 
-// A single filter param/value pair contributed by a shortcut.
-type Entry = [param: string, value: string];
+// A single filter param/value pair contributed by a shortcut. An `exclusive`
+// entry means the shortcut owns that param outright: applying it replaces
+// whatever was selected instead of adding to it, and any other value showing
+// up there later makes the shortcut marker stale.
+interface Entry {
+  param: string;
+  value: string;
+  exclusive?: boolean;
+}
 
 function entriesFor(key: ShortcutKey, viewerLogin: string): Entry[] {
   switch (key) {
     case "requested":
-      return [["reviewState", "REQUESTED"]];
+      // The reviewer is pinned to the viewer (exclusively, so the shortcut
+      // resets a reviewer picked by hand) and the state to a pending request:
+      // together they mean "PRs still waiting on my review".
+      return [
+        { param: "reviewer", value: viewerLogin, exclusive: true },
+        { param: "reviewState", value: "REQUESTED" },
+      ];
     case "mine":
-      return [["author", viewerLogin]];
+      return [{ param: "author", value: viewerLogin }];
   }
 }
 
@@ -34,15 +48,30 @@ function isShortcutKey(value: string | null): value is ShortcutKey {
   return value !== null && (SHORTCUT_KEYS as readonly string[]).includes(value);
 }
 
-function hasEntry(params: URLSearchParams, [param, value]: Entry): boolean {
-  return params
-    .getAll(param)
-    .some((v) => v.toLowerCase() === value.toLowerCase());
+// Whether the entry's value is still in the URL. An exclusive entry also
+// requires that nothing else was added to the param, since the shortcut claims
+// all of it.
+function hasEntry(
+  params: URLSearchParams,
+  { param, value, exclusive }: Entry,
+): boolean {
+  const values = params.getAll(param);
+  if (exclusive) {
+    return values.length === 1 && values[0].toLowerCase() === value.toLowerCase();
+  }
+  return values.some((v) => v.toLowerCase() === value.toLowerCase());
 }
 
 // Drops a single occurrence of the value, so a manually selected duplicate of
-// another param value survives.
-function removeEntry(params: URLSearchParams, [param, value]: Entry): void {
+// another param value survives. An exclusive entry clears the param outright.
+function removeEntry(
+  params: URLSearchParams,
+  { param, value, exclusive }: Entry,
+): void {
+  if (exclusive) {
+    params.delete(param);
+    return;
+  }
   const remaining = params.getAll(param);
   const idx = remaining.findIndex(
     (v) => v.toLowerCase() === value.toLowerCase(),
@@ -86,7 +115,10 @@ export function applyShortcut(
   if (active !== key) {
     params.set(SHORTCUT_PARAM, key);
     for (const entry of entriesFor(key, viewerLogin)) {
-      if (!hasEntry(params, entry)) params.append(entry[0], entry[1]);
+      // `set` drops any value already there, which is what makes an exclusive
+      // entry a reset rather than an addition.
+      if (entry.exclusive) params.set(entry.param, entry.value);
+      else if (!hasEntry(params, entry)) params.append(entry.param, entry.value);
     }
   }
   return params;

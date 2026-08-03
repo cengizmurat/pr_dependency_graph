@@ -13,9 +13,11 @@ interface Props {
 // Filter shortcuts next to the Legend. Each button is a mutually exclusive
 // one-click filter preset: clicking one clears the values the previously
 // active shortcut had put in the URL and applies its own, while filters the
-// user picked by hand in the dropdowns stay exactly as they are. The URL
-// records which shortcut is active in the `shortcut` param, which is what
-// makes that distinction possible. Clicking the active shortcut clears it.
+// user picked by hand in the dropdowns stay exactly as they are — bar the ones
+// a shortcut owns outright, such as the reviewer "Requested reviews" resets to
+// the viewer. The URL records which shortcut is active in the `shortcut`
+// param, which is what makes that distinction possible. Clicking the active
+// shortcut clears it.
 export default function FilterShortcuts({ viewerLogin }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
 

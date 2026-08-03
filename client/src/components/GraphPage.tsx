@@ -124,10 +124,10 @@ export default function GraphPage() {
     enabled: !!token,
   });
 
-  // Author and status filters live in the URL query string so they survive a
-  // refresh and a filtered view can be bookmarked or shared. Editing one by
-  // hand drops the `shortcut` marker once the filters no longer match the
-  // shortcut it names, so the value counts as manually set from then on.
+  // Author, reviewer and status filters live in the URL query string so they
+  // survive a refresh and a filtered view can be bookmarked or shared. Editing
+  // one by hand drops the `shortcut` marker once the filters no longer match
+  // the shortcut it names, so the value counts as manually set from then on.
   const authorFilter = useMemo(() => searchParams.getAll("author"), [searchParams]);
   const setAuthorFilter = useCallback(
     (next: string[]) => {
@@ -136,6 +136,25 @@ export default function GraphPage() {
           const params = new URLSearchParams(prev);
           params.delete("author");
           for (const login of next) params.append("author", login);
+          return pruneStaleShortcut(params, viewerLogin);
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams, viewerLogin],
+  );
+
+  const reviewerFilter = useMemo(
+    () => searchParams.getAll("reviewer"),
+    [searchParams],
+  );
+  const setReviewerFilter = useCallback(
+    (next: string[]) => {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          params.delete("reviewer");
+          for (const login of next) params.append("reviewer", login);
           return pruneStaleShortcut(params, viewerLogin);
         },
         { replace: true },
@@ -233,6 +252,32 @@ export default function GraphPage() {
     return counts;
   }, [allPRs]);
 
+  // Everyone who appears as a reviewer on at least one PR in range, with how
+  // many PRs are on their plate. Built from the PRs themselves rather than the
+  // contributor list because a reviewer need not have committed to the repo.
+  // Sorted by PR count so the busiest reviewers are at the top of the menu.
+  const reviewerOptions = useMemo(() => {
+    const byLogin = new Map<string, { login: string; avatarUrl: string; count: number }>();
+    for (const pr of allPRs) {
+      for (const reviewer of pr.reviewers) {
+        const entry = byLogin.get(reviewer.login);
+        if (entry) {
+          entry.count += 1;
+          if (!entry.avatarUrl) entry.avatarUrl = reviewer.avatarUrl;
+        } else {
+          byLogin.set(reviewer.login, {
+            login: reviewer.login,
+            avatarUrl: reviewer.avatarUrl,
+            count: 1,
+          });
+        }
+      }
+    }
+    return [...byLogin.values()].sort(
+      (a, b) => b.count - a.count || a.login.localeCompare(b.login),
+    );
+  }, [allPRs]);
+
   const data = useMemo(() => {
     if (allPRs.length === 0 || !owner || !repo) return null;
     let prs = allPRs;
@@ -244,14 +289,32 @@ export default function GraphPage() {
     } else if (statusFilter === "draft") {
       prs = prs.filter((pr) => pr.isDraft);
     }
-    // Reviewer-state filter: keep PRs where the viewer appears in the reviewer
-    // list with one of the selected states. Skipped until viewerLogin loads so
-    // it doesn't briefly wipe the graph out on first paint.
-    if (reviewStateFilter.length > 0 && viewerLogin) {
-      const wanted = new Set<string>(reviewStateFilter);
+    // Reviewer filter: keep PRs assigned to any of the selected people, so the
+    // graph shows one person's review workload. Logins are compared
+    // case-insensitively since the param can be edited by hand in the URL.
+    const wantedReviewers =
+      reviewerFilter.length > 0
+        ? new Set(reviewerFilter.map((l) => l.toLowerCase()))
+        : null;
+    if (wantedReviewers) {
+      prs = prs.filter((pr) =>
+        pr.reviewers.some((r) => wantedReviewers.has(r.login.toLowerCase())),
+      );
+    }
+    // Review-state filter: keep PRs where one of the selected states applies.
+    // It reads against whoever the reviewer filter names, and falls back to the
+    // viewer when no reviewer is picked — so "Alice" + "Review requested"
+    // answers "what is still waiting on Alice". The viewer fallback is skipped
+    // until viewerLogin loads so it doesn't briefly wipe the graph out on first
+    // paint.
+    if (reviewStateFilter.length > 0 && (wantedReviewers || viewerLogin)) {
+      const wantedStates = new Set<string>(reviewStateFilter);
       prs = prs.filter((pr) =>
         pr.reviewers.some(
-          (r) => r.login === viewerLogin && wanted.has(r.state),
+          (r) =>
+            (wantedReviewers
+              ? wantedReviewers.has(r.login.toLowerCase())
+              : r.login === viewerLogin) && wantedStates.has(r.state),
         ),
       );
     }
@@ -268,7 +331,7 @@ export default function GraphPage() {
       }
     }
     return graph;
-  }, [allPRs, owner, repo, viewerLogin, contributors, authorFilter, statusFilter, reviewStateFilter, behindByData]);
+  }, [allPRs, owner, repo, viewerLogin, contributors, authorFilter, reviewerFilter, statusFilter, reviewStateFilter, behindByData]);
 
   const error = prError ?? null;
 
@@ -315,12 +378,19 @@ export default function GraphPage() {
           onChange={setAuthorFilter}
           isMobile={isMobile}
         />
+        <ReviewerDropdown
+          reviewers={reviewerOptions}
+          selected={reviewerFilter}
+          onChange={setReviewerFilter}
+          isMobile={isMobile}
+        />
         <StatusDropdown selected={statusFilter} onChange={setStatusFilter} isMobile={isMobile} />
         <ReviewStateDropdown
           selected={reviewStateFilter}
           onChange={setReviewStateFilter}
           isMobile={isMobile}
           viewerLogin={viewerLogin}
+          reviewerFilter={reviewerFilter}
         />
           </>
         )}
@@ -621,6 +691,152 @@ function ContributorDropdown({
   );
 }
 
+interface ReviewerOption {
+  login: string;
+  avatarUrl: string;
+  count: number;
+}
+
+// Eye icon (GitHub Octicon "eye"), the same glyph GitHub uses for reviewers.
+function ReviewerIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}>
+      <path d="M8 2c1.981 0 3.671.992 4.933 2.078 1.27 1.091 2.187 2.345 2.637 3.023a1.62 1.62 0 0 1 0 1.798c-.45.678-1.367 1.932-2.637 3.023C11.67 13.008 9.981 14 8 14c-1.981 0-3.671-.992-4.933-2.078C1.797 10.83.88 9.576.43 8.898a1.62 1.62 0 0 1 0-1.798c.45-.677 1.367-1.931 2.637-3.022C4.33 2.992 6.019 2 8 2Zm0 1.5c-1.51 0-2.879.755-4.02 1.73C2.85 6.193 2.02 7.31 1.617 8c.403.69 1.233 1.807 2.363 2.77C5.121 11.745 6.49 12.5 8 12.5c1.51 0 2.879-.755 4.02-1.73 1.13-.963 1.96-2.08 2.363-2.77-.403-.69-1.233-1.807-2.363-2.77C10.879 4.255 9.51 3.5 8 3.5ZM8 5.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z" />
+    </svg>
+  );
+}
+
+function ReviewerDropdown({
+  reviewers,
+  selected,
+  onChange,
+  isMobile,
+}: {
+  reviewers: ReviewerOption[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+  isMobile: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    // Capture phase: the d3-zoom graph canvas stops mousedown propagation, so a bubbling listener never sees clicks on it.
+    document.addEventListener("mousedown", handleClick, true);
+    return () => document.removeEventListener("mousedown", handleClick, true);
+  }, [open]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Escape") setOpen(false);
+  }, []);
+
+  const toggle = useCallback(
+    (login: string) => {
+      onChange(
+        selected.includes(login)
+          ? selected.filter((l) => l !== login)
+          : [...selected, login],
+      );
+    },
+    [selected, onChange],
+  );
+
+  const soleSelected =
+    selected.length === 1
+      ? reviewers.find((r) => r.login === selected[0])
+      : undefined;
+
+  return (
+    <div
+      ref={ref}
+      style={{ ...dropdownStyles.wrapper, ...(isMobile ? dropdownStyles.wrapperMobile : {}) }}
+      onKeyDown={handleKeyDown}
+    >
+      <button
+        style={{ ...dropdownStyles.trigger, ...(isMobile ? dropdownStyles.triggerMobile : {}) }}
+        onClick={() => setOpen((o) => !o)}
+        title="Filter by reviewer"
+      >
+        <span style={dropdownStyles.triggerLabel}>
+          {soleSelected ? (
+            <>
+              <img
+                src={soleSelected.avatarUrl}
+                alt={soleSelected.login}
+                style={dropdownStyles.triggerAvatar}
+              />
+              {soleSelected.login}
+            </>
+          ) : (
+            <>
+              <ReviewerIcon />
+              {selected.length === 0
+                ? "All reviewers"
+                : selected.length === 1
+                  ? selected[0]
+                  : `${selected.length} reviewers`}
+            </>
+          )}
+        </span>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style={{ marginLeft: 2, flexShrink: 0 }}>
+          <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        </svg>
+      </button>
+      {open && (
+        <div style={{ ...dropdownStyles.menu, ...(isMobile ? dropdownStyles.menuMobile : {}) }}>
+          <button
+            className="contributor-dropdown-item"
+            style={{
+              ...dropdownStyles.item,
+              fontWeight: selected.length === 0 ? 600 : 400,
+            }}
+            onClick={() => onChange([])}
+          >
+            <ReviewerIcon />
+            <span>All reviewers</span>
+          </button>
+          <div style={dropdownStyles.divider} />
+          <div style={dropdownStyles.list}>
+            {reviewers.length === 0 && (
+              <div style={{ ...dropdownStyles.item, color: "var(--color-text-secondary)", cursor: "default" }}>
+                No reviewers on these PRs
+              </div>
+            )}
+            {reviewers.map((r) => {
+              const isSelected = selected.includes(r.login);
+              return (
+                <button
+                  key={r.login}
+                  className="contributor-dropdown-item"
+                  style={{
+                    ...dropdownStyles.item,
+                    fontWeight: isSelected ? 600 : 400,
+                  }}
+                  onClick={() => toggle(r.login)}
+                  title={`${r.login} is a reviewer on ${r.count} PR${r.count === 1 ? "" : "s"}`}
+                >
+                  <img src={r.avatarUrl} alt={r.login} style={dropdownStyles.avatar} />
+                  <span>{r.login}</span>
+                  <span style={dropdownStyles.count}>({r.count})</span>
+                  {isSelected && (
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--color-ready)" style={{ marginLeft: "auto", flexShrink: 0 }}>
+                      <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const STATUS_OPTIONS: { value: PRStatusFilter; label: string; color?: string }[] = [
   { value: "all", label: "All PRs" },
   { value: "ready", label: "Ready", color: "var(--color-ready)" },
@@ -749,11 +965,13 @@ function ReviewStateDropdown({
   onChange,
   isMobile,
   viewerLogin,
+  reviewerFilter,
 }: {
   selected: ReviewStateFilter[];
   onChange: (next: ReviewStateFilter[]) => void;
   isMobile: boolean;
   viewerLogin: string | undefined;
+  reviewerFilter: string[];
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -790,9 +1008,17 @@ function ReviewStateDropdown({
           "Review state"
         : `${selected.length} review states`;
 
-  const triggerTitle = viewerLogin
-    ? `Filter by your review state on each PR (as @${viewerLogin})`
-    : "Filter by your review state on each PR";
+  // The state is read against whoever the reviewer filter names; with no
+  // reviewer picked it falls back to the viewer's own review state.
+  const subject =
+    reviewerFilter.length === 1
+      ? `@${reviewerFilter[0]}`
+      : reviewerFilter.length > 1
+        ? "the selected reviewers"
+        : viewerLogin
+          ? `you (@${viewerLogin})`
+          : "you";
+  const triggerTitle = `Filter by the review state of ${subject} on each PR`;
 
   return (
     <div
