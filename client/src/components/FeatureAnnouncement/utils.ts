@@ -16,6 +16,13 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
+    version: 7,
+    title: "Filter pull requests by reviewer",
+    description:
+      "A new reviewer dropdown next to the author filter lists everyone assigned to review a PR, with the number of PRs on each person's plate, so you can see how the review load is spread and narrow the graph to one reviewer. When a reviewer is selected, the review state filter applies to them instead of you.",
+    date: "2026-08-03",
+  },
+  {
     version: 6,
     title: "Browse GitHub Actions workflows and run timelines",
     description:
