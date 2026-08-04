@@ -38,6 +38,95 @@ const PR_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 // every render before the first page lands.
 const EMPTY_PRS: GraphQLPullRequest[] = [];
 
+// --- Toolbar filters -------------------------------------------------------
+
+interface PRFilters {
+  authors: string[];
+  reviewers: string[];
+  status: PRStatusFilter;
+  reviewStates: ReviewStateFilter[];
+  viewerLogin: string | null;
+}
+
+type FilterName = "author" | "reviewer" | "status" | "reviewState";
+
+function matchesAuthorFilter(pr: GraphQLPullRequest, authors: string[]): boolean {
+  return authors.length === 0 || authors.includes(pr.authorLogin);
+}
+
+function matchesStatusFilter(pr: GraphQLPullRequest, status: PRStatusFilter): boolean {
+  if (status === "ready") return !pr.isDraft;
+  if (status === "draft") return pr.isDraft;
+  return true;
+}
+
+// Reviewer filter: keep PRs assigned to any of the selected people, so the
+// graph shows one person's review workload. Logins are compared
+// case-insensitively since the param can be edited by hand in the URL.
+function matchesReviewerFilter(
+  pr: GraphQLPullRequest,
+  wantedReviewers: ReadonlySet<string> | null,
+): boolean {
+  return (
+    !wantedReviewers ||
+    pr.reviewers.some((r) => wantedReviewers.has(r.login.toLowerCase()))
+  );
+}
+
+// Review-state filter: keep PRs where one of the selected states applies. It
+// reads against whoever the reviewer filter names, and falls back to the viewer
+// when no reviewer is picked — so "Alice" + "Review requested" answers "what is
+// still waiting on Alice". The viewer fallback is skipped until viewerLogin
+// loads so it doesn't briefly wipe the graph out on first paint.
+function matchesReviewStateFilter(
+  pr: GraphQLPullRequest,
+  states: ReviewStateFilter[],
+  wantedReviewers: ReadonlySet<string> | null,
+  viewerLogin: string | null,
+): boolean {
+  if (states.length === 0) return true;
+  if (!wantedReviewers && !viewerLogin) return true;
+  const wantedStates = new Set<string>(states);
+  return pr.reviewers.some(
+    (r) =>
+      (wantedReviewers
+        ? wantedReviewers.has(r.login.toLowerCase())
+        : r.login === viewerLogin) && wantedStates.has(r.state),
+  );
+}
+
+// Applies the toolbar filters to a PR list. `skip` names filters to leave out,
+// which is how a dropdown counts what each of its options would yield without
+// counting its own selection against itself.
+function filterPRs(
+  prs: GraphQLPullRequest[],
+  f: PRFilters,
+  skip?: ReadonlySet<FilterName>,
+): GraphQLPullRequest[] {
+  const wantedReviewers =
+    f.reviewers.length > 0 && !skip?.has("reviewer")
+      ? new Set(f.reviewers.map((l) => l.toLowerCase()))
+      : null;
+  return prs.filter(
+    (pr) =>
+      (skip?.has("author") || matchesAuthorFilter(pr, f.authors)) &&
+      (skip?.has("status") || matchesStatusFilter(pr, f.status)) &&
+      matchesReviewerFilter(pr, wantedReviewers) &&
+      (skip?.has("reviewState") ||
+        matchesReviewStateFilter(pr, f.reviewStates, wantedReviewers, f.viewerLogin)),
+  );
+}
+
+// A dropdown's own filter is left out of its option counts, otherwise picking
+// one option would zero out every other option in the same menu. The reviewer
+// menu also drops the review-state filter, which reads against the selected
+// reviewer and so has to be applied per candidate instead of to the pool.
+const AUTHOR_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>(["author"]);
+const REVIEWER_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>([
+  "reviewer",
+  "reviewState",
+]);
+
 function useIncrementalPRs(
   token: string | null,
   owner: string | undefined,
@@ -244,22 +333,42 @@ export default function GraphPage() {
     staleTime: 60 * 1000,
   });
 
+  const filters = useMemo<PRFilters>(
+    () => ({
+      authors: authorFilter,
+      reviewers: reviewerFilter,
+      status: statusFilter,
+      reviewStates: reviewStateFilter,
+      viewerLogin: viewerLogin ?? null,
+    }),
+    [authorFilter, reviewerFilter, statusFilter, reviewStateFilter, viewerLogin],
+  );
+
+  // How many PRs each author would leave on screen — every other filter still
+  // applies, so the number beside a name matches what picking it actually
+  // shows rather than the author's whole PR count for the date range.
   const prCountByAuthor = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const pr of allPRs) {
+    for (const pr of filterPRs(allPRs, filters, AUTHOR_FACET_SKIP)) {
       counts.set(pr.authorLogin, (counts.get(pr.authorLogin) ?? 0) + 1);
     }
     return counts;
-  }, [allPRs]);
+  }, [allPRs, filters]);
 
-  // Everyone who appears as a reviewer on at least one PR in range, with how
-  // many PRs are on their plate. Built from the PRs themselves rather than the
-  // contributor list because a reviewer need not have committed to the repo.
-  // Sorted by PR count so the busiest reviewers are at the top of the menu.
+  // Everyone who appears as a reviewer on at least one PR that clears the other
+  // filters, with how many of those PRs are on their plate. Built from the PRs
+  // themselves rather than the contributor list because a reviewer need not
+  // have committed to the repo. The review-state filter is applied per reviewer
+  // here, since selecting one would make that filter read against them — so
+  // each count is what selecting that reviewer alone would show. Sorted by PR
+  // count so the busiest reviewers are at the top of the menu.
   const reviewerOptions = useMemo(() => {
-    const byLogin = new Map<string, { login: string; avatarUrl: string; count: number }>();
-    for (const pr of allPRs) {
+    const wantedStates =
+      reviewStateFilter.length > 0 ? new Set<string>(reviewStateFilter) : null;
+    const byLogin = new Map<string, ReviewerOption>();
+    for (const pr of filterPRs(allPRs, filters, REVIEWER_FACET_SKIP)) {
       for (const reviewer of pr.reviewers) {
+        if (wantedStates && !wantedStates.has(reviewer.state)) continue;
         const entry = byLogin.get(reviewer.login);
         if (entry) {
           entry.count += 1;
@@ -273,51 +382,24 @@ export default function GraphPage() {
         }
       }
     }
+    // A selected reviewer whose count fell to zero still needs a row, or there
+    // would be no way to switch them off from the menu.
+    for (const login of reviewerFilter) {
+      if (byLogin.has(login)) continue;
+      const avatarUrl =
+        allPRs
+          .flatMap((pr) => pr.reviewers)
+          .find((r) => r.login === login)?.avatarUrl ?? "";
+      byLogin.set(login, { login, avatarUrl, count: 0 });
+    }
     return [...byLogin.values()].sort(
       (a, b) => b.count - a.count || a.login.localeCompare(b.login),
     );
-  }, [allPRs]);
+  }, [allPRs, filters, reviewStateFilter, reviewerFilter]);
 
   const data = useMemo(() => {
     if (allPRs.length === 0 || !owner || !repo) return null;
-    let prs = allPRs;
-    if (authorFilter.length > 0) {
-      prs = prs.filter((pr) => authorFilter.includes(pr.authorLogin));
-    }
-    if (statusFilter === "ready") {
-      prs = prs.filter((pr) => !pr.isDraft);
-    } else if (statusFilter === "draft") {
-      prs = prs.filter((pr) => pr.isDraft);
-    }
-    // Reviewer filter: keep PRs assigned to any of the selected people, so the
-    // graph shows one person's review workload. Logins are compared
-    // case-insensitively since the param can be edited by hand in the URL.
-    const wantedReviewers =
-      reviewerFilter.length > 0
-        ? new Set(reviewerFilter.map((l) => l.toLowerCase()))
-        : null;
-    if (wantedReviewers) {
-      prs = prs.filter((pr) =>
-        pr.reviewers.some((r) => wantedReviewers.has(r.login.toLowerCase())),
-      );
-    }
-    // Review-state filter: keep PRs where one of the selected states applies.
-    // It reads against whoever the reviewer filter names, and falls back to the
-    // viewer when no reviewer is picked — so "Alice" + "Review requested"
-    // answers "what is still waiting on Alice". The viewer fallback is skipped
-    // until viewerLogin loads so it doesn't briefly wipe the graph out on first
-    // paint.
-    if (reviewStateFilter.length > 0 && (wantedReviewers || viewerLogin)) {
-      const wantedStates = new Set<string>(reviewStateFilter);
-      prs = prs.filter((pr) =>
-        pr.reviewers.some(
-          (r) =>
-            (wantedReviewers
-              ? wantedReviewers.has(r.login.toLowerCase())
-              : r.login === viewerLogin) && wantedStates.has(r.state),
-        ),
-      );
-    }
+    const prs = filterPRs(allPRs, filters);
     if (prs.length === 0) return null;
     const graph = buildDependencyGraph(prs, owner, repo);
     if (viewerLogin) graph.viewerLogin = viewerLogin;
@@ -331,7 +413,7 @@ export default function GraphPage() {
       }
     }
     return graph;
-  }, [allPRs, owner, repo, viewerLogin, contributors, authorFilter, reviewerFilter, statusFilter, reviewStateFilter, behindByData]);
+  }, [allPRs, owner, repo, viewerLogin, contributors, filters, behindByData]);
 
   const error = prError ?? null;
 
@@ -575,13 +657,18 @@ function ContributorDropdown({
     [],
   );
 
+  // Authors with nothing left under the other filters drop out of the menu,
+  // except one that is currently selected — that row has to stay so it can be
+  // switched off again.
   const sortedContributors = useMemo(() => {
     return [...contributors]
-      .filter((c) => (prCountByAuthor.get(c.login) ?? 0) > 0)
+      .filter(
+        (c) => (prCountByAuthor.get(c.login) ?? 0) > 0 || selected.includes(c.login),
+      )
       .sort(
         (a, b) => (prCountByAuthor.get(b.login) ?? 0) - (prCountByAuthor.get(a.login) ?? 0),
       );
-  }, [contributors, prCountByAuthor]);
+  }, [contributors, prCountByAuthor, selected]);
 
   const toggle = useCallback(
     (login: string) => {
@@ -673,9 +760,7 @@ function ContributorDropdown({
                     style={dropdownStyles.avatar}
                   />
                   <span>{c.login}</span>
-                  {count > 0 && (
-                    <span style={dropdownStyles.count}>({count})</span>
-                  )}
+                  <span style={dropdownStyles.count}>({count})</span>
                   {isSelected && (
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--color-ready)" style={{ marginLeft: "auto", flexShrink: 0 }}>
                       <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
