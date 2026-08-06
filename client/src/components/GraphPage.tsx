@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useEffect, useCallback } from "react";
+import { useMemo, useRef, useState, useEffect, useLayoutEffect, useCallback } from "react";
 import { useParams, Link, Navigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DatePicker, Dropdown } from "antd";
@@ -18,7 +18,7 @@ import FeatureAnnouncementPopup from "./FeatureAnnouncement";
 import PageTabs from "./PageTabs";
 import type { PageTab } from "./PageTabs";
 import WorkflowsView from "./WorkflowsView";
-import { styles, dropdownStyles } from "./GraphPage.styles";
+import { styles, dropdownStyles, BANNER_EDGE_GAP } from "./GraphPage.styles";
 
 function looksLikeRepoNotFound(message: string): boolean {
   const m = message.toLowerCase();
@@ -790,6 +790,73 @@ export default function GraphPage() {
 // framed on and, when the focused PR can't be shown, why. The focused PR is in
 // the page address, so the banner also invites copying that link to share the
 // stack; "Show all PRs" leads back to the unfocused graph.
+// Where the focus banner sits horizontally, in pixels from the left edge of
+// the graph area (null until the first measurement).
+//
+// The banner is centred on the graph, not on what is left beside the legend
+// and shortcut panels — but it must not run into them either, so it gives way
+// only by however much it overlaps, and only while sharing their row. Both
+// widths change at runtime (the legend collapses, the message varies, the
+// window resizes), which is why this is measured rather than declared.
+function useCentredBannerLeft(isMobile: boolean, stateKind: FocusState["kind"]) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [placement, setPlacement] = useState<{
+    left: number;
+    maxWidth: number;
+  } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const area = el?.offsetParent as HTMLElement | null;
+    if (!el || !area) return;
+
+    const measure = () => {
+      const areaWidth = area.clientWidth;
+      const width = el.offsetWidth;
+      // On a narrow screen the banner is along the bottom, clear of the panels.
+      const panels = isMobile
+        ? null
+        : area.querySelector<HTMLElement>("[data-graph-overlay]");
+      const panelsRight = panels
+        ? panels.getBoundingClientRect().right -
+          area.getBoundingClientRect().left +
+          BANNER_EDGE_GAP
+        : BANNER_EDGE_GAP;
+
+      const centred = (areaWidth - width) / 2;
+      const nextLeft = Math.max(BANNER_EDGE_GAP, Math.max(centred, panelsRight));
+      // Between a wide banner and narrow window the banner gives up width
+      // rather than clearance, so its text ellipsizes instead of sliding under
+      // the panels. Once it is pinned beside them the centred position can no
+      // longer overtake that, so this settles in one pass.
+      const nextMaxWidth = Math.max(0, areaWidth - nextLeft - BANNER_EDGE_GAP);
+
+      // Only a real move is written back, so a sub-pixel jitter can't bounce
+      // between render and observer.
+      setPlacement((prev) =>
+        prev &&
+        Math.abs(prev.left - nextLeft) < 1 &&
+        Math.abs(prev.maxWidth - nextMaxWidth) < 1
+          ? prev
+          : { left: nextLeft, maxWidth: nextMaxWidth },
+      );
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    observer.observe(area);
+    const panels = area.querySelector<HTMLElement>("[data-graph-overlay]");
+    if (panels) observer.observe(panels);
+    return () => observer.disconnect();
+    // The graph (and with it the panels) mounts after the banner in some
+    // states, so the element lookup is redone whenever the banner re-renders
+    // for a new state.
+  }, [isMobile, stateKind]);
+
+  return { ref, placement };
+}
+
 function FocusBanner({
   prNumber,
   state,
@@ -810,6 +877,7 @@ function FocusBanner({
   onClearFilters: () => void;
 }) {
   const isProblem = state.kind !== "visible" && state.kind !== "loading";
+  const { ref, placement } = useCentredBannerLeft(isMobile, state.kind);
 
   let message: string;
   switch (state.kind) {
@@ -838,6 +906,7 @@ function FocusBanner({
 
   return (
     <div
+      ref={ref}
       style={{
         ...styles.focusBanner,
         ...(isMobile
@@ -845,6 +914,9 @@ function FocusBanner({
             ? styles.focusBannerMobileRaised
             : styles.focusBannerMobile
           : {}),
+        // Once measured, the banner is placed by hand — the declared 50% /
+        // translate centring only covers the first layout pass.
+        ...(placement ? { ...placement, transform: "none" } : {}),
         ...(isProblem ? styles.focusBannerProblem : {}),
       }}
       role="status"
