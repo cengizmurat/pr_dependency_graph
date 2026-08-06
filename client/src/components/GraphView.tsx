@@ -97,16 +97,16 @@ export default function GraphView({ data, orientation, token }: Props) {
       // a stack is rebased as a unit, and the only ways to ask for that are the
       // Rebase Stack button in the PR's merge box and `gh stack rebase`. Neither
       // has a public API — the REST Stacks endpoints only list, create, extend
-      // and dissolve stacks — so send the user to the pull request instead of
-      // firing a call that cannot succeed.
+      // and dissolve stacks — so say where the rebase can be triggered instead
+      // of firing a call that cannot succeed.
       if (prNode?.stack) {
         const { position, size, number } = prNode.stack;
-        const msg =
+        alert(
           `PR #${prNumber} is layer ${position} of ${size} in stack #${number}.\n\n` +
-          `A stack is rebased as a whole, which GitHub only offers from the pull ` +
-          `request itself ("Rebase Stack" in the merge box) or from the CLI with ` +
-          `"gh stack rebase".\n\nOpen PR #${prNumber} on GitHub?`;
-        if (window.confirm(msg)) window.open(prNode.url, "_blank", "noopener");
+            `A stack is rebased as a whole, which GitHub only offers from the pull ` +
+            `request itself ("Rebase Stack" in the merge box) or from the CLI with ` +
+            `"gh stack rebase".`,
+        );
         return;
       }
 
