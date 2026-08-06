@@ -26,6 +26,7 @@
   --color-conflict: #cf222e;
   --color-hover: #0969da;
   --color-behind: #0969da;
+  --color-stack: #8250df;
   --color-review-requested: #bf8700;
   --color-review-commented: #6e7681;
   --color-additions: #1a7f37;
@@ -74,6 +75,7 @@
     --color-conflict: #f85149;
     --color-hover: #58a6ff;
     --color-behind: #58a6ff;
+    --color-stack: #8957e5;
     --color-review-requested: #d29922;
     --color-review-commented: #8b949e;
     --color-additions: #3fb950;

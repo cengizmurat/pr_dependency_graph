@@ -88,12 +88,46 @@ export default function GraphView({ data, orientation, token }: Props) {
 
   const handleUpdateBranch = useCallback(
     async (prNumber: number) => {
-      const allToUpdate = collectDescendantPRs(prNumber, data.nodes);
+      const prNode = data.nodes.find(
+        (n): n is PRNode => n.type === "pr" && n.number === prNumber,
+      );
+
+      // GitHub rejects the update-branch endpoint for any PR in a stack
+      // ("Updating a stacked PR's branch via this endpoint is not supported"):
+      // a stack is rebased as a unit, and the only ways to ask for that are the
+      // Rebase Stack button in the PR's merge box and `gh stack rebase`. Neither
+      // has a public API — the REST Stacks endpoints only list, create, extend
+      // and dissolve stacks — so say where the rebase can be triggered instead
+      // of firing a call that cannot succeed.
+      if (prNode?.stack) {
+        const { position, size, number } = prNode.stack;
+        alert(
+          `PR #${prNumber} is layer ${position} of ${size} in stack #${number}.\n\n` +
+            `A stack is rebased as a whole, which GitHub only offers from the pull ` +
+            `request itself ("Rebase Stack" in the merge box) or from the CLI with ` +
+            `"gh stack rebase".`,
+        );
+        return;
+      }
+
+      // The same restriction applies to any stacked PR further down the chain,
+      // so those are left out of the cascade rather than failing mid-run.
+      const isStacked = (num: number) =>
+        !!data.nodes.find(
+          (n): n is PRNode => n.type === "pr" && n.number === num,
+        )?.stack;
+      const graphDescendants = collectDescendantPRs(prNumber, data.nodes);
+      const allToUpdate = graphDescendants.filter((n) => !isStacked(n));
+      const skipped = graphDescendants.filter(isStacked);
 
       let msg = `Update PR #${prNumber} with latest changes from base branch?`;
       if (allToUpdate.length > 1) {
         const descendantNums = allToUpdate.slice(1).map((n) => `#${n}`).join(", ");
         msg += `\n\nThe following descending PRs will also be updated: ${descendantNums}`;
+      }
+      if (skipped.length > 0) {
+        const skippedNums = skipped.map((n) => `#${n}`).join(", ");
+        msg += `\n\nSkipped, because a stacked PR has to be rebased from its own stack: ${skippedNums}`;
       }
       if (!window.confirm(msg)) return;
 

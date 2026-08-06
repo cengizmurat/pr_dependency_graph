@@ -16,6 +16,13 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
+    version: 8,
+    title: "GitHub Stacks are recognized",
+    description:
+      "A pull request in a GitHub stack now shows a stack badge with its layer, such as \"2/3\".",
+    date: "2026-08-06",
+  },
+  {
     version: 7,
     title: "Filter pull requests by reviewer",
     description:

@@ -1,5 +1,10 @@
-import type { PRNode, PRLabel, Orientation, MergeStatus } from "../types";
-import { MAX_REVIEWER_AVATARS, STATE_COLORS, STATE_ICONS } from "../constants";
+import type { PRNode, PRLabel, PRStack, Orientation, MergeStatus } from "../types";
+import {
+  MAX_REVIEWER_AVATARS,
+  STACK_ICON_PATH,
+  STATE_COLORS,
+  STATE_ICONS,
+} from "../constants";
 import { timeAgo } from "../utils";
 import { styles, badgeStyles } from "./PRCard.styles";
 
@@ -85,26 +90,56 @@ function MergeBadge({
   );
 }
 
+// Where this PR sits in its GitHub stack, as GitHub's stack icon followed by
+// "position/size" — 2/3 is the middle PR of a three-layer stack, counting from
+// the bottom (the one that targets the stack's base branch).
+function StackBadge({ stack }: { stack: PRStack }) {
+  const color = "var(--color-stack)";
+
+  return (
+    <span
+      title={`Stack #${stack.number} — layer ${stack.position} of ${stack.size}`}
+      style={{ ...badgeStyles.box, ...badgeStyles.stackBox, borderColor: color }}
+    >
+      <svg width="12" height="12" viewBox="0 0 16 16" fill={color} style={{ flexShrink: 0 }}>
+        <path d={STACK_ICON_PATH} />
+      </svg>
+      <span style={badgeStyles.stackPosition}>
+        {stack.position}/{stack.size}
+      </span>
+    </span>
+  );
+}
+
 function UpdateBadge({
   behindBy,
   onUpdateBranch,
   prNumber,
+  isStacked,
   isUpdating,
   isCurrentlyUpdating,
 }: {
   behindBy: number;
   onUpdateBranch?: (prNumber: number) => void;
   prNumber: number;
+  isStacked?: boolean;
   isUpdating?: boolean;
   isCurrentlyUpdating?: boolean;
 }) {
   const color = "var(--color-behind)";
   const clickable = !!onUpdateBranch && !isUpdating;
+  const behindLabel = `Behind by ${behindBy} commit${behindBy === 1 ? "" : "s"}`;
 
   return (
     <button
       type="button"
-      title={isUpdating ? "Updating branch…" : `Behind by ${behindBy} commit${behindBy === 1 ? "" : "s"} — click to update branch`}
+      title={
+        isUpdating
+          ? "Updating branch…"
+          : isStacked
+            ? `${behindLabel} — a stacked PR is rebased from its own stack, open the pull request to rebase it`
+            : `${behindLabel} — click to update branch`
+      }
       disabled={isUpdating}
       onClick={
         clickable
@@ -140,7 +175,7 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurre
 
   const hasMergeBadge = mergeStatus && (mergeStatus.hasConflict || mergeStatus.isMergeable);
   const hasUpdateBadge = isUpdating || (pr.behindBy != null && pr.behindBy > 0);
-  const hasBadges = hasMergeBadge || hasUpdateBadge;
+  const hasBadges = hasMergeBadge || hasUpdateBadge || !!pr.stack;
 
   return (
     <div style={styles.card} data-draft={pr.isDraft || undefined}>
@@ -151,6 +186,7 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurre
             flexDirection: orientation === "horizontal" ? "column" : "row",
           }}
         >
+          {pr.stack && <StackBadge stack={pr.stack} />}
           {hasMergeBadge && (
             <MergeBadge
               status={mergeStatus}
@@ -165,6 +201,7 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurre
               behindBy={pr.behindBy ?? 0}
               onUpdateBranch={onUpdateBranch}
               prNumber={pr.number}
+              isStacked={!!pr.stack}
               isUpdating={isUpdating}
               isCurrentlyUpdating={isCurrentlyUpdating}
             />

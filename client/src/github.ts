@@ -41,7 +41,30 @@ async function fetchWithAuth(
   return fetch(url, buildInit(refreshed));
 }
 
-const PR_QUERY = `
+// Stacked-PR membership. `stack` and `stackEntry` are the read-only fields
+// GitHub added to PullRequest with stacked pull requests; a PR that isn't in a
+// stack returns null for both.
+const STACK_FIELDS = `
+        stackEntry { position }
+        stack { number size }`;
+
+// Stacked PRs are still a public preview, so the fields are absent from the
+// schema wherever the feature isn't enabled — and an unknown field fails the
+// whole query, not just that selection. The first such failure drops the
+// fields for the rest of the session and every request retries without them.
+let stackFieldsSupported = true;
+
+function isUnknownStackFieldError(message: string): boolean {
+  const m = message.toLowerCase();
+  if (!m.includes("stack")) return false;
+  return (
+    m.includes("doesn't exist on type") ||
+    m.includes("does not exist on type") ||
+    m.includes("cannot query field")
+  );
+}
+
+const prQuery = (stackFields: string) => `
 query($owner: String!, $name: String!, $cursor: String, $first: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequests(states: OPEN, first: $first, after: $cursor, orderBy: { field: CREATED_AT, direction: DESC }) {
@@ -65,7 +88,7 @@ query($owner: String!, $name: String!, $cursor: String, $first: Int!) {
             }
           }
         }
-        comments { totalCount }
+        comments { totalCount }${stackFields}
       }
     }
   }
@@ -100,6 +123,26 @@ async function graphql<T>(
     throw new Error(json.errors[0].message);
   }
   return json.data as T;
+}
+
+// Runs a query that asks for the stacked-PR fields, retrying once without them
+// if this repository's schema doesn't have them yet. `buildQuery` receives the
+// stack selection set to splice in, or an empty string.
+async function graphqlWithStack<T>(
+  token: string,
+  buildQuery: (stackFields: string) => string,
+  variables?: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (stackFieldsSupported) {
+    try {
+      return await graphql<T>(token, buildQuery(STACK_FIELDS), variables, signal);
+    } catch (err) {
+      if (!isUnknownStackFieldError((err as Error).message ?? "")) throw err;
+      stackFieldsSupported = false;
+    }
+  }
+  return graphql<T>(token, buildQuery(""), variables, signal);
 }
 
 export async function mergePR(
@@ -347,6 +390,10 @@ interface PRNodeRaw {
       | null;
   } | null;
   comments: { totalCount: number } | null;
+  // Absent entirely when the stack fields aren't in the schema, null when the
+  // PR simply isn't stacked.
+  stackEntry?: { position: number } | null;
+  stack?: { number: number; size: number } | null;
 }
 
 interface PRQueryData {
@@ -375,9 +422,9 @@ export async function fetchOpenPRs(
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
     try {
-      const data: PRQueryData = await graphql<PRQueryData>(
+      const data: PRQueryData = await graphqlWithStack<PRQueryData>(
         token,
-        PR_QUERY,
+        prQuery,
         { owner, name: repo, cursor: cursor ?? null, first: currentSize },
         controller.signal,
       );
@@ -458,6 +505,16 @@ function processRawPR(pr: PRNodeRaw): GraphQLPullRequest {
     mergeable: pr.mergeable ?? "UNKNOWN",
     mergeStateStatus: pr.mergeStateStatus ?? "UNKNOWN",
     reviewDecision: (pr.reviewDecision as ReviewDecision) ?? null,
+    // Both halves are needed to render "position/size", so a PR only counts as
+    // stacked when GitHub returned the stack and this PR's entry in it.
+    stack:
+      pr.stack && pr.stackEntry
+        ? {
+            number: pr.stack.number,
+            position: pr.stackEntry.position,
+            size: pr.stack.size,
+          }
+        : null,
   };
 }
 
@@ -478,7 +535,7 @@ function processPage(
   };
 }
 
-const SEARCH_PR_QUERY = `
+const searchPRQuery = (stackFields: string) => `
 query($query: String!, $cursor: String, $first: Int!) {
   search(query: $query, type: ISSUE, first: $first, after: $cursor) {
     pageInfo { hasNextPage endCursor }
@@ -502,7 +559,7 @@ query($query: String!, $cursor: String, $first: Int!) {
             }
           }
         }
-        comments { totalCount }
+        comments { totalCount }${stackFields}
       }
     }
   }
@@ -531,9 +588,9 @@ export async function fetchPRsByDateRange(
   while (true) {
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
-    const result: SearchQueryData = await graphql<SearchQueryData>(
+    const result: SearchQueryData = await graphqlWithStack<SearchQueryData>(
       token,
-      SEARCH_PR_QUERY,
+      searchPRQuery,
       { query: searchQuery, cursor, first: 50 },
       signal,
     );

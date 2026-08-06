@@ -21,6 +21,7 @@ export const COLORS = {
   conflict: "var(--color-conflict)",
   hover: "var(--color-hover)",
   behind: "var(--color-behind)",
+  stack: "var(--color-stack)",
   reviewRequested: "var(--color-review-requested)",
   reviewCommented: "var(--color-review-commented)",
 };
@@ -50,6 +51,10 @@ export const STATE_COLORS: Record<string, string> = {
   DISMISSED: "#6e7681",
   REQUESTED: "#d29922",
 };
+
+// GitHub's "stack" octicon (16px), the glyph it puts on a stacked pull request.
+export const STACK_ICON_PATH =
+  "M7.122.392a1.75 1.75 0 0 1 1.756 0l5.003 2.902c.83.481.83 1.68 0 2.162L8.878 8.358a1.75 1.75 0 0 1-1.756 0L2.119 5.456a1.251 1.251 0 0 1 0-2.162ZM8.125 1.69a.248.248 0 0 0-.25 0l-4.63 2.685 4.63 2.685a.248.248 0 0 0 .25 0l4.63-2.685ZM1.601 7.789a.75.75 0 0 1 1.025-.273l5.249 3.044a.248.248 0 0 0 .25 0l5.249-3.044a.75.75 0 0 1 .752 1.298l-5.248 3.044a1.75 1.75 0 0 1-1.756 0L1.874 8.814A.75.75 0 0 1 1.6 7.789Zm0 3.5a.75.75 0 0 1 1.025-.273l5.249 3.044a.248.248 0 0 0 .25 0l5.249-3.044a.75.75 0 0 1 .752 1.298l-5.248 3.044a1.75 1.75 0 0 1-1.756 0l-5.248-3.044a.75.75 0 0 1-.273-1.025Z";
 
 export const STATE_ICONS: Record<string, string> = {
   APPROVED: "M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z",

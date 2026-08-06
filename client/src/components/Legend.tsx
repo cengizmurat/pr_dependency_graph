@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { COLORS } from "../constants";
+import { COLORS, STACK_ICON_PATH } from "../constants";
 import {
   getStoredLegendCollapsed,
   hasStoredLegendPreference,
@@ -130,6 +130,25 @@ export default function Legend() {
           </svg>
         </span>
         <span style={styles.label}>Behind base branch (click to update)</span>
+      </div>
+      <div style={styles.row}>
+        <span
+          style={{
+            ...styles.badge,
+            borderColor: COLORS.stack,
+            width: "auto",
+            gap: 3,
+            padding: "0 4px",
+          }}
+        >
+          <svg width="10" height="10" viewBox="0 0 16 16" fill={COLORS.stack}>
+            <path d={STACK_ICON_PATH} />
+          </svg>
+          <span style={{ fontSize: 9, fontWeight: 700, color: COLORS.stack }}>
+            2/3
+          </span>
+        </span>
+        <span style={styles.label}>Position in a GitHub stack</span>
       </div>
         </>
       )}

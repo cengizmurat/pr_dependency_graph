@@ -191,6 +191,20 @@ export const badgeStyles: Record<string, React.CSSProperties> = {
     padding: 0,
     flexShrink: 0,
   },
+  // The stack badge carries a "2/3" label beside its icon, so it widens to fit
+  // instead of holding the square shape the icon-only badges use.
+  stackBox: {
+    width: "auto",
+    gap: 4,
+    padding: "0 6px",
+  },
+  stackPosition: {
+    fontSize: 11,
+    fontWeight: 700,
+    lineHeight: 1,
+    color: "var(--color-stack)",
+    whiteSpace: "nowrap" as const,
+  },
   notificationBubble: {
     position: "absolute" as const,
     top: -8,

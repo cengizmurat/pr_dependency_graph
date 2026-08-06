@@ -22,6 +22,16 @@ export interface PRLabel {
 
 export type ReviewDecision = "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null;
 
+// Membership in a native GitHub stack, read from the `stack` / `stackEntry`
+// fields on the GraphQL PullRequest type. Null for a PR that isn't stacked.
+export interface PRStack {
+  // Stack number, scoped to the repository — the one GitHub shows in its UI.
+  number: number;
+  // 1-based position from the bottom, where 1 targets the stack's base branch.
+  position: number;
+  size: number;
+}
+
 export interface GraphQLPullRequest {
   number: number;
   title: string;
@@ -40,6 +50,7 @@ export interface GraphQLPullRequest {
   mergeable: Mergeable;
   mergeStateStatus: string;
   reviewDecision: ReviewDecision;
+  stack: PRStack | null;
 }
 
 export interface CascadeResult {
@@ -152,6 +163,7 @@ export interface PRNode {
   }[];
   commentCount: number;
   behindBy?: number;
+  stack?: PRStack | null;
 }
 
 export interface BranchNode {
