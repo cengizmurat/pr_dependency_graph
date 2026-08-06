@@ -752,6 +752,7 @@ export default function GraphPage() {
           <FocusBanner
             prNumber={focusPR}
             state={focusState}
+            isMobile={isMobile}
             isFetchingMore={isFetchingMore}
             linkCopied={linkCopied}
             onCopyLink={copyShareLink}
@@ -792,6 +793,7 @@ export default function GraphPage() {
 function FocusBanner({
   prNumber,
   state,
+  isMobile,
   isFetchingMore,
   linkCopied,
   onCopyLink,
@@ -800,6 +802,7 @@ function FocusBanner({
 }: {
   prNumber: number;
   state: FocusState;
+  isMobile: boolean;
   isFetchingMore: boolean;
   linkCopied: boolean;
   onCopyLink: () => void;
@@ -837,7 +840,11 @@ function FocusBanner({
     <div
       style={{
         ...styles.focusBanner,
-        ...(isFetchingMore ? styles.focusBannerRaised : {}),
+        ...(isMobile
+          ? isFetchingMore
+            ? styles.focusBannerMobileRaised
+            : styles.focusBannerMobile
+          : {}),
         ...(isProblem ? styles.focusBannerProblem : {}),
       }}
       role="status"
