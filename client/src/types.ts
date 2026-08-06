@@ -53,22 +53,6 @@ export interface GraphQLPullRequest {
   stack: PRStack | null;
 }
 
-// One layer of a stack, as returned by the Stacks REST API.
-export interface StackMember {
-  number: number;
-  state: string;
-  isDraft: boolean;
-  mergedAt: string | null;
-}
-
-export interface StackDetail {
-  number: number;
-  // The branch the whole stack targets, which is only the bottom PR's own base.
-  baseRef: string;
-  // Ordered from the bottom of the stack to the top.
-  pullRequests: StackMember[];
-}
-
 export interface CascadeResult {
   merged: number;
   updated: { number: number; title: string }[];

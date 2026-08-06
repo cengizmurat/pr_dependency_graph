@@ -6,7 +6,6 @@ import type {
   GraphQLPullRequest,
   CascadeResult,
   PRPageResult,
-  StackDetail,
   Contributor,
   UserRepo,
   WorkflowJob,
@@ -215,63 +214,6 @@ export async function updatePRBranch(
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     throw new Error(body?.message ?? `Branch update failed with status ${res.status}`);
-  }
-}
-
-interface RawStack {
-  number: number;
-  base?: { ref?: string } | null;
-  pull_requests?:
-    | ({
-        number: number;
-        state?: string;
-        draft?: boolean;
-        merged_at?: string | null;
-      } | null)[]
-    | null;
-}
-
-// The stack containing a pull request, from the Stacks REST API. GraphQL can
-// only report a PR's own position, so the ordered membership has to come from
-// REST. Returns null when the PR isn't stacked, when stacks aren't enabled for
-// the repository (404), or when the lookup fails — every caller has a
-// non-stacked path to fall back to, so a failure here degrades rather than
-// blocking the action.
-export async function fetchStackForPR(
-  token: string,
-  owner: string,
-  repo: string,
-  pullNumber: number,
-): Promise<StackDetail | null> {
-  try {
-    const res = await fetchWithAuth(
-      token,
-      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/stacks?pull_request=${pullNumber}`,
-      {
-        headers: { Accept: "application/vnd.github+json" },
-        cache: "no-store",
-      },
-    );
-    if (!res.ok) return null;
-
-    const data: RawStack[] = await res.json();
-    const stack = data[0];
-    if (!stack) return null;
-
-    return {
-      number: stack.number,
-      baseRef: stack.base?.ref ?? "",
-      pullRequests: (stack.pull_requests ?? [])
-        .filter((p): p is NonNullable<typeof p> => !!p)
-        .map((p) => ({
-          number: p.number,
-          state: p.state ?? "open",
-          isDraft: p.draft ?? false,
-          mergedAt: p.merged_at ?? null,
-        })),
-    };
-  } catch {
-    return null;
   }
 }
 

@@ -115,22 +115,31 @@ function UpdateBadge({
   behindBy,
   onUpdateBranch,
   prNumber,
+  isStacked,
   isUpdating,
   isCurrentlyUpdating,
 }: {
   behindBy: number;
   onUpdateBranch?: (prNumber: number) => void;
   prNumber: number;
+  isStacked?: boolean;
   isUpdating?: boolean;
   isCurrentlyUpdating?: boolean;
 }) {
   const color = "var(--color-behind)";
   const clickable = !!onUpdateBranch && !isUpdating;
+  const behindLabel = `Behind by ${behindBy} commit${behindBy === 1 ? "" : "s"}`;
 
   return (
     <button
       type="button"
-      title={isUpdating ? "Updating branch…" : `Behind by ${behindBy} commit${behindBy === 1 ? "" : "s"} — click to update branch`}
+      title={
+        isUpdating
+          ? "Updating branch…"
+          : isStacked
+            ? `${behindLabel} — a stacked PR is rebased from its own stack, click to open it on GitHub`
+            : `${behindLabel} — click to update branch`
+      }
       disabled={isUpdating}
       onClick={
         clickable
@@ -192,6 +201,7 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurre
               behindBy={pr.behindBy ?? 0}
               onUpdateBranch={onUpdateBranch}
               prNumber={pr.number}
+              isStacked={!!pr.stack}
               isUpdating={isUpdating}
               isCurrentlyUpdating={isCurrentlyUpdating}
             />

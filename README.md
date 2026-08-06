@@ -30,5 +30,5 @@ Go to your browser, sign in with GitHub (or paste a personal access token in the
 2. Enter a GitHub `owner/repo`.
 3. The app fetches all open PRs directly from the GitHub GraphQL API.
 4. Stacked PR dependencies are detected: if PR-B's base branch matches PR-A's head branch, PR-B depends on PR-A.
-5. PRs belonging to a native GitHub stack also carry their stack membership, read from the `stack` and `stackEntry` fields on the GraphQL `PullRequest` type. A stack badge on the card shows the PR's layer, e.g. `2/3`. Repositories without GitHub's stacked pull requests are unaffected — the fields are dropped from the query and the branch heuristic above still applies.
+5. PRs belonging to a native GitHub stack also carry their stack membership, read from the `stack` and `stackEntry` fields on the GraphQL `PullRequest` type. A stack badge on the card shows the PR's layer, e.g. `2/3`. GitHub rejects the update-branch endpoint for a stacked PR — a stack is rebased as a whole, and only the PR's own "Rebase Stack" button or `gh stack rebase` can ask for that — so the update badge opens the pull request instead. Repositories without GitHub's stacked pull requests are unaffected: the fields are dropped from the query and the branch heuristic above still applies.
 6. An interactive force-directed graph is rendered with clickable PR nodes.

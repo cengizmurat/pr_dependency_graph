@@ -2,7 +2,7 @@ import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import * as d3 from "d3";
 import { useQueryClient } from "@tanstack/react-query";
 import type { GraphData, PRNode, Orientation, EdgeFlags } from "../types";
-import { fetchStackForPR, mergeAndCascade, updatePRBranch } from "../github";
+import { mergeAndCascade, updatePRBranch } from "../github";
 import { collectDescendantPRs, isPR } from "../utils";
 import { PR_WIDTH, SPACING, COLORS } from "../constants";
 import {
@@ -91,38 +91,43 @@ export default function GraphView({ data, orientation, token }: Props) {
       const prNode = data.nodes.find(
         (n): n is PRNode => n.type === "pr" && n.number === prNumber,
       );
-      const graphDescendants = collectDescendantPRs(prNumber, data.nodes);
 
-      // For a PR in a GitHub stack the chain lives server-side, and it can
-      // reach past what the graph holds — the date range and the toolbar
-      // filters both narrow which PRs are on screen, and the graph would then
-      // stop cascading at the first missing layer. Ask GitHub for the stack so
-      // every layer above this one is updated. Anything the stack doesn't cover
-      // (a PR branched off a stack layer without joining the stack) still comes
-      // from the graph, and a repo without stacks behaves exactly as before.
-      let stackFromHere: number[] = [];
+      // GitHub rejects the update-branch endpoint for any PR in a stack
+      // ("Updating a stacked PR's branch via this endpoint is not supported"):
+      // a stack is rebased as a unit, and the only ways to ask for that are the
+      // Rebase Stack button in the PR's merge box and `gh stack rebase`. Neither
+      // has a public API — the REST Stacks endpoints only list, create, extend
+      // and dissolve stacks — so send the user to the pull request instead of
+      // firing a call that cannot succeed.
       if (prNode?.stack) {
-        const stack = await fetchStackForPR(token, data.owner, data.repo, prNumber);
-        const start = stack?.pullRequests.findIndex((p) => p.number === prNumber) ?? -1;
-        if (stack && start >= 0) {
-          stackFromHere = stack.pullRequests
-            .slice(start)
-            .filter((p) => p.mergedAt == null && p.state === "open")
-            .map((p) => p.number);
-        }
+        const { position, size, number } = prNode.stack;
+        const msg =
+          `PR #${prNumber} is layer ${position} of ${size} in stack #${number}.\n\n` +
+          `A stack is rebased as a whole, which GitHub only offers from the pull ` +
+          `request itself ("Rebase Stack" in the merge box) or from the CLI with ` +
+          `"gh stack rebase".\n\nOpen PR #${prNumber} on GitHub?`;
+        if (window.confirm(msg)) window.open(prNode.url, "_blank", "noopener");
+        return;
       }
 
-      const allToUpdate = [
-        ...new Set([...stackFromHere, prNumber, ...graphDescendants]),
-      ];
+      // The same restriction applies to any stacked PR further down the chain,
+      // so those are left out of the cascade rather than failing mid-run.
+      const isStacked = (num: number) =>
+        !!data.nodes.find(
+          (n): n is PRNode => n.type === "pr" && n.number === num,
+        )?.stack;
+      const graphDescendants = collectDescendantPRs(prNumber, data.nodes);
+      const allToUpdate = graphDescendants.filter((n) => !isStacked(n));
+      const skipped = graphDescendants.filter(isStacked);
 
       let msg = `Update PR #${prNumber} with latest changes from base branch?`;
-      if (prNode?.stack) {
-        msg += `\n\nIt is layer ${prNode.stack.position} of ${prNode.stack.size} in stack #${prNode.stack.number}.`;
-      }
       if (allToUpdate.length > 1) {
         const descendantNums = allToUpdate.slice(1).map((n) => `#${n}`).join(", ");
         msg += `\n\nThe following descending PRs will also be updated: ${descendantNums}`;
+      }
+      if (skipped.length > 0) {
+        const skippedNums = skipped.map((n) => `#${n}`).join(", ");
+        msg += `\n\nSkipped, because a stacked PR has to be rebased from its own stack: ${skippedNums}`;
       }
       if (!window.confirm(msg)) return;
 
