@@ -7,6 +7,7 @@ import type {
   CascadeResult,
   PRPageResult,
   Contributor,
+  PullRequestSummary,
   UserRepo,
   WorkflowJob,
   WorkflowRunInfo,
@@ -310,6 +311,35 @@ export async function fetchBehindByCounts(
 export async function fetchViewerLogin(token: string): Promise<string> {
   const data = await graphql<{ viewer: { login: string } }>(token, VIEWER_QUERY);
   return data.viewer?.login ?? "";
+}
+
+const PR_SUMMARY_QUERY = `
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) { number title url createdAt state }
+  }
+}`;
+
+// Looks a single PR up by number. Used when a shared link points at a PR the
+// graph didn't load, to tell "opened before the date range" apart from "closed"
+// and "no such PR". A missing PR comes back as null rather than an error, since
+// a hand-typed number being wrong is an ordinary outcome here.
+export async function fetchPullRequestSummary(
+  token: string,
+  owner: string,
+  repo: string,
+  number: number,
+): Promise<PullRequestSummary | null> {
+  try {
+    const data = await graphql<{
+      repository: { pullRequest: PullRequestSummary | null } | null;
+    }>(token, PR_SUMMARY_QUERY, { owner, name: repo, number });
+    return data.repository?.pullRequest ?? null;
+  } catch (err) {
+    const message = (err as Error).message ?? "";
+    if (/could not resolve to a pullrequest/i.test(message)) return null;
+    throw err;
+  }
 }
 
 export async function fetchContributors(

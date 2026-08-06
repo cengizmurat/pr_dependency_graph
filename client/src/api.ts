@@ -3,6 +3,7 @@ export {
   fetchViewerLogin,
   fetchContributors,
   fetchPRsByDateRange,
+  fetchPullRequestSummary,
   fetchBehindByCounts,
   fetchUserRepos,
   fetchWorkflows,

@@ -1,3 +1,7 @@
+// Width taken by the legend and the filter shortcuts in the graph's top-left
+// corner, which anything else laid along that row has to start after.
+const PANEL_GUTTER = 430;
+
 export const styles: Record<string, React.CSSProperties> = {
   page: {
     display: "flex",
@@ -175,6 +179,71 @@ export const styles: Record<string, React.CSSProperties> = {
     color: "var(--color-text)",
     cursor: "pointer",
     transition: "background 0.15s",
+  },
+  // Focused-PR banner, along the top of the graph. The legend and the shortcut
+  // buttons hold the top-left corner, so the banner is centred in what is left
+  // of the row rather than in the viewport — auto margins between a left inset
+  // that clears those panels and a right inset.
+  focusBanner: {
+    position: "absolute" as const,
+    top: 12,
+    left: PANEL_GUTTER,
+    right: 12,
+    marginLeft: "auto",
+    marginRight: "auto",
+    width: "fit-content",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    maxWidth: "100%",
+    padding: "7px 14px",
+    fontSize: 12,
+    fontWeight: 500,
+    color: "var(--color-text)",
+    background: "var(--color-header-bg)",
+    border: "1px solid var(--color-border-subtle)",
+    borderRadius: 999,
+    boxShadow: "0 2px 8px var(--color-shadow)",
+    zIndex: 60,
+  },
+  // A narrow screen has no room beside the panels, so there the banner sits
+  // along the bottom instead — lifted clear of the "loading PRs" bar while that
+  // is on screen.
+  focusBannerMobile: {
+    top: "auto",
+    bottom: 12,
+    left: 12,
+  },
+  focusBannerMobileRaised: {
+    top: "auto",
+    bottom: 86,
+    left: 12,
+  },
+  // The full shorthand is repeated rather than overriding `borderColor` alone:
+  // React warns when a rerender mixes a shorthand with one of its longhands.
+  focusBannerProblem: {
+    border: "1px solid var(--color-review-requested)",
+  },
+  focusBannerText: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap" as const,
+  },
+  focusBannerBtnDone: {
+    color: "var(--color-ready)",
+    border: "1px solid var(--color-ready)",
+  },
+  focusBannerBtn: {
+    flexShrink: 0,
+    padding: "3px 10px",
+    fontSize: 12,
+    fontWeight: 600,
+    borderRadius: 999,
+    border: "1px solid var(--color-border-subtle)",
+    background: "transparent",
+    color: "var(--color-link)",
+    cursor: "pointer",
+    whiteSpace: "nowrap" as const,
   },
   fetchingMoreBar: {
     position: "absolute" as const,

@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { GraphData, PRNode, Orientation, EdgeFlags } from "../types";
 import { mergeAndCascade, updatePRBranch } from "../github";
 import { collectDescendantPRs, isPR } from "../utils";
+import { collectFocusIds } from "../prFocus";
 import { PR_WIDTH, SPACING, COLORS } from "../constants";
 import {
   buildTrees,
@@ -25,13 +26,31 @@ import FilterShortcuts from "./FilterShortcuts";
 
 export type { Orientation };
 
+// Blank space kept around the focused stack when the view zooms to it.
+const FOCUS_MARGIN = 60;
+
+// A short stack would otherwise be blown up to fill the whole viewport; past
+// this the cards stop growing and just sit in the middle.
+const MAX_FOCUS_SCALE = 1.2;
+
+// How far the rest of the graph fades back while a stack is focused. It stays
+// visible — the focused PRs are the point, but the surrounding graph is still
+// the context they live in.
+const UNFOCUSED_OPACITY = 0.18;
+
 interface Props {
   data: GraphData;
   orientation: Orientation;
   token: string;
+  // PR number the view frames on, together with the PRs stacked on top of it.
+  // Null (or a PR that isn't in the graph) shows the whole graph as usual.
+  focusPR?: number | null;
+  // Asks the page to focus a PR — what the eye badge on a card does. The page
+  // puts the PR in the address bar, so the focused view is a link to share.
+  onFocusPR?: (prNumber: number | null) => void;
 }
 
-export default function GraphView({ data, orientation, token }: Props) {
+export default function GraphView({ data, orientation, token, focusPR = null, onFocusPR }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const gRef = useRef<SVGGElement>(null);
   const queryClient = useQueryClient();
@@ -39,6 +58,12 @@ export default function GraphView({ data, orientation, token }: Props) {
   const [merging, setMerging] = useState<number | null>(null);
   const [updatingPRs, setUpdatingPRs] = useState<Set<number>>(new Set());
   const [currentlyUpdating, setCurrentlyUpdating] = useState<number | null>(null);
+  // Node ids making up the focused stack, or null when nothing is focused (or
+  // the focused PR isn't part of this graph).
+  const focusIds = useMemo(
+    () => (focusPR === null ? null : collectFocusIds(focusPR, data.nodes)),
+    [focusPR, data.nodes],
+  );
 
   const handleMerge = useCallback(
     async (prNumber: number, prTitle: string) => {
@@ -205,6 +230,43 @@ export default function GraphView({ data, orientation, token }: Props) {
       };
     }, [data, orientation]);
 
+  // The area the view frames: the whole graph, or just the focused stack's
+  // bounding box when a PR is focused.
+  const viewBox = useMemo(() => {
+    const focused = focusIds
+      ? allNodes.filter((n) => focusIds.has(n.data.id))
+      : [];
+    if (focused.length === 0) {
+      return { x: 0, y: 0, width: totalWidth, height: totalHeight };
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const n of focused) {
+      const w = nodeWidth(n.data);
+      const h = nodeHeight(n.data);
+      minX = Math.min(minX, n.x - w / 2);
+      maxX = Math.max(maxX, n.x + w / 2);
+      minY = Math.min(minY, n.y - h / 2);
+      maxY = Math.max(maxY, n.y + h / 2);
+    }
+    return {
+      x: minX - FOCUS_MARGIN,
+      y: minY - FOCUS_MARGIN,
+      width: maxX - minX + FOCUS_MARGIN * 2,
+      height: maxY - minY + FOCUS_MARGIN * 2,
+    };
+  }, [allNodes, focusIds, totalWidth, totalHeight]);
+
+  const isFocused = focusIds !== null;
+
+  // Depending on the four numbers rather than the object keeps fitView stable
+  // across a background refresh that leaves the layout where it was, so the
+  // graph doesn't jump back to the fitted view under a panned/zoomed reader.
+  const { x: viewX, y: viewY, width: viewWidth, height: viewHeight } = viewBox;
+
   const fitView = useCallback(() => {
     const svg = svgRef.current;
     const g = gRef.current;
@@ -213,11 +275,13 @@ export default function GraphView({ data, orientation, token }: Props) {
     const width = svg.clientWidth;
     const height = svg.clientHeight;
     const padding = 40;
-    const scaleX = (width - padding * 2) / totalWidth;
-    const scaleY = (height - padding * 2) / totalHeight;
-    const scale = Math.min(scaleX, scaleY);
-    const tx = (width - totalWidth * scale) / 2;
-    const ty = (height - totalHeight * scale) / 2;
+    const scaleX = (width - padding * 2) / viewWidth;
+    const scaleY = (height - padding * 2) / viewHeight;
+    const scale = isFocused
+      ? Math.min(scaleX, scaleY, MAX_FOCUS_SCALE)
+      : Math.min(scaleX, scaleY);
+    const tx = (width - viewWidth * scale) / 2 - viewX * scale;
+    const ty = (height - viewHeight * scale) / 2 - viewY * scale;
 
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
@@ -229,7 +293,7 @@ export default function GraphView({ data, orientation, token }: Props) {
     const sel = d3.select(svg);
     sel.call(zoom);
     sel.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
-  }, [totalWidth, totalHeight]);
+  }, [viewX, viewY, viewWidth, viewHeight, isFocused]);
 
   useEffect(() => {
     fitView();
@@ -288,6 +352,17 @@ export default function GraphView({ data, orientation, token }: Props) {
               stroke={COLORS.edge}
               strokeWidth={2}
               markerEnd="url(#arrowhead)"
+              // An edge belongs to the focused stack only when both of its ends
+              // do, so the link coming in from the PR the stack sits on fades
+              // back with the rest of the graph.
+              opacity={
+                focusIds &&
+                !(
+                  focusIds.has(e.source.data.id) && focusIds.has(e.target.data.id)
+                )
+                  ? UNFOCUSED_OPACITY
+                  : 1
+              }
             />
           ))}
 
@@ -308,6 +383,7 @@ export default function GraphView({ data, orientation, token }: Props) {
               <g
                 key={n.data.id}
                 transform={`translate(${n.x},${n.y})`}
+                opacity={focusIds && !focusIds.has(n.data.id) ? UNFOCUSED_OPACITY : 1}
                 style={{ cursor: "pointer" }}
                 onMouseEnter={() => setHoveredId(n.data.id)}
                 onMouseLeave={() => setHoveredId(null)}
@@ -341,6 +417,7 @@ export default function GraphView({ data, orientation, token }: Props) {
                       isCurrentlyUpdating={currentlyUpdating === n.data.number}
                       onMerge={handleMerge}
                       onUpdateBranch={handleUpdateBranch}
+                      onFocus={onFocusPR}
                       orientation={orientation}
                     />
                   ) : (

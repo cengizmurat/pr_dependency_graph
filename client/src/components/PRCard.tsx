@@ -1,6 +1,8 @@
 import type { PRNode, PRLabel, PRStack, Orientation, MergeStatus } from "../types";
 import {
+  EYE_ICON_PATH,
   MAX_REVIEWER_AVATARS,
+  SHARE_BADGE_COLOR,
   STACK_ICON_PATH,
   STATE_COLORS,
   STATE_ICONS,
@@ -28,6 +30,7 @@ interface Props {
   isCurrentlyUpdating?: boolean;
   onMerge?: (prNumber: number, prTitle: string) => void;
   onUpdateBranch?: (prNumber: number) => void;
+  onFocus?: (prNumber: number) => void;
   orientation?: Orientation;
 }
 
@@ -169,13 +172,49 @@ function UpdateBadge({
   );
 }
 
-export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurrentlyUpdating, onMerge, onUpdateBranch, orientation = "horizontal" }: Props) {
+// Focuses the graph on this PR and the PRs stacked on top of it, which also
+// puts the PR in the page address — the link to share. It sits with the other
+// badges rather than inside the card body so it can't push the title around.
+//
+// Grey, unlike the badges beside it: those colors carry meaning about the PR
+// (mergeable, conflicted, behind, stacked), while this one is an action that
+// says nothing about the PR's state.
+function FocusBadge({
+  prNumber,
+  onFocus,
+}: {
+  prNumber: number;
+  onFocus: (prNumber: number) => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={`Focus on PR #${prNumber} and the PRs stacked on it — the page link then opens this view`}
+      aria-label={`Focus on PR #${prNumber} and the PRs stacked on it`}
+      onClick={(evt) => {
+        evt.stopPropagation();
+        onFocus(prNumber);
+      }}
+      style={{
+        ...badgeStyles.box,
+        borderColor: SHARE_BADGE_COLOR,
+        cursor: "pointer",
+      }}
+    >
+      <svg width="13" height="13" viewBox="0 0 16 16" fill={SHARE_BADGE_COLOR}>
+        <path d={EYE_ICON_PATH} />
+      </svg>
+    </button>
+  );
+}
+
+export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurrentlyUpdating, onMerge, onUpdateBranch, onFocus, orientation = "horizontal" }: Props) {
   const visibleReviewers = pr.reviewers.slice(0, MAX_REVIEWER_AVATARS);
   const extraCount = pr.reviewers.length - MAX_REVIEWER_AVATARS;
 
   const hasMergeBadge = mergeStatus && (mergeStatus.hasConflict || mergeStatus.isMergeable);
   const hasUpdateBadge = isUpdating || (pr.behindBy != null && pr.behindBy > 0);
-  const hasBadges = hasMergeBadge || hasUpdateBadge || !!pr.stack;
+  const hasBadges = hasMergeBadge || hasUpdateBadge || !!pr.stack || !!onFocus;
 
   return (
     <div style={styles.card} data-draft={pr.isDraft || undefined}>
@@ -206,6 +245,7 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurre
               isCurrentlyUpdating={isCurrentlyUpdating}
             />
           )}
+          {onFocus && <FocusBadge prNumber={pr.number} onFocus={onFocus} />}
         </div>
       )}
       <div style={styles.header}>

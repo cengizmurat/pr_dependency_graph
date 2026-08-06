@@ -35,6 +35,37 @@ export function collectDescendantPRs(startPrNumber: number, nodes: GraphNode[]):
   return result;
 }
 
+// Copies text to the clipboard, reporting whether it worked. The async
+// Clipboard API needs a secure context and a permission the browser can
+// refuse, so a hidden-textarea copy stands in when it isn't available — and a
+// false return lets the caller fall back to showing the link instead.
+export async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall through to the textarea copy below.
+  }
+
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.top = "-1000px";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return copied;
+  } catch {
+    return false;
+  }
+}
+
 export function timeAgo(dateStr: string): string {
   const seconds = Math.floor(
     (Date.now() - new Date(dateStr).getTime()) / 1000

@@ -59,6 +59,8 @@ export const styles: Record<string, React.CSSProperties> = {
     background: "var(--color-button-bg)",
     color: "var(--color-button-text)",
     cursor: "pointer",
+    whiteSpace: "nowrap" as const,
+    flexShrink: 0,
   },
   clearButton: {
     marginTop: 12,

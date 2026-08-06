@@ -16,6 +16,13 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
+    version: 9,
+    title: "Focus on a stack of PRs, and share it",
+    description:
+      "The eye button on a pull request card zooms the graph onto that PR and the ones stacked on top of it. You can also share this view to share a specific stack of PRs to your teammates!",
+    date: "2026-08-06",
+  },
+  {
     version: 8,
     title: "GitHub Stacks are recognized",
     description:

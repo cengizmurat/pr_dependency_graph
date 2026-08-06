@@ -6,6 +6,7 @@ import { useGithubToken } from "../hooks/useGithubToken";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { isOAuthConfigured, MANAGE_OAUTH_APPS_URL, startLogin } from "../auth";
 import { fetchUserRepos } from "../api";
+import { FOCUS_PR_PARAM, parseRepoTarget } from "../prFocus";
 import type { UserRepo } from "../types";
 import { styles } from "./LandingPage.styles";
 
@@ -74,14 +75,20 @@ export default function LandingPage() {
     }
   }
 
+  // Opens the graph for a repository, focused on one PR and the stack above it
+  // when the entry names one — `owner/repo#42`, or a pull request URL pasted
+  // straight from GitHub.
   function navigateToRepo(fullName: string) {
-    const trimmed = fullName.trim().replace(/^\/+|\/+$/g, "");
-    const parts = trimmed.split("/");
-    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    const target = parseRepoTarget(fullName);
+    if (!target) {
       setError("Please enter a valid owner/repo (e.g. facebook/react)");
       return;
     }
-    navigate(`/${parts[0]}/${parts[1]}`);
+
+    const { prNumber } = target;
+    const suffix =
+      prNumber && prNumber > 0 ? `?${FOCUS_PR_PARAM}=${prNumber}` : "";
+    navigate(`/${target.owner}/${target.repo}${suffix}`);
   }
 
   function handleRepoSubmit(e: FormEvent) {
@@ -220,6 +227,10 @@ export default function LandingPage() {
                 View Graph
               </button>
             </form>
+            <p style={styles.helperLine}>
+              Pasting a pull request URL opens the graph focused on that pull
+              request and the ones stacked on top of it.
+            </p>
             <button
               onClick={() => {
                 clearToken();
