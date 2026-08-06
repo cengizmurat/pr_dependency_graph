@@ -176,6 +176,60 @@ export const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     transition: "background 0.15s",
   },
+  // Focused-PR banner, centred at the top of the graph so it clears the legend
+  // and shortcut buttons on the left and the loading bar at the bottom.
+  focusBanner: {
+    position: "absolute" as const,
+    top: 12,
+    left: "50%",
+    transform: "translateX(-50%)",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    maxWidth: "min(680px, calc(100% - 32px))",
+    padding: "7px 14px",
+    fontSize: 12,
+    fontWeight: 500,
+    color: "var(--color-text)",
+    background: "var(--color-header-bg)",
+    border: "1px solid var(--color-border-subtle)",
+    borderRadius: 999,
+    boxShadow: "0 2px 8px var(--color-shadow)",
+    zIndex: 60,
+  },
+  // On a narrow screen the banner spans the width the legend and shortcut
+  // buttons occupy, so it moves to the bottom of the graph instead of covering
+  // them. It rides above the loading bar when both are on screen.
+  focusBannerMobile: {
+    top: "auto",
+    bottom: 12,
+  },
+  focusBannerMobileRaised: {
+    top: "auto",
+    bottom: 86,
+  },
+  // The full shorthand is repeated rather than overriding `borderColor` alone:
+  // React warns when a rerender mixes a shorthand with one of its longhands.
+  focusBannerProblem: {
+    border: "1px solid var(--color-review-requested)",
+  },
+  focusBannerText: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap" as const,
+  },
+  focusBannerBtn: {
+    flexShrink: 0,
+    padding: "3px 10px",
+    fontSize: 12,
+    fontWeight: 600,
+    borderRadius: 999,
+    border: "1px solid var(--color-border-subtle)",
+    background: "transparent",
+    color: "var(--color-link)",
+    cursor: "pointer",
+    whiteSpace: "nowrap" as const,
+  },
   fetchingMoreBar: {
     position: "absolute" as const,
     bottom: 16,

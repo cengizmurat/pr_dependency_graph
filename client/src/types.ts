@@ -53,6 +53,17 @@ export interface GraphQLPullRequest {
   stack: PRStack | null;
 }
 
+// The little that is needed about a PR the graph didn't load: enough to say
+// why it isn't on screen, and when it was opened so the date range can be
+// widened to reach it.
+export interface PullRequestSummary {
+  number: number;
+  title: string;
+  url: string;
+  createdAt: string;
+  state: "OPEN" | "CLOSED" | "MERGED";
+}
+
 export interface CascadeResult {
   merged: number;
   updated: { number: number; title: string }[];

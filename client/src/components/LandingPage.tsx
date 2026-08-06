@@ -6,6 +6,7 @@ import { useGithubToken } from "../hooks/useGithubToken";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { isOAuthConfigured, MANAGE_OAUTH_APPS_URL, startLogin } from "../auth";
 import { fetchUserRepos } from "../api";
+import { FOCUS_PR_PARAM, parseRepoTarget } from "../prFocus";
 import type { UserRepo } from "../types";
 import { styles } from "./LandingPage.styles";
 
@@ -13,6 +14,7 @@ export default function LandingPage() {
   const { token, source, setToken, clearToken } = useGithubToken();
   const [tokenInput, setTokenInput] = useState("");
   const [repoInput, setRepoInput] = useState("");
+  const [prInput, setPrInput] = useState("");
   const [error, setError] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const navigate = useNavigate();
@@ -74,14 +76,30 @@ export default function LandingPage() {
     }
   }
 
+  // Opens the graph for a repository, optionally focused on one PR and the
+  // stack above it. The PR number can come from the PR field or from the repo
+  // box itself (`owner/repo#42`, or a pull request URL pasted straight from
+  // GitHub); the field wins when both name one, being the more deliberate of
+  // the two.
   function navigateToRepo(fullName: string) {
-    const trimmed = fullName.trim().replace(/^\/+|\/+$/g, "");
-    const parts = trimmed.split("/");
-    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    const target = parseRepoTarget(fullName);
+    if (!target) {
       setError("Please enter a valid owner/repo (e.g. facebook/react)");
       return;
     }
-    navigate(`/${parts[0]}/${parts[1]}`);
+
+    const typedPR = prInput.trim();
+    if (typedPR && !/^#?\d+$/.test(typedPR)) {
+      setError("Please enter a PR number, e.g. 42");
+      return;
+    }
+    const prNumber = typedPR
+      ? parseInt(typedPR.replace(/^#/, ""), 10)
+      : target.prNumber;
+
+    const suffix =
+      prNumber && prNumber > 0 ? `?${FOCUS_PR_PARAM}=${prNumber}` : "";
+    navigate(`/${target.owner}/${target.repo}${suffix}`);
   }
 
   function handleRepoSubmit(e: FormEvent) {
@@ -216,10 +234,28 @@ export default function LandingPage() {
                 style={styles.input}
                 autoFocus={source !== "oauth"}
               />
+              <input
+                type="text"
+                inputMode="numeric"
+                value={prInput}
+                onChange={(e) => {
+                  setPrInput(e.target.value);
+                  setError("");
+                }}
+                placeholder="PR #"
+                aria-label="Pull request number to focus on (optional)"
+                title="Optional: focus the graph on this PR and the PRs stacked on it"
+                style={{ ...styles.input, ...styles.prInput }}
+              />
               <button type="submit" style={styles.button}>
                 View Graph
               </button>
             </form>
+            <p style={styles.helperLine}>
+              A PR number is optional — with one, the graph opens focused on that
+              pull request and the ones stacked on top of it. Pasting a pull
+              request URL works too.
+            </p>
             <button
               onClick={() => {
                 clearToken();

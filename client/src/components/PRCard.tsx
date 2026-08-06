@@ -1,6 +1,7 @@
 import type { PRNode, PRLabel, PRStack, Orientation, MergeStatus } from "../types";
 import {
   MAX_REVIEWER_AVATARS,
+  SHARE_ICON_PATH,
   STACK_ICON_PATH,
   STATE_COLORS,
   STATE_ICONS,
@@ -28,6 +29,8 @@ interface Props {
   isCurrentlyUpdating?: boolean;
   onMerge?: (prNumber: number, prTitle: string) => void;
   onUpdateBranch?: (prNumber: number) => void;
+  onShare?: (prNumber: number) => void;
+  isShared?: boolean;
   orientation?: Orientation;
 }
 
@@ -169,13 +172,62 @@ function UpdateBadge({
   );
 }
 
-export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurrentlyUpdating, onMerge, onUpdateBranch, orientation = "horizontal" }: Props) {
+// Copies a link that opens the graph focused on this PR and the PRs stacked on
+// top of it. It sits with the other badges rather than inside the card body so
+// it can't push the title around, and turns into a checkmark once the link is
+// on the clipboard.
+function ShareBadge({
+  prNumber,
+  onShare,
+  isShared,
+}: {
+  prNumber: number;
+  onShare: (prNumber: number) => void;
+  isShared?: boolean;
+}) {
+  const color = isShared ? "var(--color-ready)" : "var(--color-branch)";
+
+  return (
+    <button
+      type="button"
+      title={
+        isShared
+          ? "Link copied"
+          : `Copy a link to PR #${prNumber} and the PRs stacked on it`
+      }
+      aria-label={`Copy a share link to PR #${prNumber}`}
+      onClick={(evt) => {
+        evt.stopPropagation();
+        onShare(prNumber);
+      }}
+      style={{ ...badgeStyles.box, borderColor: color, cursor: "pointer" }}
+    >
+      {isShared ? (
+        <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
+          <path
+            d="M2 6L5 9L10 3"
+            stroke={color}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ) : (
+        <svg width="13" height="13" viewBox="0 0 16 16" fill={color}>
+          <path d={SHARE_ICON_PATH} />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurrentlyUpdating, onMerge, onUpdateBranch, onShare, isShared, orientation = "horizontal" }: Props) {
   const visibleReviewers = pr.reviewers.slice(0, MAX_REVIEWER_AVATARS);
   const extraCount = pr.reviewers.length - MAX_REVIEWER_AVATARS;
 
   const hasMergeBadge = mergeStatus && (mergeStatus.hasConflict || mergeStatus.isMergeable);
   const hasUpdateBadge = isUpdating || (pr.behindBy != null && pr.behindBy > 0);
-  const hasBadges = hasMergeBadge || hasUpdateBadge || !!pr.stack;
+  const hasBadges = hasMergeBadge || hasUpdateBadge || !!pr.stack || !!onShare;
 
   return (
     <div style={styles.card} data-draft={pr.isDraft || undefined}>
@@ -204,6 +256,13 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurre
               isStacked={!!pr.stack}
               isUpdating={isUpdating}
               isCurrentlyUpdating={isCurrentlyUpdating}
+            />
+          )}
+          {onShare && (
+            <ShareBadge
+              prNumber={pr.number}
+              onShare={onShare}
+              isShared={isShared}
             />
           )}
         </div>

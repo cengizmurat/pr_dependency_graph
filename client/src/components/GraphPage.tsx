@@ -3,12 +3,13 @@ import { useParams, Link, Navigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DatePicker, Dropdown } from "antd";
 import dayjs from "dayjs";
-import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, fetchBehindByCounts, buildDependencyGraph } from "../api";
-import type { GraphQLPullRequest, Contributor, Orientation, PRStatusFilter, ReviewStateFilter } from "../types";
+import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, fetchPullRequestSummary, fetchBehindByCounts, buildDependencyGraph } from "../api";
+import type { GraphQLPullRequest, Contributor, Orientation, PRNode, PRStatusFilter, ReviewStateFilter } from "../types";
 import { REVIEW_STATE_FILTER_VALUES } from "../types";
 import { LOOKBACK_DAYS_KEY } from "../constants";
-import { getStoredLookbackDays, buildDefaultRange } from "../utils";
-import { pruneStaleShortcut } from "../filterShortcuts";
+import { getStoredLookbackDays, buildDefaultRange, collectDescendantPRs } from "../utils";
+import { getFocusPR, withFocusPR } from "../prFocus";
+import { pruneStaleShortcut, SHORTCUT_PARAM } from "../filterShortcuts";
 import type { DateRange } from "../utils";
 import { useGithubToken } from "../hooks/useGithubToken";
 import { useIsMobile } from "../hooks/useIsMobile";
@@ -126,6 +127,19 @@ const REVIEWER_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>([
   "reviewer",
   "reviewState",
 ]);
+
+// --- Focused PR --------------------------------------------------------
+
+// Why the focused PR is or isn't on screen, which is what the focus banner
+// reports. Anything other than "visible" means the graph is showing everything
+// it has, so the banner also has to explain what happened to the link.
+type FocusState =
+  | { kind: "visible"; title: string; following: number }
+  | { kind: "filtered" }
+  | { kind: "loading" }
+  | { kind: "closed"; state: "CLOSED" | "MERGED" }
+  | { kind: "missing" }
+  | { kind: "error"; message: string };
 
 function useIncrementalPRs(
   token: string | null,
@@ -292,6 +306,16 @@ export default function GraphPage() {
     [setSearchParams, viewerLogin],
   );
 
+  // A shared link carries the PR its stack is about in the `pr` param, which
+  // is what the graph frames itself on once the data lands.
+  const focusPR = useMemo(() => getFocusPR(searchParams), [searchParams]);
+  const setFocusPR = useCallback(
+    (next: number | null) => {
+      setSearchParams((prev) => withFocusPR(prev, next), { replace: true });
+    },
+    [setSearchParams],
+  );
+
   const [lookbackDays, setLookbackDays] = useState(getStoredLookbackDays);
   const [lookbackInput, setLookbackInput] = useState(String(lookbackDays));
   const [dateRange, setDateRange] = useState<DateRange>(() => buildDefaultRange(lookbackDays));
@@ -414,6 +438,97 @@ export default function GraphPage() {
     }
     return graph;
   }, [allPRs, owner, repo, viewerLogin, contributors, filters, behindByData]);
+
+  // --- Focused PR (shared link) -------------------------------------------
+
+  const focusPRLoaded =
+    focusPR !== null && allPRs.some((p) => p.number === focusPR);
+
+  // A shared link opens with the reader's own default date range, which may
+  // well start after the PR was created — so when the focused PR isn't among
+  // the loaded ones, look it up directly to find out why.
+  const {
+    data: focusSummary,
+    isFetching: focusLookupFetching,
+    error: focusLookupError,
+  } = useQuery({
+    queryKey: ["prSummary", owner, repo, focusPR],
+    queryFn: () => fetchPullRequestSummary(token!, owner!, repo!, focusPR!),
+    enabled:
+      !!token &&
+      !!owner &&
+      !!repo &&
+      activeTab === "prs" &&
+      focusPR !== null &&
+      !focusPRLoaded &&
+      !isLoading &&
+      !isFetchingMore,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
+  // Widen the range back to the day the focused PR was opened, so a link to an
+  // older stack works without the reader having to touch the date picker. Done
+  // once per PR: if it still doesn't show up afterwards, something else is
+  // keeping it out and re-widening wouldn't help.
+  const widenedForPR = useRef<number | null>(null);
+  useEffect(() => {
+    if (focusPR === null || !focusSummary || focusSummary.state !== "OPEN") return;
+    if (widenedForPR.current === focusPR) return;
+    const createdAt = dayjs(focusSummary.createdAt);
+    if (!createdAt.isBefore(dateRange[0])) return;
+    widenedForPR.current = focusPR;
+    setDateRange([createdAt.startOf("day"), dateRange[1]]);
+  }, [focusPR, focusSummary, dateRange]);
+
+  const focusState = useMemo<FocusState | null>(() => {
+    if (focusPR === null) return null;
+
+    const node = data?.nodes.find(
+      (n): n is PRNode => n.type === "pr" && n.number === focusPR,
+    );
+    if (node && data) {
+      return {
+        kind: "visible",
+        title: node.title,
+        following: collectDescendantPRs(focusPR, data.nodes).length - 1,
+      };
+    }
+    if (focusPRLoaded) return { kind: "filtered" };
+    if (isLoading || isFetchingMore || focusLookupFetching) {
+      return { kind: "loading" };
+    }
+    if (focusLookupError) {
+      return { kind: "error", message: (focusLookupError as Error).message };
+    }
+    if (focusSummary === null) return { kind: "missing" };
+    if (focusSummary && focusSummary.state !== "OPEN") {
+      return { kind: "closed", state: focusSummary.state };
+    }
+    return { kind: "loading" };
+  }, [
+    focusPR,
+    data,
+    focusPRLoaded,
+    isLoading,
+    isFetchingMore,
+    focusLookupFetching,
+    focusLookupError,
+    focusSummary,
+  ]);
+
+  const clearFilters = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        for (const key of ["author", "reviewer", "status", "reviewState", SHORTCUT_PARAM]) {
+          params.delete(key);
+        }
+        return params;
+      },
+      { replace: true },
+    );
+  }, [setSearchParams]);
 
   const error = prError ?? null;
 
@@ -594,9 +709,24 @@ export default function GraphPage() {
         )}
         {data && (
           <>
-            <GraphView data={data} orientation={orientation} token={token} />
+            <GraphView
+              data={data}
+              orientation={orientation}
+              token={token}
+              focusPR={focusPR}
+            />
             <FeatureAnnouncementPopup />
           </>
+        )}
+        {focusPR !== null && focusState && (
+          <FocusBanner
+            prNumber={focusPR}
+            state={focusState}
+            isMobile={isMobile}
+            isFetchingMore={isFetchingMore}
+            onClear={() => setFocusPR(null)}
+            onClearFilters={clearFilters}
+          />
         )}
         {isFetchingMore && (() => {
           const oldestSoFar = dayjs(allPRs[allPRs.length - 1]?.createdAt);
@@ -620,6 +750,90 @@ export default function GraphPage() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// Sits above the graph whenever a PR is focused: it says what the view is
+// framed on and, when the focused PR can't be shown, why. "Show all PRs"
+// always leads back to the unfocused graph.
+function FocusBanner({
+  prNumber,
+  state,
+  isMobile,
+  isFetchingMore,
+  onClear,
+  onClearFilters,
+}: {
+  prNumber: number;
+  state: FocusState;
+  isMobile: boolean;
+  isFetchingMore: boolean;
+  onClear: () => void;
+  onClearFilters: () => void;
+}) {
+  const isProblem = state.kind !== "visible" && state.kind !== "loading";
+
+  let message: string;
+  switch (state.kind) {
+    case "visible":
+      message =
+        state.following > 0
+          ? `Focused on #${prNumber} ${state.title} and ${state.following} following PR${state.following === 1 ? "" : "s"}`
+          : `Focused on #${prNumber} ${state.title}`;
+      break;
+    case "loading":
+      message = `Looking for PR #${prNumber}...`;
+      break;
+    case "filtered":
+      message = `PR #${prNumber} is hidden by the active filters`;
+      break;
+    case "closed":
+      message = `PR #${prNumber} is ${state.state === "MERGED" ? "merged" : "closed"} — the graph only shows open pull requests`;
+      break;
+    case "missing":
+      message = `PR #${prNumber} wasn't found in this repository`;
+      break;
+    case "error":
+      message = `PR #${prNumber} couldn't be looked up: ${state.message}`;
+      break;
+  }
+
+  return (
+    <div
+      style={{
+        ...styles.focusBanner,
+        ...(isMobile
+          ? isFetchingMore
+            ? styles.focusBannerMobileRaised
+            : styles.focusBannerMobile
+          : {}),
+        ...(isProblem ? styles.focusBannerProblem : {}),
+      }}
+      role="status"
+    >
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}>
+        <path d="M8 2c1.981 0 3.671.992 4.933 2.078 1.27 1.091 2.187 2.345 2.637 3.023a1.62 1.62 0 0 1 0 1.798c-.45.678-1.367 1.932-2.637 3.023C11.67 13.008 9.981 14 8 14c-1.981 0-3.671-.992-4.933-2.078C1.797 10.83.88 9.576.43 8.898a1.62 1.62 0 0 1 0-1.798c.45-.677 1.367-1.931 2.637-3.022C4.33 2.992 6.019 2 8 2Zm0 3.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z" />
+      </svg>
+      <span style={styles.focusBannerText}>{message}</span>
+      {state.kind === "filtered" && (
+        <button
+          type="button"
+          className="focus-banner-btn"
+          style={styles.focusBannerBtn}
+          onClick={onClearFilters}
+        >
+          Clear filters
+        </button>
+      )}
+      <button
+        type="button"
+        className="focus-banner-btn"
+        style={styles.focusBannerBtn}
+        onClick={onClear}
+      >
+        Show all PRs
+      </button>
     </div>
   );
 }

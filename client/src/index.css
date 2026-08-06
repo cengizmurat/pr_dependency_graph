@@ -228,3 +228,7 @@ body {
 .feature-popup-dismiss:hover {
   opacity: 0.9;
 }
+
+.focus-banner-btn:hover {
+  background: var(--color-border-subtle);
+}
