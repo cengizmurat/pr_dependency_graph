@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { COLORS, SHARE_ICON_PATH, STACK_ICON_PATH } from "../constants";
+import { COLORS, EYE_ICON_PATH, SHARE_BADGE_COLOR, STACK_ICON_PATH } from "../constants";
 import {
   getStoredLegendCollapsed,
   hasStoredLegendPreference,
@@ -151,12 +151,12 @@ export default function Legend() {
         <span style={styles.label}>Position in a GitHub stack</span>
       </div>
       <div style={styles.row}>
-        <span style={{ ...styles.badge, borderColor: COLORS.branch }}>
-          <svg width="10" height="10" viewBox="0 0 16 16" fill={COLORS.branch}>
-            <path d={SHARE_ICON_PATH} />
+        <span style={{ ...styles.badge, borderColor: SHARE_BADGE_COLOR }}>
+          <svg width="10" height="10" viewBox="0 0 16 16" fill={SHARE_BADGE_COLOR}>
+            <path d={EYE_ICON_PATH} />
           </svg>
         </span>
-        <span style={styles.label}>Copy a link to this PR and its stack</span>
+        <span style={styles.label}>Focus on this PR and its stack</span>
       </div>
         </>
       )}

@@ -176,11 +176,12 @@ export const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     transition: "background 0.15s",
   },
-  // Focused-PR banner, centred at the top of the graph so it clears the legend
-  // and shortcut buttons on the left and the loading bar at the bottom.
+  // Focused-PR banner, centred along the bottom of the graph: the top edge is
+  // taken by the legend and the shortcut buttons, which a centred banner wide
+  // enough for its two actions would otherwise run into.
   focusBanner: {
     position: "absolute" as const,
-    top: 12,
+    bottom: 12,
     left: "50%",
     transform: "translateX(-50%)",
     display: "flex",
@@ -197,15 +198,8 @@ export const styles: Record<string, React.CSSProperties> = {
     boxShadow: "0 2px 8px var(--color-shadow)",
     zIndex: 60,
   },
-  // On a narrow screen the banner spans the width the legend and shortcut
-  // buttons occupy, so it moves to the bottom of the graph instead of covering
-  // them. It rides above the loading bar when both are on screen.
-  focusBannerMobile: {
-    top: "auto",
-    bottom: 12,
-  },
-  focusBannerMobileRaised: {
-    top: "auto",
+  // Lifted clear of the "loading PRs" bar while that is on screen.
+  focusBannerRaised: {
     bottom: 86,
   },
   // The full shorthand is repeated rather than overriding `borderColor` alone:
@@ -217,6 +211,10 @@ export const styles: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap" as const,
+  },
+  focusBannerBtnDone: {
+    color: "var(--color-ready)",
+    border: "1px solid var(--color-ready)",
   },
   focusBannerBtn: {
     flexShrink: 0,

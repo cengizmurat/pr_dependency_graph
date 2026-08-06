@@ -3,8 +3,8 @@ import * as d3 from "d3";
 import { useQueryClient } from "@tanstack/react-query";
 import type { GraphData, PRNode, Orientation, EdgeFlags } from "../types";
 import { mergeAndCascade, updatePRBranch } from "../github";
-import { collectDescendantPRs, copyToClipboard, isPR } from "../utils";
-import { buildShareUrl, collectFocusIds } from "../prFocus";
+import { collectDescendantPRs, isPR } from "../utils";
+import { collectFocusIds } from "../prFocus";
 import { PR_WIDTH, SPACING, COLORS } from "../constants";
 import {
   buildTrees,
@@ -26,9 +26,6 @@ import FilterShortcuts from "./FilterShortcuts";
 
 export type { Orientation };
 
-// How long the share badge stays a checkmark after the link is copied.
-const SHARE_FEEDBACK_MS = 2000;
-
 // Blank space kept around the focused stack when the view zooms to it.
 const FOCUS_MARGIN = 60;
 
@@ -48,9 +45,12 @@ interface Props {
   // PR number the view frames on, together with the PRs stacked on top of it.
   // Null (or a PR that isn't in the graph) shows the whole graph as usual.
   focusPR?: number | null;
+  // Asks the page to focus a PR — what the eye badge on a card does. The page
+  // puts the PR in the address bar, so the focused view is a link to share.
+  onFocusPR?: (prNumber: number | null) => void;
 }
 
-export default function GraphView({ data, orientation, token, focusPR = null }: Props) {
+export default function GraphView({ data, orientation, token, focusPR = null, onFocusPR }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const gRef = useRef<SVGGElement>(null);
   const queryClient = useQueryClient();
@@ -58,35 +58,6 @@ export default function GraphView({ data, orientation, token, focusPR = null }: 
   const [merging, setMerging] = useState<number | null>(null);
   const [updatingPRs, setUpdatingPRs] = useState<Set<number>>(new Set());
   const [currentlyUpdating, setCurrentlyUpdating] = useState<number | null>(null);
-  const [sharedPR, setSharedPR] = useState<number | null>(null);
-  const shareTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (shareTimer.current) clearTimeout(shareTimer.current);
-    },
-    [],
-  );
-
-  const handleShare = useCallback(
-    async (prNumber: number) => {
-      const url = buildShareUrl(data.owner, data.repo, prNumber);
-      const copied = await copyToClipboard(url);
-      if (!copied) {
-        // No clipboard access — show the link so it can be copied by hand.
-        window.prompt(`Link to PR #${prNumber} and the PRs stacked on it:`, url);
-        return;
-      }
-      setSharedPR(prNumber);
-      if (shareTimer.current) clearTimeout(shareTimer.current);
-      shareTimer.current = setTimeout(
-        () => setSharedPR(null),
-        SHARE_FEEDBACK_MS,
-      );
-    },
-    [data.owner, data.repo],
-  );
-
   // Node ids making up the focused stack, or null when nothing is focused (or
   // the focused PR isn't part of this graph).
   const focusIds = useMemo(
@@ -446,8 +417,7 @@ export default function GraphView({ data, orientation, token, focusPR = null }: 
                       isCurrentlyUpdating={currentlyUpdating === n.data.number}
                       onMerge={handleMerge}
                       onUpdateBranch={handleUpdateBranch}
-                      onShare={handleShare}
-                      isShared={sharedPR === n.data.number}
+                      onFocus={onFocusPR}
                       orientation={orientation}
                     />
                   ) : (

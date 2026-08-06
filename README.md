@@ -35,10 +35,12 @@ Go to your browser, sign in with GitHub (or paste a personal access token in the
 
 ## Sharing a Stack of PRs
 
-Every pull request card carries a share badge that copies a link to that PR and
-the PRs stacked on top of it — `https://<host>/owner/repo?pr=123`. Opening the
-link frames the graph on that stack and fades the rest of the graph back; the
-banner above the graph names the focused PR and leads back to the full view.
+Every pull request card carries an eye badge that focuses the graph on that PR
+and the PRs stacked on top of it: the stack is framed and the rest of the graph
+fades back, and the page address becomes `https://<host>/owner/repo?pr=123`.
+The banner above the graph names the focused PR, offers to copy that link so it
+can be shared, and leads back to the full view. Opening the link elsewhere
+reproduces the same focused view.
 
 The same view can be reached without a link: enter a PR number in the optional
 field beside `owner/repo` on the home page, or paste a pull request URL

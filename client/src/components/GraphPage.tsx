@@ -6,9 +6,9 @@ import dayjs from "dayjs";
 import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, fetchPullRequestSummary, fetchBehindByCounts, buildDependencyGraph } from "../api";
 import type { GraphQLPullRequest, Contributor, Orientation, PRNode, PRStatusFilter, ReviewStateFilter } from "../types";
 import { REVIEW_STATE_FILTER_VALUES } from "../types";
-import { LOOKBACK_DAYS_KEY } from "../constants";
-import { getStoredLookbackDays, buildDefaultRange, collectDescendantPRs } from "../utils";
-import { getFocusPR, withFocusPR } from "../prFocus";
+import { EYE_ICON_PATH, LOOKBACK_DAYS_KEY } from "../constants";
+import { getStoredLookbackDays, buildDefaultRange, collectDescendantPRs, copyToClipboard } from "../utils";
+import { buildShareUrl, getFocusPR, withFocusPR } from "../prFocus";
 import { pruneStaleShortcut, SHORTCUT_PARAM } from "../filterShortcuts";
 import type { DateRange } from "../utils";
 import { useGithubToken } from "../hooks/useGithubToken";
@@ -129,6 +129,9 @@ const REVIEWER_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>([
 ]);
 
 // --- Focused PR --------------------------------------------------------
+
+// How long the focus banner confirms that the link went to the clipboard.
+const COPY_FEEDBACK_MS = 2500;
 
 // Why the focused PR is or isn't on screen, which is what the focus banner
 // reports. Anything other than "visible" means the graph is showing everything
@@ -517,6 +520,32 @@ export default function GraphPage() {
     focusSummary,
   ]);
 
+  // The focused view is a shareable link, so the banner offers to put the page
+  // address on the clipboard. `false` after an attempt means the browser
+  // refused the clipboard — the address bar still holds the link.
+  const [linkCopied, setLinkCopied] = useState(false);
+  const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
+    },
+    [],
+  );
+
+  // A change of focus invalidates any "Link copied" note still on screen.
+  useEffect(() => setLinkCopied(false), [focusPR]);
+
+  const copyShareLink = useCallback(async () => {
+    if (!owner || !repo || focusPR === null) return;
+    const copied = await copyToClipboard(buildShareUrl(owner, repo, focusPR));
+    setLinkCopied(copied);
+    if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
+    if (copied) {
+      copyResetTimer.current = setTimeout(() => setLinkCopied(false), COPY_FEEDBACK_MS);
+    }
+  }, [owner, repo, focusPR]);
+
   const clearFilters = useCallback(() => {
     setSearchParams(
       (prev) => {
@@ -714,6 +743,7 @@ export default function GraphPage() {
               orientation={orientation}
               token={token}
               focusPR={focusPR}
+              onFocusPR={setFocusPR}
             />
             <FeatureAnnouncementPopup />
           </>
@@ -722,8 +752,9 @@ export default function GraphPage() {
           <FocusBanner
             prNumber={focusPR}
             state={focusState}
-            isMobile={isMobile}
             isFetchingMore={isFetchingMore}
+            linkCopied={linkCopied}
+            onCopyLink={copyShareLink}
             onClear={() => setFocusPR(null)}
             onClearFilters={clearFilters}
           />
@@ -755,20 +786,23 @@ export default function GraphPage() {
 }
 
 // Sits above the graph whenever a PR is focused: it says what the view is
-// framed on and, when the focused PR can't be shown, why. "Show all PRs"
-// always leads back to the unfocused graph.
+// framed on and, when the focused PR can't be shown, why. The focused PR is in
+// the page address, so the banner also invites copying that link to share the
+// stack; "Show all PRs" leads back to the unfocused graph.
 function FocusBanner({
   prNumber,
   state,
-  isMobile,
   isFetchingMore,
+  linkCopied,
+  onCopyLink,
   onClear,
   onClearFilters,
 }: {
   prNumber: number;
   state: FocusState;
-  isMobile: boolean;
   isFetchingMore: boolean;
+  linkCopied: boolean;
+  onCopyLink: () => void;
   onClear: () => void;
   onClearFilters: () => void;
 }) {
@@ -803,19 +837,29 @@ function FocusBanner({
     <div
       style={{
         ...styles.focusBanner,
-        ...(isMobile
-          ? isFetchingMore
-            ? styles.focusBannerMobileRaised
-            : styles.focusBannerMobile
-          : {}),
+        ...(isFetchingMore ? styles.focusBannerRaised : {}),
         ...(isProblem ? styles.focusBannerProblem : {}),
       }}
       role="status"
     >
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}>
-        <path d="M8 2c1.981 0 3.671.992 4.933 2.078 1.27 1.091 2.187 2.345 2.637 3.023a1.62 1.62 0 0 1 0 1.798c-.45.678-1.367 1.932-2.637 3.023C11.67 13.008 9.981 14 8 14c-1.981 0-3.671-.992-4.933-2.078C1.797 10.83.88 9.576.43 8.898a1.62 1.62 0 0 1 0-1.798c.45-.677 1.367-1.931 2.637-3.022C4.33 2.992 6.019 2 8 2Zm0 3.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z" />
+        <path d={EYE_ICON_PATH} />
       </svg>
       <span style={styles.focusBannerText}>{message}</span>
+      {state.kind === "visible" && (
+        <button
+          type="button"
+          className="focus-banner-btn"
+          style={{
+            ...styles.focusBannerBtn,
+            ...(linkCopied ? styles.focusBannerBtnDone : {}),
+          }}
+          title="Copy this page's link — it opens the graph on this stack"
+          onClick={onCopyLink}
+        >
+          {linkCopied ? "Link copied" : "Copy link to share"}
+        </button>
+      )}
       {state.kind === "filtered" && (
         <button
           type="button"
@@ -1000,7 +1044,7 @@ interface ReviewerOption {
 function ReviewerIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}>
-      <path d="M8 2c1.981 0 3.671.992 4.933 2.078 1.27 1.091 2.187 2.345 2.637 3.023a1.62 1.62 0 0 1 0 1.798c-.45.678-1.367 1.932-2.637 3.023C11.67 13.008 9.981 14 8 14c-1.981 0-3.671-.992-4.933-2.078C1.797 10.83.88 9.576.43 8.898a1.62 1.62 0 0 1 0-1.798c.45-.677 1.367-1.931 2.637-3.022C4.33 2.992 6.019 2 8 2Zm0 1.5c-1.51 0-2.879.755-4.02 1.73C2.85 6.193 2.02 7.31 1.617 8c.403.69 1.233 1.807 2.363 2.77C5.121 11.745 6.49 12.5 8 12.5c1.51 0 2.879-.755 4.02-1.73 1.13-.963 1.96-2.08 2.363-2.77-.403-.69-1.233-1.807-2.363-2.77C10.879 4.255 9.51 3.5 8 3.5ZM8 5.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z" />
+      <path d={EYE_ICON_PATH} />
     </svg>
   );
 }
