@@ -137,7 +137,7 @@ function UpdateBadge({
         isUpdating
           ? "Updating branch…"
           : isStacked
-            ? `${behindLabel} — a stacked PR is rebased from its own stack, click to open it on GitHub`
+            ? `${behindLabel} — a stacked PR is rebased from its own stack, open the pull request to rebase it`
             : `${behindLabel} — click to update branch`
       }
       disabled={isUpdating}
