@@ -42,9 +42,9 @@ The banner above the graph names the focused PR, offers to copy that link so it
 can be shared, and leads back to the full view. Opening the link elsewhere
 reproduces the same focused view.
 
-The same view can be reached without a link: enter a PR number in the optional
-field beside `owner/repo` on the home page, or paste a pull request URL
-(`https://github.com/owner/repo/pull/123`) into the repository box.
+The same view can be reached without a link: paste a pull request URL
+(`https://github.com/owner/repo/pull/123`) or type `owner/repo#123` into the
+repository box on the home page.
 
 Links are deliberately free of filters, so the recipient sees the stack rather
 than the sharer's filtered view. If the focused PR was opened before the

@@ -19,7 +19,7 @@ export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
     version: 9,
     title: "Focus on a stack of PRs, and share it",
     description:
-      "The eye button on a pull request card zooms the graph onto that PR and the ones stacked on top of it, and puts it in the page address — copy that link to share the same view. Opening such a link, or entering a PR number on the home page, focuses the stack right after the page loads.",
+      "The eye button on a pull request card zooms the graph onto that PR and the ones stacked on top of it, and puts it in the page address — copy that link to share the same view. Opening such a link, or pasting a pull request URL on the home page, focuses the stack right after the page loads. Don't hesitate to share your PR stacks with your teammates!",
     date: "2026-08-06",
   },
   {

@@ -50,14 +50,6 @@ export const styles: Record<string, React.CSSProperties> = {
     color: "var(--color-text)",
     outline: "none",
   },
-  // Optional PR number beside the repo box: wide enough for four digits, and
-  // fixed so the repo name keeps the rest of the row.
-  prInput: {
-    flex: "0 0 auto",
-    width: 74,
-    padding: "10px 8px",
-    textAlign: "center" as const,
-  },
   button: {
     padding: "10px 20px",
     fontSize: 15,

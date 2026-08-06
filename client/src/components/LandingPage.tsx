@@ -14,7 +14,6 @@ export default function LandingPage() {
   const { token, source, setToken, clearToken } = useGithubToken();
   const [tokenInput, setTokenInput] = useState("");
   const [repoInput, setRepoInput] = useState("");
-  const [prInput, setPrInput] = useState("");
   const [error, setError] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const navigate = useNavigate();
@@ -76,11 +75,9 @@ export default function LandingPage() {
     }
   }
 
-  // Opens the graph for a repository, optionally focused on one PR and the
-  // stack above it. The PR number can come from the PR field or from the repo
-  // box itself (`owner/repo#42`, or a pull request URL pasted straight from
-  // GitHub); the field wins when both name one, being the more deliberate of
-  // the two.
+  // Opens the graph for a repository, focused on one PR and the stack above it
+  // when the entry names one — `owner/repo#42`, or a pull request URL pasted
+  // straight from GitHub.
   function navigateToRepo(fullName: string) {
     const target = parseRepoTarget(fullName);
     if (!target) {
@@ -88,15 +85,7 @@ export default function LandingPage() {
       return;
     }
 
-    const typedPR = prInput.trim();
-    if (typedPR && !/^#?\d+$/.test(typedPR)) {
-      setError("Please enter a PR number, e.g. 42");
-      return;
-    }
-    const prNumber = typedPR
-      ? parseInt(typedPR.replace(/^#/, ""), 10)
-      : target.prNumber;
-
+    const { prNumber } = target;
     const suffix =
       prNumber && prNumber > 0 ? `?${FOCUS_PR_PARAM}=${prNumber}` : "";
     navigate(`/${target.owner}/${target.repo}${suffix}`);
@@ -234,27 +223,13 @@ export default function LandingPage() {
                 style={styles.input}
                 autoFocus={source !== "oauth"}
               />
-              <input
-                type="text"
-                inputMode="numeric"
-                value={prInput}
-                onChange={(e) => {
-                  setPrInput(e.target.value);
-                  setError("");
-                }}
-                placeholder="PR #"
-                aria-label="Pull request number to focus on (optional)"
-                title="Optional: focus the graph on this PR and the PRs stacked on it"
-                style={{ ...styles.input, ...styles.prInput }}
-              />
               <button type="submit" style={styles.button}>
                 View Graph
               </button>
             </form>
             <p style={styles.helperLine}>
-              A PR number is optional — with one, the graph opens focused on that
-              pull request and the ones stacked on top of it. Pasting a pull
-              request URL works too.
+              Pasting a pull request URL opens the graph focused on that pull
+              request and the ones stacked on top of it.
             </p>
             <button
               onClick={() => {
