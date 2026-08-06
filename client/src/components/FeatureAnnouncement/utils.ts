@@ -19,7 +19,7 @@ export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
     version: 8,
     title: "GitHub Stacks are recognized",
     description:
-      "A pull request in a GitHub stack now shows a stack badge with its layer, such as 2/3. \"Fetch latest changes\" follows the stack itself, so every layer above the one you click is updated even when it is outside the current filters.",
+      "A pull request in a GitHub stack now shows a stack badge with its layer, such as \"2/3\".",
     date: "2026-08-06",
   },
   {
