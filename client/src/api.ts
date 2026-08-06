@@ -4,6 +4,7 @@ export {
   fetchContributors,
   fetchPRsByDateRange,
   fetchBehindByCounts,
+  fetchStackForPR,
   fetchUserRepos,
   fetchWorkflows,
   fetchWorkflowRuns,

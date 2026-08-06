@@ -37,6 +37,7 @@ export function buildDependencyGraph(
     deletions: pr.deletions,
     reviewers: pr.reviewers,
     commentCount: pr.commentCount,
+    stack: pr.stack,
   }));
 
   const edges: GraphEdge[] = [];

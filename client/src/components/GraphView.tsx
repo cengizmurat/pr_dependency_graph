@@ -2,7 +2,7 @@ import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import * as d3 from "d3";
 import { useQueryClient } from "@tanstack/react-query";
 import type { GraphData, PRNode, Orientation, EdgeFlags } from "../types";
-import { mergeAndCascade, updatePRBranch } from "../github";
+import { fetchStackForPR, mergeAndCascade, updatePRBranch } from "../github";
 import { collectDescendantPRs, isPR } from "../utils";
 import { PR_WIDTH, SPACING, COLORS } from "../constants";
 import {
@@ -88,9 +88,38 @@ export default function GraphView({ data, orientation, token }: Props) {
 
   const handleUpdateBranch = useCallback(
     async (prNumber: number) => {
-      const allToUpdate = collectDescendantPRs(prNumber, data.nodes);
+      const prNode = data.nodes.find(
+        (n): n is PRNode => n.type === "pr" && n.number === prNumber,
+      );
+      const graphDescendants = collectDescendantPRs(prNumber, data.nodes);
+
+      // For a PR in a GitHub stack the chain lives server-side, and it can
+      // reach past what the graph holds — the date range and the toolbar
+      // filters both narrow which PRs are on screen, and the graph would then
+      // stop cascading at the first missing layer. Ask GitHub for the stack so
+      // every layer above this one is updated. Anything the stack doesn't cover
+      // (a PR branched off a stack layer without joining the stack) still comes
+      // from the graph, and a repo without stacks behaves exactly as before.
+      let stackFromHere: number[] = [];
+      if (prNode?.stack) {
+        const stack = await fetchStackForPR(token, data.owner, data.repo, prNumber);
+        const start = stack?.pullRequests.findIndex((p) => p.number === prNumber) ?? -1;
+        if (stack && start >= 0) {
+          stackFromHere = stack.pullRequests
+            .slice(start)
+            .filter((p) => p.mergedAt == null && p.state === "open")
+            .map((p) => p.number);
+        }
+      }
+
+      const allToUpdate = [
+        ...new Set([...stackFromHere, prNumber, ...graphDescendants]),
+      ];
 
       let msg = `Update PR #${prNumber} with latest changes from base branch?`;
+      if (prNode?.stack) {
+        msg += `\n\nIt is layer ${prNode.stack.position} of ${prNode.stack.size} in stack #${prNode.stack.number}.`;
+      }
       if (allToUpdate.length > 1) {
         const descendantNums = allToUpdate.slice(1).map((n) => `#${n}`).join(", ");
         msg += `\n\nThe following descending PRs will also be updated: ${descendantNums}`;
