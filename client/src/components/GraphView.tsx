@@ -309,6 +309,9 @@ export default function GraphView({ data, orientation, token, focusPR = null, on
       }}
     >
       <div
+        // Marks the panels the focus banner shares the top row with, so it can
+        // measure them and give way only as far as it has to.
+        data-graph-overlay=""
         style={{
           position: "absolute",
           top: 12,

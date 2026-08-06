@@ -1,6 +1,6 @@
-// Width taken by the legend and the filter shortcuts in the graph's top-left
-// corner, which anything else laid along that row has to start after.
-const PANEL_GUTTER = 430;
+// Space the focus banner keeps from the edge of the graph, and from the legend
+// and shortcut panels it shares the top row with.
+export const BANNER_EDGE_GAP = 12;
 
 export const styles: Record<string, React.CSSProperties> = {
   page: {
@@ -180,22 +180,20 @@ export const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     transition: "background 0.15s",
   },
-  // Focused-PR banner, along the top of the graph. The legend and the shortcut
-  // buttons hold the top-left corner, so the banner is centred in what is left
-  // of the row rather than in the viewport — auto margins between a left inset
-  // that clears those panels and a right inset.
+  // Focused-PR banner, along the top of the graph. Its horizontal position is
+  // measured rather than declared (see FocusBanner): centred on the graph, and
+  // only pushed right by however much is needed to clear the legend and the
+  // shortcut buttons. This declares the centred starting point used for the
+  // first layout pass, before the measurement lands.
   focusBanner: {
     position: "absolute" as const,
     top: 12,
-    left: PANEL_GUTTER,
-    right: 12,
-    marginLeft: "auto",
-    marginRight: "auto",
-    width: "fit-content",
+    left: "50%",
+    transform: "translateX(-50%)",
     display: "flex",
     alignItems: "center",
     gap: 10,
-    maxWidth: "100%",
+    maxWidth: `calc(100% - ${BANNER_EDGE_GAP * 2}px)`,
     padding: "7px 14px",
     fontSize: 12,
     fontWeight: 500,
@@ -212,12 +210,10 @@ export const styles: Record<string, React.CSSProperties> = {
   focusBannerMobile: {
     top: "auto",
     bottom: 12,
-    left: 12,
   },
   focusBannerMobileRaised: {
     top: "auto",
     bottom: 86,
-    left: 12,
   },
   // The full shorthand is repeated rather than overriding `borderColor` alone:
   // React warns when a rerender mixes a shorthand with one of its longhands.
