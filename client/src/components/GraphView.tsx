@@ -26,16 +26,17 @@ import FilterShortcuts from "./FilterShortcuts";
 
 export type { Orientation };
 
-// Blank space kept around the focused stack when the view zooms to it.
-const FOCUS_MARGIN = 60;
+// Blank space kept around the highlighted PRs when the view zooms to them, so
+// they don't sit flush against the edge of the graph area.
+const HIGHLIGHT_MARGIN = 60;
 
-// A short stack would otherwise be blown up to fill the whole viewport; past
-// this the cards stop growing and just sit in the middle.
-const MAX_FOCUS_SCALE = 1.2;
+// A lone PR would otherwise be blown up to fill the whole viewport; past this
+// the cards stop growing and just sit in the middle.
+const MAX_HIGHLIGHT_SCALE = 1.2;
 
-// How far the rest of the graph fades back while a stack is focused. It stays
-// visible — the focused PRs are the point, but the surrounding graph is still
-// the context they live in.
+// How far the rest of the graph fades back while some of it is picked out —
+// by a focused stack, or by the toolbar filters. It stays visible: the picked
+// PRs are the point, but the surrounding graph is the context they live in.
 const UNFOCUSED_OPACITY = 0.18;
 
 interface Props {
@@ -48,9 +49,19 @@ interface Props {
   // Asks the page to focus a PR — what the eye badge on a card does. The page
   // puts the PR in the address bar, so the focused view is a link to share.
   onFocusPR?: (prNumber: number | null) => void;
+  // PR numbers the toolbar filters keep. Null when no filter is set. The graph
+  // draws every PR either way — these are the ones it picks out.
+  highlightPRs?: ReadonlySet<number> | null;
 }
 
-export default function GraphView({ data, orientation, token, focusPR = null, onFocusPR }: Props) {
+export default function GraphView({
+  data,
+  orientation,
+  token,
+  focusPR = null,
+  onFocusPR,
+  highlightPRs = null,
+}: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const gRef = useRef<SVGGElement>(null);
   const queryClient = useQueryClient();
@@ -64,6 +75,35 @@ export default function GraphView({ data, orientation, token, focusPR = null, on
     () => (focusPR === null ? null : collectFocusIds(focusPR, data.nodes)),
     [focusPR, data.nodes],
   );
+
+  // Node ids drawn at full strength; everything else fades back. Selections
+  // compose — a PR is picked out when it satisfies every one of them, so
+  // filtering inside a focused stack narrows that stack rather than reaching
+  // back out into the rest of the graph. Null means nothing is selected at
+  // all, and the whole graph reads at full strength.
+  const highlightIds = useMemo(() => {
+    if (!focusIds && !highlightPRs) return null;
+
+    const ids = new Set<string>();
+    for (const node of data.nodes) {
+      if (node.type !== "pr") continue;
+      const inFocus = !focusIds || focusIds.has(node.id);
+      const inFilter = !highlightPRs || highlightPRs.has(node.number);
+      if (inFocus && inFilter) ids.add(node.id);
+    }
+
+    // A base-branch node rides along with the PRs opened against it, so a
+    // highlighted PR keeps the branch it targets legible. Not while a stack is
+    // focused, though: there the branch below the stack is context, not part
+    // of it.
+    if (!focusIds) {
+      const isBranch = new Map(data.nodes.map((n) => [n.id, n.type === "branch"]));
+      for (const edge of data.edges) {
+        if (isBranch.get(edge.source) && ids.has(edge.target)) ids.add(edge.source);
+      }
+    }
+    return ids;
+  }, [data.nodes, data.edges, focusIds, highlightPRs]);
 
   const handleMerge = useCallback(
     async (prNumber: number, prTitle: string) => {
@@ -230,21 +270,36 @@ export default function GraphView({ data, orientation, token, focusPR = null, on
       };
     }, [data, orientation]);
 
-  // The area the view frames: the whole graph, or just the focused stack's
-  // bounding box when a PR is focused.
-  const viewBox = useMemo(() => {
-    const focused = focusIds
-      ? allNodes.filter((n) => focusIds.has(n.data.id))
-      : [];
-    if (focused.length === 0) {
-      return { x: 0, y: 0, width: totalWidth, height: totalHeight };
+  // The area the view frames: whatever is picked out — a focused stack, the
+  // PRs a filter keeps, or both — enveloped as a whole. With nothing picked
+  // out that is the entire graph, measured the same way rather than from the
+  // layout extents, which miss the half of a root branch node that sits left
+  // of the origin.
+  const { viewBox, framedSelection } = useMemo(() => {
+    // Only the PR cards are framed. A base-branch chip is a label for what the
+    // stack sits on rather than one of the things picked out, and it hangs off
+    // to the side of its PRs — including it would stretch the box (and pull
+    // the zoom back) for no gain. The resting whole-graph view still counts
+    // them, or the chips at the far edge would be cut off.
+    const picked = highlightIds
+      ? allNodes.filter((n) => highlightIds.has(n.data.id) && isPR(n.data))
+      : allNodes;
+    // Nothing picked out that the layout actually holds — a filter that keeps
+    // nothing, or a highlighted PR the tree builder dropped — still leaves a
+    // graph to show, framed whole. It is not a selection, so it is neither
+    // zoomed into nor outlined.
+    if (picked.length === 0) {
+      return {
+        viewBox: { x: 0, y: 0, width: totalWidth, height: totalHeight },
+        framedSelection: false,
+      };
     }
 
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
     let maxY = -Infinity;
-    for (const n of focused) {
+    for (const n of picked) {
       const w = nodeWidth(n.data);
       const h = nodeHeight(n.data);
       minX = Math.min(minX, n.x - w / 2);
@@ -253,14 +308,15 @@ export default function GraphView({ data, orientation, token, focusPR = null, on
       maxY = Math.max(maxY, n.y + h / 2);
     }
     return {
-      x: minX - FOCUS_MARGIN,
-      y: minY - FOCUS_MARGIN,
-      width: maxX - minX + FOCUS_MARGIN * 2,
-      height: maxY - minY + FOCUS_MARGIN * 2,
+      viewBox: {
+        x: minX - HIGHLIGHT_MARGIN,
+        y: minY - HIGHLIGHT_MARGIN,
+        width: maxX - minX + HIGHLIGHT_MARGIN * 2,
+        height: maxY - minY + HIGHLIGHT_MARGIN * 2,
+      },
+      framedSelection: highlightIds !== null,
     };
-  }, [allNodes, focusIds, totalWidth, totalHeight]);
-
-  const isFocused = focusIds !== null;
+  }, [allNodes, highlightIds, totalWidth, totalHeight]);
 
   // Depending on the four numbers rather than the object keeps fitView stable
   // across a background refresh that leaves the layout where it was, so the
@@ -277,8 +333,8 @@ export default function GraphView({ data, orientation, token, focusPR = null, on
     const padding = 40;
     const scaleX = (width - padding * 2) / viewWidth;
     const scaleY = (height - padding * 2) / viewHeight;
-    const scale = isFocused
-      ? Math.min(scaleX, scaleY, MAX_FOCUS_SCALE)
+    const scale = framedSelection
+      ? Math.min(scaleX, scaleY, MAX_HIGHLIGHT_SCALE)
       : Math.min(scaleX, scaleY);
     const tx = (width - viewWidth * scale) / 2 - viewX * scale;
     const ty = (height - viewHeight * scale) / 2 - viewY * scale;
@@ -293,7 +349,7 @@ export default function GraphView({ data, orientation, token, focusPR = null, on
     const sel = d3.select(svg);
     sel.call(zoom);
     sel.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
-  }, [viewX, viewY, viewWidth, viewHeight, isFocused]);
+  }, [viewX, viewY, viewWidth, viewHeight, framedSelection]);
 
   useEffect(() => {
     fitView();
@@ -355,13 +411,13 @@ export default function GraphView({ data, orientation, token, focusPR = null, on
               stroke={COLORS.edge}
               strokeWidth={2}
               markerEnd="url(#arrowhead)"
-              // An edge belongs to the focused stack only when both of its ends
-              // do, so the link coming in from the PR the stack sits on fades
-              // back with the rest of the graph.
+              // A dependency is picked out only when both of its ends are, so
+              // the link coming in from a PR that isn't fades back with it.
               opacity={
-                focusIds &&
+                highlightIds &&
                 !(
-                  focusIds.has(e.source.data.id) && focusIds.has(e.target.data.id)
+                  highlightIds.has(e.source.data.id) &&
+                  highlightIds.has(e.target.data.id)
                 )
                   ? UNFOCUSED_OPACITY
                   : 1
@@ -386,7 +442,9 @@ export default function GraphView({ data, orientation, token, focusPR = null, on
               <g
                 key={n.data.id}
                 transform={`translate(${n.x},${n.y})`}
-                opacity={focusIds && !focusIds.has(n.data.id) ? UNFOCUSED_OPACITY : 1}
+                opacity={
+                  highlightIds && !highlightIds.has(n.data.id) ? UNFOCUSED_OPACITY : 1
+                }
                 style={{ cursor: "pointer" }}
                 onMouseEnter={() => setHoveredId(n.data.id)}
                 onMouseLeave={() => setHoveredId(null)}

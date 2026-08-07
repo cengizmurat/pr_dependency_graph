@@ -424,11 +424,13 @@ export default function GraphPage() {
     );
   }, [allPRs, filters, reviewStateFilter, reviewerFilter]);
 
+  // The graph is always built from every PR in the date range: filters pick
+  // out which of them to highlight, they don't decide who is on the graph.
+  // Dependencies stay drawn either way, so a highlighted PR is still shown in
+  // the context of the stack it belongs to.
   const data = useMemo(() => {
     if (allPRs.length === 0 || !owner || !repo) return null;
-    const prs = filterPRs(allPRs, filters);
-    if (prs.length === 0) return null;
-    const graph = buildDependencyGraph(prs, owner, repo);
+    const graph = buildDependencyGraph(allPRs, owner, repo);
     if (viewerLogin) graph.viewerLogin = viewerLogin;
     if (contributors) graph.contributors = contributors;
     if (behindByData) {
@@ -440,7 +442,21 @@ export default function GraphPage() {
       }
     }
     return graph;
-  }, [allPRs, owner, repo, viewerLogin, contributors, filters, behindByData]);
+  }, [allPRs, owner, repo, viewerLogin, contributors, behindByData]);
+
+  // Which PRs the toolbar filters keep, and so which ones the graph
+  // highlights. Null while no filter is set — then nothing is singled out and
+  // the whole graph reads at full strength.
+  const hasActiveFilters =
+    authorFilter.length > 0 ||
+    reviewerFilter.length > 0 ||
+    statusFilter !== "all" ||
+    reviewStateFilter.length > 0;
+
+  const matchedPRs = useMemo(() => {
+    if (!hasActiveFilters) return null;
+    return new Set(filterPRs(allPRs, filters).map((pr) => pr.number));
+  }, [hasActiveFilters, allPRs, filters]);
 
   // --- Focused PR (shared link) -------------------------------------------
 
@@ -491,13 +507,16 @@ export default function GraphPage() {
       (n): n is PRNode => n.type === "pr" && n.number === focusPR,
     );
     if (node && data) {
+      // The PR is on the graph, but the filters have to agree with the focus
+      // for it to be picked out — otherwise the whole graph reads as dimmed
+      // and the banner has to say why.
+      if (matchedPRs && !matchedPRs.has(focusPR)) return { kind: "filtered" };
       return {
         kind: "visible",
         title: node.title,
         following: collectDescendantPRs(focusPR, data.nodes).length - 1,
       };
     }
-    if (focusPRLoaded) return { kind: "filtered" };
     if (isLoading || isFetchingMore || focusLookupFetching) {
       return { kind: "loading" };
     }
@@ -512,7 +531,7 @@ export default function GraphPage() {
   }, [
     focusPR,
     data,
-    focusPRLoaded,
+    matchedPRs,
     isLoading,
     isFetchingMore,
     focusLookupFetching,
@@ -579,7 +598,9 @@ export default function GraphPage() {
         )}
         <span style={styles.badge}>
           {activeTab === "prs" && data
-            ? `${data.nodes.filter((n) => n.type === "pr").length}${isFetchingMore ? "+" : ""} open PRs`
+            ? matchedPRs
+              ? `${matchedPRs.size} of ${allPRs.length}${isFetchingMore ? "+" : ""} open PRs`
+              : `${allPRs.length}${isFetchingMore ? "+" : ""} open PRs`
             : ""}
         </span>
         <div style={isMobile ? styles.controlsMobile : styles.controlsDesktop}>
@@ -712,11 +733,10 @@ export default function GraphPage() {
             <p style={styles.status}>Loading pull requests...</p>
           </div>
         )}
-        {!isLoading && !error && !data && allPRs.length > 0 && (
-          <div style={styles.statusContainer}>
-            <p style={styles.status}>
-              No pull requests match the active filters.
-            </p>
+        {!isLoading && !error && data && matchedPRs?.size === 0 && (
+          <div style={styles.filterNotice}>
+            No pull request matches the active filters — the graph is shown
+            as it is.
           </div>
         )}
         {error && (
@@ -744,6 +764,7 @@ export default function GraphPage() {
               token={token}
               focusPR={focusPR}
               onFocusPR={setFocusPR}
+              highlightPRs={matchedPRs}
             />
             <FeatureAnnouncementPopup />
           </>
@@ -891,7 +912,7 @@ function FocusBanner({
       message = `Looking for PR #${prNumber}...`;
       break;
     case "filtered":
-      message = `PR #${prNumber} is hidden by the active filters`;
+      message = `PR #${prNumber} doesn\u2019t match the active filters`;
       break;
     case "closed":
       message = `PR #${prNumber} is ${state.state === "MERGED" ? "merged" : "closed"} — the graph only shows open pull requests`;
