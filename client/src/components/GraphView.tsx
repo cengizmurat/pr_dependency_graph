@@ -281,8 +281,13 @@ export default function GraphView({
   // layout extents, which miss the half of a root branch node that sits left
   // of the origin.
   const { viewBox, framedSelection } = useMemo(() => {
+    // Only the PR cards are framed. A base-branch chip is a label for what the
+    // stack sits on rather than one of the things picked out, and it hangs off
+    // to the side of its PRs — including it would stretch the box (and pull
+    // the zoom back) for no gain. The resting whole-graph view still counts
+    // them, or the chips at the far edge would be cut off.
     const picked = highlightIds
-      ? allNodes.filter((n) => highlightIds.has(n.data.id))
+      ? allNodes.filter((n) => highlightIds.has(n.data.id) && isPR(n.data))
       : allNodes;
     // Nothing picked out that the layout actually holds — a filter that keeps
     // nothing, or a highlighted PR the tree builder dropped — still leaves a
