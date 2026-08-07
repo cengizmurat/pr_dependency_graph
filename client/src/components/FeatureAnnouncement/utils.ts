@@ -16,13 +16,6 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
-    version: 10,
-    title: "Filters highlight instead of hiding",
-    description:
-      "Picking an author, a reviewer or any other filter no longer takes pull requests off the graph. The whole graph stays on screen with its dependencies intact — the pull requests you filtered for are highlighted, and the rest fade into the background.",
-    date: "2026-08-06",
-  },
-  {
     version: 9,
     title: "Focus on a stack of PRs, and share it",
     description:
