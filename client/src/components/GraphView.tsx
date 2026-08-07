@@ -280,13 +280,19 @@ export default function GraphView({
   // out that is the entire graph, measured the same way rather than from the
   // layout extents, which miss the half of a root branch node that sits left
   // of the origin.
-  const viewBox = useMemo(() => {
+  const { viewBox, framedSelection } = useMemo(() => {
     const picked = highlightIds
       ? allNodes.filter((n) => highlightIds.has(n.data.id))
       : allNodes;
+    // Nothing picked out that the layout actually holds — a filter that keeps
+    // nothing, or a highlighted PR the tree builder dropped — still leaves a
+    // graph to show, framed whole. It is not a selection, so it is neither
+    // zoomed into nor outlined.
     if (picked.length === 0) {
-      // A filter that keeps nothing still has a graph to show.
-      return { x: 0, y: 0, width: totalWidth, height: totalHeight };
+      return {
+        viewBox: { x: 0, y: 0, width: totalWidth, height: totalHeight },
+        framedSelection: false,
+      };
     }
 
     let minX = Infinity;
@@ -302,17 +308,15 @@ export default function GraphView({
       maxY = Math.max(maxY, n.y + h / 2);
     }
     return {
-      x: minX - HIGHLIGHT_MARGIN,
-      y: minY - HIGHLIGHT_MARGIN,
-      width: maxX - minX + HIGHLIGHT_MARGIN * 2,
-      height: maxY - minY + HIGHLIGHT_MARGIN * 2,
+      viewBox: {
+        x: minX - HIGHLIGHT_MARGIN,
+        y: minY - HIGHLIGHT_MARGIN,
+        width: maxX - minX + HIGHLIGHT_MARGIN * 2,
+        height: maxY - minY + HIGHLIGHT_MARGIN * 2,
+      },
+      framedSelection: highlightIds !== null,
     };
   }, [allNodes, highlightIds, totalWidth, totalHeight]);
-
-  // Whether the view is framed on a selection rather than on the whole graph,
-  // which is what caps how far in it may zoom.
-  const isZoomedToSelection =
-    highlightIds !== null && highlightIds.size > 0;
 
   // Depending on the four numbers rather than the object keeps fitView stable
   // across a background refresh that leaves the layout where it was, so the
@@ -321,39 +325,34 @@ export default function GraphView({
 
   // A box drawn around the area the view just framed, so the jump to a new
   // selection reads as "here is what was picked out" rather than as the graph
-  // moving on its own. It holds for a moment and fades. The counter makes each
-  // framing a fresh element, which is what restarts the CSS animation.
-  const [flash, setFlash] = useState<{
-    key: number;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null>(null);
+  // moving on its own. It holds for a moment and fades.
+  //
+  // Only the generation counter is held here — the box itself is read from the
+  // live viewBox at render time, so it cannot drift away from the highlighted
+  // nodes when the layout moves under it (PR pages still streaming in, a
+  // background refresh, a change of orientation). A new generation is what
+  // restarts the CSS animation, and it is tied to which PRs are picked out
+  // rather than to the geometry, so a graph growing under a steady selection
+  // doesn't re-flash on every page.
+  const selectionKey = useMemo(
+    () => (highlightIds ? [...highlightIds].sort().join(",") : ""),
+    [highlightIds],
+  );
+  const [flashKey, setFlashKey] = useState<number | null>(null);
   const flashCount = useRef(0);
-  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (flashTimer.current) clearTimeout(flashTimer.current);
     // Only a selection is worth outlining: the whole graph is the resting
     // state, not something that was just picked out.
-    if (!isZoomedToSelection) {
-      setFlash(null);
+    if (!framedSelection) {
+      setFlashKey(null);
       return;
     }
     flashCount.current += 1;
-    setFlash({
-      key: flashCount.current,
-      x: viewX,
-      y: viewY,
-      width: viewWidth,
-      height: viewHeight,
-    });
-    flashTimer.current = setTimeout(() => setFlash(null), FLASH_TOTAL_MS);
-    return () => {
-      if (flashTimer.current) clearTimeout(flashTimer.current);
-    };
-  }, [viewX, viewY, viewWidth, viewHeight, isZoomedToSelection]);
+    setFlashKey(flashCount.current);
+    const timer = setTimeout(() => setFlashKey(null), FLASH_TOTAL_MS);
+    return () => clearTimeout(timer);
+  }, [selectionKey, framedSelection]);
 
   const fitView = useCallback(() => {
     const svg = svgRef.current;
@@ -365,7 +364,7 @@ export default function GraphView({
     const padding = 40;
     const scaleX = (width - padding * 2) / viewWidth;
     const scaleY = (height - padding * 2) / viewHeight;
-    const scale = isZoomedToSelection
+    const scale = framedSelection
       ? Math.min(scaleX, scaleY, MAX_HIGHLIGHT_SCALE)
       : Math.min(scaleX, scaleY);
     const tx = (width - viewWidth * scale) / 2 - viewX * scale;
@@ -381,7 +380,7 @@ export default function GraphView({
     const sel = d3.select(svg);
     sel.call(zoom);
     sel.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
-  }, [viewX, viewY, viewWidth, viewHeight, isZoomedToSelection]);
+  }, [viewX, viewY, viewWidth, viewHeight, framedSelection]);
 
   useEffect(() => {
     fitView();
@@ -521,14 +520,14 @@ export default function GraphView({
             );
           })}
 
-          {flash && (
+          {flashKey !== null && (
             <rect
-              key={flash.key}
+              key={flashKey}
               className="graph-flash-box"
-              x={flash.x}
-              y={flash.y}
-              width={flash.width}
-              height={flash.height}
+              x={viewX}
+              y={viewY}
+              width={viewWidth}
+              height={viewHeight}
               rx={14}
               ry={14}
               fill="none"
