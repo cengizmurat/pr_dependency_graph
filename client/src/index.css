@@ -232,14 +232,3 @@ body {
 .focus-banner-btn:hover {
   background: var(--color-border-subtle);
 }
-
-/* Outline drawn around a selection the graph has just framed: a second at
-   full strength, then a slow fade. Timed with FLASH_TOTAL_MS in GraphView. */
-@keyframes graphFlashBox {
-  0%, 45% { opacity: 1; }
-  100% { opacity: 0; }
-}
-
-.graph-flash-box {
-  animation: graphFlashBox 2.2s ease-out forwards;
-}
