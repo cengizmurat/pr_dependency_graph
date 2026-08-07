@@ -34,6 +34,11 @@ const HIGHLIGHT_MARGIN = 60;
 // the cards stop growing and just sit in the middle.
 const MAX_HIGHLIGHT_SCALE = 1.2;
 
+// How long the outline drawn around a newly framed selection stays up: a
+// second at full strength, then a slow fade. Kept in step with the
+// `graphFlashBox` keyframes in index.css.
+const FLASH_TOTAL_MS = 2200;
+
 // How far the rest of the graph fades back while some of it is picked out —
 // by a focused stack, or by the toolbar filters. It stays visible: the picked
 // PRs are the point, but the surrounding graph is the context they live in.
@@ -314,6 +319,42 @@ export default function GraphView({
   // graph doesn't jump back to the fitted view under a panned/zoomed reader.
   const { x: viewX, y: viewY, width: viewWidth, height: viewHeight } = viewBox;
 
+  // A box drawn around the area the view just framed, so the jump to a new
+  // selection reads as "here is what was picked out" rather than as the graph
+  // moving on its own. It holds for a moment and fades. The counter makes each
+  // framing a fresh element, which is what restarts the CSS animation.
+  const [flash, setFlash] = useState<{
+    key: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const flashCount = useRef(0);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    // Only a selection is worth outlining: the whole graph is the resting
+    // state, not something that was just picked out.
+    if (!isZoomedToSelection) {
+      setFlash(null);
+      return;
+    }
+    flashCount.current += 1;
+    setFlash({
+      key: flashCount.current,
+      x: viewX,
+      y: viewY,
+      width: viewWidth,
+      height: viewHeight,
+    });
+    flashTimer.current = setTimeout(() => setFlash(null), FLASH_TOTAL_MS);
+    return () => {
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+    };
+  }, [viewX, viewY, viewWidth, viewHeight, isZoomedToSelection]);
+
   const fitView = useCallback(() => {
     const svg = svgRef.current;
     const g = gRef.current;
@@ -479,6 +520,27 @@ export default function GraphView({
               </g>
             );
           })}
+
+          {flash && (
+            <rect
+              key={flash.key}
+              className="graph-flash-box"
+              x={flash.x}
+              y={flash.y}
+              width={flash.width}
+              height={flash.height}
+              rx={14}
+              ry={14}
+              fill="none"
+              stroke={COLORS.hover}
+              strokeWidth={2}
+              strokeDasharray="10 6"
+              // The outline reads the same at any zoom, and never swallows a
+              // click meant for the card underneath it.
+              vectorEffect="non-scaling-stroke"
+              pointerEvents="none"
+            />
+          )}
         </g>
       </svg>
     </div>
