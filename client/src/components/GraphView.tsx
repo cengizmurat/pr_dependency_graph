@@ -26,12 +26,13 @@ import FilterShortcuts from "./FilterShortcuts";
 
 export type { Orientation };
 
-// Blank space kept around the focused stack when the view zooms to it.
-const FOCUS_MARGIN = 60;
+// Blank space kept around the highlighted PRs when the view zooms to them, so
+// they don't sit flush against the edge of the graph area.
+const HIGHLIGHT_MARGIN = 60;
 
-// A short stack would otherwise be blown up to fill the whole viewport; past
-// this the cards stop growing and just sit in the middle.
-const MAX_FOCUS_SCALE = 1.2;
+// A lone PR would otherwise be blown up to fill the whole viewport; past this
+// the cards stop growing and just sit in the middle.
+const MAX_HIGHLIGHT_SCALE = 1.2;
 
 // How far the rest of the graph fades back while some of it is picked out —
 // by a focused stack, or by the toolbar filters. It stays visible: the picked
@@ -269,13 +270,17 @@ export default function GraphView({
       };
     }, [data, orientation]);
 
-  // The area the view frames: the whole graph, or just the focused stack's
-  // bounding box when a PR is focused.
+  // The area the view frames: whatever is picked out — a focused stack, the
+  // PRs a filter keeps, or both — enveloped as a whole. With nothing picked
+  // out that is the entire graph, measured the same way rather than from the
+  // layout extents, which miss the half of a root branch node that sits left
+  // of the origin.
   const viewBox = useMemo(() => {
-    const focused = focusIds
-      ? allNodes.filter((n) => focusIds.has(n.data.id))
-      : [];
-    if (focused.length === 0) {
+    const picked = highlightIds
+      ? allNodes.filter((n) => highlightIds.has(n.data.id))
+      : allNodes;
+    if (picked.length === 0) {
+      // A filter that keeps nothing still has a graph to show.
       return { x: 0, y: 0, width: totalWidth, height: totalHeight };
     }
 
@@ -283,7 +288,7 @@ export default function GraphView({
     let minY = Infinity;
     let maxX = -Infinity;
     let maxY = -Infinity;
-    for (const n of focused) {
+    for (const n of picked) {
       const w = nodeWidth(n.data);
       const h = nodeHeight(n.data);
       minX = Math.min(minX, n.x - w / 2);
@@ -292,14 +297,17 @@ export default function GraphView({
       maxY = Math.max(maxY, n.y + h / 2);
     }
     return {
-      x: minX - FOCUS_MARGIN,
-      y: minY - FOCUS_MARGIN,
-      width: maxX - minX + FOCUS_MARGIN * 2,
-      height: maxY - minY + FOCUS_MARGIN * 2,
+      x: minX - HIGHLIGHT_MARGIN,
+      y: minY - HIGHLIGHT_MARGIN,
+      width: maxX - minX + HIGHLIGHT_MARGIN * 2,
+      height: maxY - minY + HIGHLIGHT_MARGIN * 2,
     };
-  }, [allNodes, focusIds, totalWidth, totalHeight]);
+  }, [allNodes, highlightIds, totalWidth, totalHeight]);
 
-  const isFocused = focusIds !== null;
+  // Whether the view is framed on a selection rather than on the whole graph,
+  // which is what caps how far in it may zoom.
+  const isZoomedToSelection =
+    highlightIds !== null && highlightIds.size > 0;
 
   // Depending on the four numbers rather than the object keeps fitView stable
   // across a background refresh that leaves the layout where it was, so the
@@ -316,8 +324,8 @@ export default function GraphView({
     const padding = 40;
     const scaleX = (width - padding * 2) / viewWidth;
     const scaleY = (height - padding * 2) / viewHeight;
-    const scale = isFocused
-      ? Math.min(scaleX, scaleY, MAX_FOCUS_SCALE)
+    const scale = isZoomedToSelection
+      ? Math.min(scaleX, scaleY, MAX_HIGHLIGHT_SCALE)
       : Math.min(scaleX, scaleY);
     const tx = (width - viewWidth * scale) / 2 - viewX * scale;
     const ty = (height - viewHeight * scale) / 2 - viewY * scale;
@@ -332,7 +340,7 @@ export default function GraphView({
     const sel = d3.select(svg);
     sel.call(zoom);
     sel.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
-  }, [viewX, viewY, viewWidth, viewHeight, isFocused]);
+  }, [viewX, viewY, viewWidth, viewHeight, isZoomedToSelection]);
 
   useEffect(() => {
     fitView();
