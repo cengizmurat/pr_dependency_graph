@@ -81,6 +81,17 @@ export default function Legend() {
         />
         <span style={styles.label}>Draft</span>
       </div>
+      <div style={styles.row}>
+        <span
+          style={{
+            ...styles.nodeChip,
+            borderColor: COLORS.ready,
+            background: COLORS.readyBg,
+            opacity: 0.18,
+          }}
+        />
+        <span style={styles.label}>Outside the filters / focus</span>
+      </div>
       <div style={{ ...styles.section, marginTop: 6 }}>Review outline</div>
       {REVIEW_OUTLINE_ITEMS.map(({ color, label }) => (
         <div key={label} style={styles.row}>

@@ -33,6 +33,19 @@ Go to your browser, sign in with GitHub (or paste a personal access token in the
 5. PRs belonging to a native GitHub stack also carry their stack membership, read from the `stack` and `stackEntry` fields on the GraphQL `PullRequest` type. A stack badge on the card shows the PR's layer, e.g. `2/3`. GitHub rejects the update-branch endpoint for a stacked PR — a stack is rebased as a whole, and only the PR's own "Rebase Stack" button or `gh stack rebase` can ask for that — so the update badge opens the pull request instead. Repositories without GitHub's stacked pull requests are unaffected: the fields are dropped from the query and the branch heuristic above still applies.
 6. An interactive force-directed graph is rendered with clickable PR nodes.
 
+## Filters Highlight, They Don't Hide
+
+The author, reviewer, status and review-state filters — and the shortcut
+buttons beside the legend — never take pull requests off the graph. Every open
+PR in the date range stays drawn, with its dependencies intact; the ones a
+filter keeps are shown at full strength and the rest fade back. So narrowing to
+one author still shows their PRs in the context of the stacks they sit in, and
+the header reads `2 of 5 open PRs`.
+
+Focusing a PR works the same way and composes with the filters: a PR is picked
+out when it satisfies both, so filtering inside a focused stack narrows that
+stack instead of reaching back out into the rest of the graph.
+
 ## Sharing a Stack of PRs
 
 Every pull request card carries an eye badge that focuses the graph on that PR
@@ -47,7 +60,7 @@ The same view can be reached without a link: paste a pull request URL
 repository box on the home page.
 
 Links are deliberately free of filters, so the recipient sees the stack rather
-than the sharer's filtered view. If the focused PR was opened before the
+than the sharer's narrowed view. If the focused PR was opened before the
 reader's default date range, the range is widened to the day it was opened so
-the stack still loads; a PR that is closed, filtered out or nonexistent is
-reported in the banner instead.
+the stack still loads; a PR that is closed, outside the reader's filters or
+nonexistent is reported in the banner instead.

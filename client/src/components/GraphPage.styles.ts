@@ -215,6 +215,25 @@ export const styles: Record<string, React.CSSProperties> = {
     top: "auto",
     bottom: 86,
   },
+  // Said when the filters keep nothing: the graph is still all there, just
+  // with nothing picked out, which would otherwise look like a bug.
+  filterNotice: {
+    position: "absolute" as const,
+    bottom: 12,
+    left: "50%",
+    transform: "translateX(-50%)",
+    maxWidth: `calc(100% - ${BANNER_EDGE_GAP * 2}px)`,
+    padding: "7px 14px",
+    fontSize: 12,
+    fontWeight: 500,
+    color: "var(--color-text-secondary)",
+    background: "var(--color-header-bg)",
+    border: "1px solid var(--color-review-requested)",
+    borderRadius: 999,
+    boxShadow: "0 2px 8px var(--color-shadow)",
+    textAlign: "center" as const,
+    zIndex: 55,
+  },
   // The full shorthand is repeated rather than overriding `borderColor` alone:
   // React warns when a rerender mixes a shorthand with one of its longhands.
   focusBannerProblem: {

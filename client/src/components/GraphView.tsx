@@ -33,9 +33,9 @@ const FOCUS_MARGIN = 60;
 // this the cards stop growing and just sit in the middle.
 const MAX_FOCUS_SCALE = 1.2;
 
-// How far the rest of the graph fades back while a stack is focused. It stays
-// visible — the focused PRs are the point, but the surrounding graph is still
-// the context they live in.
+// How far the rest of the graph fades back while some of it is picked out —
+// by a focused stack, or by the toolbar filters. It stays visible: the picked
+// PRs are the point, but the surrounding graph is the context they live in.
 const UNFOCUSED_OPACITY = 0.18;
 
 interface Props {
@@ -48,9 +48,19 @@ interface Props {
   // Asks the page to focus a PR — what the eye badge on a card does. The page
   // puts the PR in the address bar, so the focused view is a link to share.
   onFocusPR?: (prNumber: number | null) => void;
+  // PR numbers the toolbar filters keep. Null when no filter is set. The graph
+  // draws every PR either way — these are the ones it picks out.
+  highlightPRs?: ReadonlySet<number> | null;
 }
 
-export default function GraphView({ data, orientation, token, focusPR = null, onFocusPR }: Props) {
+export default function GraphView({
+  data,
+  orientation,
+  token,
+  focusPR = null,
+  onFocusPR,
+  highlightPRs = null,
+}: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const gRef = useRef<SVGGElement>(null);
   const queryClient = useQueryClient();
@@ -64,6 +74,35 @@ export default function GraphView({ data, orientation, token, focusPR = null, on
     () => (focusPR === null ? null : collectFocusIds(focusPR, data.nodes)),
     [focusPR, data.nodes],
   );
+
+  // Node ids drawn at full strength; everything else fades back. Selections
+  // compose — a PR is picked out when it satisfies every one of them, so
+  // filtering inside a focused stack narrows that stack rather than reaching
+  // back out into the rest of the graph. Null means nothing is selected at
+  // all, and the whole graph reads at full strength.
+  const highlightIds = useMemo(() => {
+    if (!focusIds && !highlightPRs) return null;
+
+    const ids = new Set<string>();
+    for (const node of data.nodes) {
+      if (node.type !== "pr") continue;
+      const inFocus = !focusIds || focusIds.has(node.id);
+      const inFilter = !highlightPRs || highlightPRs.has(node.number);
+      if (inFocus && inFilter) ids.add(node.id);
+    }
+
+    // A base-branch node rides along with the PRs opened against it, so a
+    // highlighted PR keeps the branch it targets legible. Not while a stack is
+    // focused, though: there the branch below the stack is context, not part
+    // of it.
+    if (!focusIds) {
+      const isBranch = new Map(data.nodes.map((n) => [n.id, n.type === "branch"]));
+      for (const edge of data.edges) {
+        if (isBranch.get(edge.source) && ids.has(edge.target)) ids.add(edge.source);
+      }
+    }
+    return ids;
+  }, [data.nodes, data.edges, focusIds, highlightPRs]);
 
   const handleMerge = useCallback(
     async (prNumber: number, prTitle: string) => {
@@ -355,13 +394,13 @@ export default function GraphView({ data, orientation, token, focusPR = null, on
               stroke={COLORS.edge}
               strokeWidth={2}
               markerEnd="url(#arrowhead)"
-              // An edge belongs to the focused stack only when both of its ends
-              // do, so the link coming in from the PR the stack sits on fades
-              // back with the rest of the graph.
+              // A dependency is picked out only when both of its ends are, so
+              // the link coming in from a PR that isn't fades back with it.
               opacity={
-                focusIds &&
+                highlightIds &&
                 !(
-                  focusIds.has(e.source.data.id) && focusIds.has(e.target.data.id)
+                  highlightIds.has(e.source.data.id) &&
+                  highlightIds.has(e.target.data.id)
                 )
                   ? UNFOCUSED_OPACITY
                   : 1
@@ -386,7 +425,9 @@ export default function GraphView({ data, orientation, token, focusPR = null, on
               <g
                 key={n.data.id}
                 transform={`translate(${n.x},${n.y})`}
-                opacity={focusIds && !focusIds.has(n.data.id) ? UNFOCUSED_OPACITY : 1}
+                opacity={
+                  highlightIds && !highlightIds.has(n.data.id) ? UNFOCUSED_OPACITY : 1
+                }
                 style={{ cursor: "pointer" }}
                 onMouseEnter={() => setHoveredId(n.data.id)}
                 onMouseLeave={() => setHoveredId(null)}
