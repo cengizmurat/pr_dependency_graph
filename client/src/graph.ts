@@ -8,33 +8,13 @@ function reviewStatusFromDecision(
   return null;
 }
 
-function stateChangeTime(pr: GraphQLPullRequest): number {
-  const t = Date.parse(pr.stateChangedAt);
-  return Number.isNaN(t) ? 0 : t;
-}
-
-// Most recent state change first. The layout follows the order the PRs are
-// listed in, so this is what orders the cards on screen: siblings under a
-// parent, and the base-branch nodes by the freshest PR opened against them. A
-// PR that has sat in draft for days ranks by the moment it was made ready, not
-// by when it was created.
-function byStateChangeDesc(
-  a: GraphQLPullRequest,
-  b: GraphQLPullRequest,
-): number {
-  const diff = stateChangeTime(b) - stateChangeTime(a);
-  // Ties (and unreadable dates) fall back to PR number, newest first, so the
-  // order stays stable across refreshes.
-  return diff !== 0 ? diff : b.number - a.number;
-}
-
+// The graph is drawn in stack order rather than in the order the PRs arrive
+// in; that ordering needs the stacks assembled, so it lives in buildTrees.
 export function buildDependencyGraph(
-  unsortedPRs: GraphQLPullRequest[],
+  prs: GraphQLPullRequest[],
   owner: string,
   repo: string,
 ): GraphData {
-  const prs = [...unsortedPRs].sort(byStateChangeDesc);
-
   const headBranchToPR = new Map<string, GraphQLPullRequest>();
   for (const pr of prs) {
     if (pr.headRefName !== pr.baseRefName) {

@@ -41,9 +41,13 @@ or "convert to draft" timeline event, falling back to the creation time for a PR
 that never switched — so a pull request that sat in draft for three days and was
 made ready ten minutes ago reads `10m ago`. Hovering the age gives both dates.
 
-The graph sorts its cards by that same timestamp, most recently changed first:
-pull requests stacked on the same parent are ordered by it, as are the
-base-branch nodes, ranked by the freshest PR opened against them.
+The graph orders its cards by that same timestamp, freshest first. A stack is
+ranked by its most recently changed pull request wherever in the stack that PR
+sits, not by the one at the bottom: a top layer going ready for review brings
+the whole stack forward. The rule applies at every level — the stacks opened
+against a base branch, the base branches themselves, and the PRs stacked on one
+parent. Stacks that changed at the same moment fall back to PR number, so the
+order holds still across the automatic refresh.
 
 ## Filters Highlight, They Don't Hide
 

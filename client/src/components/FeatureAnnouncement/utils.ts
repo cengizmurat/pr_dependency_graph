@@ -19,7 +19,7 @@ export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
     version: 10,
     title: "Card age tracks the draft/ready switch",
     description:
-      "The time on a pull request card is now how long it has been in its current state, not how long ago it was opened: a PR that sat in draft for three days and was made ready ten minutes ago reads \"10m ago\". The graph orders its cards by that same time, so the freshest pull requests come first.",
+      "The time on a pull request card is now how long it has been in its current state, not how long ago it was opened: a PR that sat in draft for three days and was made ready ten minutes ago reads \"10m ago\".",
     date: "2026-08-10",
   },
   {
