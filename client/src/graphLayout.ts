@@ -38,6 +38,35 @@ function estimatePRHeight(pr: PRNode): number {
   return h;
 }
 
+// A PR's own state change, in milliseconds — when it last went ready for
+// review or back to draft. Branch nodes have no state of their own and rank
+// purely by the pull requests sitting on them.
+function stateChangeTime(node: GraphNode): number {
+  if (!isPR(node)) return 0;
+  const t = Date.parse(node.stateChangedAt);
+  return Number.isNaN(t) ? 0 : t;
+}
+
+// A subtree — a stack, or a branch node with every stack opened against it —
+// paired with what it is ranked by.
+interface RankedNode {
+  node: LayoutNode;
+  // The freshest state change anywhere in the subtree. A stack is as recent as
+  // its most recently changed pull request, wherever in the stack that PR sits:
+  // a layer going ready for review brings the whole stack forward, rather than
+  // leaving it ranked by the PR at the bottom.
+  recency: number;
+  // Highest PR number in the subtree, the tiebreak when two stacks changed at
+  // the same moment — so the order stays stable across refreshes.
+  topNumber: number;
+}
+
+// Freshest stack first.
+function byRecencyDesc(a: RankedNode, b: RankedNode): number {
+  const diff = b.recency - a.recency;
+  return diff !== 0 ? diff : b.topNumber - a.topNumber;
+}
+
 export function buildTrees(data: GraphData): {
   roots: LayoutNode[];
   edgeFlagsMap: Map<string, EdgeFlags>;
@@ -63,18 +92,35 @@ export function buildTrees(data: GraphData): {
 
   const roots = data.nodes.filter((n) => !hasParent.has(n.id));
 
-  function buildSubtree(id: string): LayoutNode {
+  // Each subtree is ranked by the whole of what it holds, so the sort applies
+  // at every level: the stacks opened against a base branch, the branches
+  // themselves, and the PRs stacked on one parent are all ordered by their
+  // freshest pull request.
+  function buildSubtree(id: string): RankedNode {
+    const nodeData = nodeMap.get(id)!;
+    const children = (childrenOf.get(id) ?? [])
+      .filter((cid) => nodeMap.has(cid))
+      .map(buildSubtree)
+      .sort(byRecencyDesc);
+
     return {
-      data: nodeMap.get(id)!,
-      x: 0,
-      y: 0,
-      children: (childrenOf.get(id) ?? [])
-        .filter((cid) => nodeMap.has(cid))
-        .map(buildSubtree),
+      node: {
+        data: nodeData,
+        x: 0,
+        y: 0,
+        children: children.map((c) => c.node),
+      },
+      recency: Math.max(stateChangeTime(nodeData), ...children.map((c) => c.recency)),
+      topNumber: Math.max(
+        isPR(nodeData) ? nodeData.number : 0,
+        ...children.map((c) => c.topNumber),
+      ),
     };
   }
 
-  return { roots: roots.map((r) => buildSubtree(r.id)), edgeFlagsMap };
+  const rankedRoots = roots.map((r) => buildSubtree(r.id)).sort(byRecencyDesc);
+
+  return { roots: rankedRoots.map((r) => r.node), edgeFlagsMap };
 }
 
 export function layoutTree(

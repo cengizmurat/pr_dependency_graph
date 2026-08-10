@@ -8,6 +8,8 @@ function reviewStatusFromDecision(
   return null;
 }
 
+// The graph is drawn in stack order rather than in the order the PRs arrive
+// in; that ordering needs the stacks assembled, so it lives in buildTrees.
 export function buildDependencyGraph(
   prs: GraphQLPullRequest[],
   owner: string,
@@ -33,6 +35,7 @@ export function buildDependencyGraph(
     isDraft: pr.isDraft,
     labels: pr.labels,
     createdAt: pr.createdAt,
+    stateChangedAt: pr.stateChangedAt,
     additions: pr.additions,
     deletions: pr.deletions,
     reviewers: pr.reviewers,

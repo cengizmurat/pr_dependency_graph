@@ -38,6 +38,11 @@ export interface GraphQLPullRequest {
   url: string;
   isDraft: boolean;
   createdAt: string;
+  // When the PR last entered its current draft/ready state — the most recent
+  // "ready for review" or "convert to draft" event, or the creation time for a
+  // PR that has never switched. This is the age the card shows and the graph
+  // sorts on, so a three-day draft opened ten minutes ago reads as ten minutes.
+  stateChangedAt: string;
   additions: number;
   deletions: number;
   headRefName: string;
@@ -165,6 +170,8 @@ export interface PRNode {
   isDraft: boolean;
   labels: PRLabel[];
   createdAt: string;
+  // See GraphQLPullRequest.stateChangedAt.
+  stateChangedAt: string;
   additions: number;
   deletions: number;
   reviewers: {

@@ -16,6 +16,13 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
+    version: 10,
+    title: "Card age tracks the draft/ready switch",
+    description:
+      "The time on a pull request card is now how long it has been in its current state, not how long ago it was opened: a PR that sat in draft for three days and was made ready ten minutes ago reads \"10m ago\".",
+    date: "2026-08-10",
+  },
+  {
     version: 9,
     title: "Focus on a stack of PRs, and share it",
     description:
