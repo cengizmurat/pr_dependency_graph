@@ -22,6 +22,18 @@ function labelTextColor(hex: string): string {
   return luminance > 0.6 ? "#1f2328" : "#ffffff";
 }
 
+// The card's age is how long the PR has been in the state it is in now, not how
+// long ago it was opened — a PR drafted three days ago and made ready ten
+// minutes ago reads "10m ago". The tooltip says which of the two it is, and
+// gives the creation date whenever the PR has switched state since.
+function ageTitle(pr: PRNode): string {
+  const opened = `Opened ${new Date(pr.createdAt).toLocaleString()}`;
+  if (pr.stateChangedAt === pr.createdAt) return opened;
+  const changed = new Date(pr.stateChangedAt).toLocaleString();
+  const label = pr.isDraft ? "Converted to draft" : "Ready for review";
+  return `${label} ${changed} — ${opened}`;
+}
+
 interface Props {
   pr: PRNode;
   mergeStatus?: MergeStatus;
@@ -283,7 +295,9 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurre
       )}
 
       <div style={styles.row}>
-        <span style={styles.age}>{timeAgo(pr.createdAt)}</span>
+        <span style={styles.age} title={ageTitle(pr)}>
+          {timeAgo(pr.stateChangedAt)}
+        </span>
         <div style={styles.diff}>
           <span style={styles.additions}>+{pr.additions}</span>
           <span style={styles.deletions}>&minus;{pr.deletions}</span>

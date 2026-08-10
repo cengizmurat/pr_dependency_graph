@@ -33,6 +33,18 @@ Go to your browser, sign in with GitHub (or paste a personal access token in the
 5. PRs belonging to a native GitHub stack also carry their stack membership, read from the `stack` and `stackEntry` fields on the GraphQL `PullRequest` type. A stack badge on the card shows the PR's layer, e.g. `2/3`. GitHub rejects the update-branch endpoint for a stacked PR — a stack is rebased as a whole, and only the PR's own "Rebase Stack" button or `gh stack rebase` can ask for that — so the update badge opens the pull request instead. Repositories without GitHub's stacked pull requests are unaffected: the fields are dropped from the query and the branch heuristic above still applies.
 6. An interactive force-directed graph is rendered with clickable PR nodes.
 
+## Card Age Is Time in the Current State
+
+The `x ago` on a pull request card is how long the PR has been draft or ready,
+not how long ago it was opened. It comes from the PR's latest "ready for review"
+or "convert to draft" timeline event, falling back to the creation time for a PR
+that never switched — so a pull request that sat in draft for three days and was
+made ready ten minutes ago reads `10m ago`. Hovering the age gives both dates.
+
+The graph sorts its cards by that same timestamp, most recently changed first:
+pull requests stacked on the same parent are ordered by it, as are the
+base-branch nodes, ranked by the freshest PR opened against them.
+
 ## Filters Highlight, They Don't Hide
 
 The author, reviewer, status and review-state filters — and the shortcut

@@ -65,6 +65,18 @@ function isUnknownStackFieldError(message: string): boolean {
   );
 }
 
+// When the PR last became a draft or became ready for review. Asking for the
+// last of those two timeline events gives the moment the PR entered the state
+// it is in now; a PR that never switched has none, and falls back to its
+// creation time.
+const STATE_CHANGE_FIELDS = `
+        timelineItems(last: 1, itemTypes: [READY_FOR_REVIEW_EVENT, CONVERT_TO_DRAFT_EVENT]) {
+          nodes {
+            ... on ReadyForReviewEvent { createdAt }
+            ... on ConvertToDraftEvent { createdAt }
+          }
+        }`;
+
 const prQuery = (stackFields: string) => `
 query($owner: String!, $name: String!, $cursor: String, $first: Int!) {
   repository(owner: $owner, name: $name) {
@@ -89,7 +101,7 @@ query($owner: String!, $name: String!, $cursor: String, $first: Int!) {
             }
           }
         }
-        comments { totalCount }${stackFields}
+        comments { totalCount }${STATE_CHANGE_FIELDS}${stackFields}
       }
     }
   }
@@ -420,6 +432,9 @@ interface PRNodeRaw {
       | null;
   } | null;
   comments: { totalCount: number } | null;
+  // At most one node: the PR's latest draft/ready switch, or none at all when
+  // it has stayed in the state it was opened in.
+  timelineItems: { nodes: ({ createdAt?: string } | null)[] | null } | null;
   // Absent entirely when the stack fields aren't in the schema, null when the
   // PR simply isn't stacked.
   stackEntry?: { position: number } | null;
@@ -480,6 +495,17 @@ export async function fetchOpenPRs(
   throw new Error("Request timed out even at minimum page size");
 }
 
+// The timestamp of the PR's latest draft/ready switch, or its creation time
+// when it never switched.
+function stateChangedAt(pr: PRNodeRaw): string {
+  const events = pr.timelineItems?.nodes ?? [];
+  for (let i = events.length - 1; i >= 0; i--) {
+    const at = events[i]?.createdAt;
+    if (at) return at;
+  }
+  return pr.createdAt;
+}
+
 function processRawPR(pr: PRNodeRaw): GraphQLPullRequest {
   const reviewerMap = new Map<string, Reviewer>();
   let reviewCommentCount = 0;
@@ -515,6 +541,7 @@ function processRawPR(pr: PRNodeRaw): GraphQLPullRequest {
     url: pr.url,
     isDraft: pr.isDraft,
     createdAt: pr.createdAt,
+    stateChangedAt: stateChangedAt(pr),
     additions: pr.additions,
     deletions: pr.deletions,
     headRefName: pr.headRefName,
@@ -589,7 +616,7 @@ query($query: String!, $cursor: String, $first: Int!) {
             }
           }
         }
-        comments { totalCount }${stackFields}
+        comments { totalCount }${STATE_CHANGE_FIELDS}${stackFields}
       }
     }
   }
