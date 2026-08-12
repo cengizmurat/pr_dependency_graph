@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Select } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { useGithubToken } from "../hooks/useGithubToken";
@@ -17,8 +17,17 @@ export default function LandingPage() {
   const [error, setError] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const isMobile = useIsMobile();
   const oauthEnabled = isOAuthConfigured();
+
+  // Where the visitor was headed when they were bounced here for lacking
+  // credentials, filters and all. Signing in takes them back to it instead of
+  // leaving them on the repository box with the link they followed forgotten.
+  const returnTo = (location.state as { from?: unknown } | null)?.from;
+  const redirectTo = typeof returnTo === "string" && returnTo.startsWith("/")
+    ? returnTo
+    : null;
 
   const {
     data: userRepos,
@@ -53,7 +62,9 @@ export default function LandingPage() {
 
   function handleSignIn() {
     try {
-      startLogin();
+      // The OAuth round trip leaves the app entirely, so the destination is
+      // handed to `startLogin`, which parks it until the callback returns.
+      startLogin(redirectTo ?? undefined);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -70,6 +81,9 @@ export default function LandingPage() {
       setToken(trimmed);
       setTokenInput("");
       setError("");
+      // A token typed in never leaves the app, so the destination is still in
+      // hand and can be resumed straight away.
+      if (redirectTo) navigate(redirectTo, { replace: true });
     } catch (err) {
       setError((err as Error).message);
     }

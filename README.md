@@ -62,6 +62,20 @@ Focusing a PR works the same way and composes with the filters: a PR is picked
 out when it satisfies both, so filtering inside a focused stack narrows that
 stack instead of reaching back out into the rest of the graph.
 
+### Shortcut Links Resolve to Whoever Opens Them
+
+A shortcut can be linked to by name alone —
+`https://<host>/owner/repo?shortcut=requested` or `?shortcut=mine` — without
+spelling out the filters behind it. Those depend on who is looking, so the app
+fills them in once it knows: `requested` becomes the reviewer set to you plus
+`reviewState=REQUESTED`, `mine` becomes the author set to you. The address bar
+is rewritten to the full filter set and the shortcut button lights up, exactly
+as if it had been clicked.
+
+Following such a link without being signed in sends you to the home page to
+authorize, and back to the link afterwards — filters intact, resolved to your
+account rather than the sharer's.
+
 ## Sharing a Stack of PRs
 
 Every pull request card carries an eye badge that focuses the graph on that PR
