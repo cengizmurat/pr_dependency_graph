@@ -1443,12 +1443,16 @@ function ReviewStateDropdown({
     [selected, onChange],
   );
 
+  const soleSelected =
+    selected.length === 1
+      ? REVIEW_STATE_OPTIONS.find((o) => o.value === selected[0])
+      : undefined;
+
   const label =
     selected.length === 0
       ? "Any review state"
       : selected.length === 1
-        ? REVIEW_STATE_OPTIONS.find((o) => o.value === selected[0])?.label ??
-          "Review state"
+        ? soleSelected?.label ?? "Review state"
         : `${selected.length} review states`;
 
   // The state is read against whoever the reviewer filter names; with no
@@ -1475,7 +1479,7 @@ function ReviewStateDropdown({
         title={triggerTitle}
       >
         <span style={dropdownStyles.triggerLabel}>
-          <ReviewStateDot />
+          <ReviewStateDot color={soleSelected?.color} />
           {label}
         </span>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style={{ marginLeft: 2, flexShrink: 0 }}>
