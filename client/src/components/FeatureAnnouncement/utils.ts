@@ -16,6 +16,13 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
+    version: 11,
+    title: "The reviewer filter tracks reviews still owed",
+    description:
+      "Picking someone in the reviewer dropdown now keeps the pull requests a review is actively requested from them on: once they approve, comment or request changes, that PR no longer counts against their name. Pick review states as well to look at reviews already given.",
+    date: "2026-08-12",
+  },
+  {
     version: 10,
     title: "Card age tracks the draft/ready switch",
     description:

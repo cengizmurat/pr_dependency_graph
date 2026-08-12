@@ -523,16 +523,20 @@ function processRawPR(pr: PRNodeRaw): GraphQLPullRequest {
     }
   }
 
+  // A pending request wins over an already submitted review: when the author
+  // re-requests someone after pushing changes, GitHub keeps that person's old
+  // review in `latestReviews` while listing them again in `reviewRequests`, and
+  // the PR is waiting on them once more. Reading them as REQUESTED is what puts
+  // them back in the reviewer filter, which is about reviews still owed.
   for (const req of pr.reviewRequests?.nodes ?? []) {
     const reviewer = req?.requestedReviewer;
     if (!reviewer?.login) continue;
-    if (!reviewerMap.has(reviewer.login)) {
-      reviewerMap.set(reviewer.login, {
-        login: reviewer.login,
-        avatarUrl: reviewer.avatarUrl ?? "",
-        state: "REQUESTED",
-      });
-    }
+    reviewerMap.set(reviewer.login, {
+      login: reviewer.login,
+      avatarUrl:
+        reviewer.avatarUrl ?? reviewerMap.get(reviewer.login)?.avatarUrl ?? "",
+      state: "REQUESTED",
+    });
   }
 
   return {

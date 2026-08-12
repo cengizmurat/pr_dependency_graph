@@ -61,24 +61,40 @@ function matchesStatusFilter(pr: GraphQLPullRequest, status: PRStatusFilter): bo
   return true;
 }
 
-// Reviewer filter: keep PRs assigned to any of the selected people, so the
-// graph shows one person's review workload. Logins are compared
+// The reviewer filter is about work still owed: on its own it means "a review
+// is actively requested from this person", so someone who already approved,
+// commented on or requested changes to a PR is not a reviewer of it any more.
+// Picking review states in the other dropdown widens it to those states, which
+// is how "what did Alice approve" is still asked.
+const PENDING_REVIEW_STATES: ReadonlySet<string> = new Set<string>(["REQUESTED"]);
+
+function reviewerStates(states: ReviewStateFilter[]): ReadonlySet<string> {
+  return states.length > 0 ? new Set<string>(states) : PENDING_REVIEW_STATES;
+}
+
+// Reviewer filter: keep PRs waiting on any of the selected people, so the graph
+// shows one person's outstanding review workload. Logins are compared
 // case-insensitively since the param can be edited by hand in the URL.
 function matchesReviewerFilter(
   pr: GraphQLPullRequest,
   wantedReviewers: ReadonlySet<string> | null,
+  wantedStates: ReadonlySet<string>,
 ): boolean {
   return (
     !wantedReviewers ||
-    pr.reviewers.some((r) => wantedReviewers.has(r.login.toLowerCase()))
+    pr.reviewers.some(
+      (r) => wantedReviewers.has(r.login.toLowerCase()) && wantedStates.has(r.state),
+    )
   );
 }
 
 // Review-state filter: keep PRs where one of the selected states applies. It
-// reads against whoever the reviewer filter names, and falls back to the viewer
-// when no reviewer is picked — so "Alice" + "Review requested" answers "what is
-// still waiting on Alice". The viewer fallback is skipped until viewerLogin
-// loads so it doesn't briefly wipe the graph out on first paint.
+// reads against whoever the reviewer filter names — which is also what that
+// filter matches on, so with a reviewer picked this restates the same test —
+// and falls back to the viewer when no reviewer is picked, which is what makes
+// "Approved" on its own mean "PRs I approved". The viewer fallback is skipped
+// until viewerLogin loads so it doesn't briefly wipe the graph out on first
+// paint.
 function matchesReviewStateFilter(
   pr: GraphQLPullRequest,
   states: ReviewStateFilter[],
@@ -108,11 +124,12 @@ function filterPRs(
     f.reviewers.length > 0 && !skip?.has("reviewer")
       ? new Set(f.reviewers.map((l) => l.toLowerCase()))
       : null;
+  const wantedReviewerStates = reviewerStates(f.reviewStates);
   return prs.filter(
     (pr) =>
       (skip?.has("author") || matchesAuthorFilter(pr, f.authors)) &&
       (skip?.has("status") || matchesStatusFilter(pr, f.status)) &&
-      matchesReviewerFilter(pr, wantedReviewers) &&
+      matchesReviewerFilter(pr, wantedReviewers, wantedReviewerStates) &&
       (skip?.has("reviewState") ||
         matchesReviewStateFilter(pr, f.reviewStates, wantedReviewers, f.viewerLogin)),
   );
@@ -382,20 +399,19 @@ export default function GraphPage() {
     return counts;
   }, [allPRs, filters]);
 
-  // Everyone who appears as a reviewer on at least one PR that clears the other
+  // Everyone still owed a review on at least one PR that clears the other
   // filters, with how many of those PRs are on their plate. Built from the PRs
   // themselves rather than the contributor list because a reviewer need not
-  // have committed to the repo. The review-state filter is applied per reviewer
-  // here, since selecting one would make that filter read against them — so
-  // each count is what selecting that reviewer alone would show. Sorted by PR
-  // count so the busiest reviewers are at the top of the menu.
+  // have committed to the repo. The states the reviewer filter matches are
+  // applied per candidate here — pending requests only until review states are
+  // picked — so each count is what selecting that reviewer alone would show.
+  // Sorted by PR count so the busiest reviewers are at the top of the menu.
   const reviewerOptions = useMemo(() => {
-    const wantedStates =
-      reviewStateFilter.length > 0 ? new Set<string>(reviewStateFilter) : null;
+    const wantedStates = reviewerStates(reviewStateFilter);
     const byLogin = new Map<string, ReviewerOption>();
     for (const pr of filterPRs(allPRs, filters, REVIEWER_FACET_SKIP)) {
       for (const reviewer of pr.reviewers) {
-        if (wantedStates && !wantedStates.has(reviewer.state)) continue;
+        if (!wantedStates.has(reviewer.state)) continue;
         const entry = byLogin.get(reviewer.login);
         if (entry) {
           entry.count += 1;
@@ -629,6 +645,7 @@ export default function GraphPage() {
           reviewers={reviewerOptions}
           selected={reviewerFilter}
           onChange={setReviewerFilter}
+          pendingOnly={reviewStateFilter.length === 0}
           isMobile={isMobile}
         />
         <StatusDropdown selected={statusFilter} onChange={setStatusFilter} isMobile={isMobile} />
@@ -1153,11 +1170,15 @@ function ReviewerDropdown({
   reviewers,
   selected,
   onChange,
+  pendingOnly,
   isMobile,
 }: {
   reviewers: ReviewerOption[];
   selected: string[];
   onChange: (next: string[]) => void;
+  // Whether the menu is listing pending review requests (no review state
+  // picked) or the people in the review states the other dropdown names.
+  pendingOnly: boolean;
   isMobile: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -1202,7 +1223,11 @@ function ReviewerDropdown({
       <button
         style={{ ...dropdownStyles.trigger, ...(isMobile ? dropdownStyles.triggerMobile : {}) }}
         onClick={() => setOpen((o) => !o)}
-        title="Filter by reviewer"
+        title={
+          pendingOnly
+            ? "Filter by who a review is still requested from"
+            : "Filter by reviewer, in the selected review states"
+        }
       >
         <span style={dropdownStyles.triggerLabel}>
           {soleSelected ? (
@@ -1246,7 +1271,9 @@ function ReviewerDropdown({
           <div style={dropdownStyles.list}>
             {reviewers.length === 0 && (
               <div style={{ ...dropdownStyles.item, color: "var(--color-text-secondary)", cursor: "default" }}>
-                No reviewers on these PRs
+                {pendingOnly
+                  ? "No review requests pending on these PRs"
+                  : "No reviewers on these PRs"}
               </div>
             )}
             {reviewers.map((r) => {
@@ -1260,7 +1287,11 @@ function ReviewerDropdown({
                     fontWeight: isSelected ? 600 : 400,
                   }}
                   onClick={() => toggle(r.login)}
-                  title={`${r.login} is a reviewer on ${r.count} PR${r.count === 1 ? "" : "s"}`}
+                  title={
+                    pendingOnly
+                      ? `A review is requested from ${r.login} on ${r.count} PR${r.count === 1 ? "" : "s"}`
+                      : `${r.login} is a reviewer on ${r.count} PR${r.count === 1 ? "" : "s"}`
+                  }
                 >
                   <img src={r.avatarUrl} alt={r.login} style={dropdownStyles.avatar} />
                   <span>{r.login}</span>

@@ -62,6 +62,14 @@ Focusing a PR works the same way and composes with the filters: a PR is picked
 out when it satisfies both, so filtering inside a focused stack narrows that
 stack instead of reaching back out into the rest of the graph.
 
+The reviewer filter is about reviews still owed. On its own it keeps the pull
+requests a review is actively requested on, so someone who already approved,
+commented or requested changes is no longer counted as a reviewer of that PR —
+and drops out of the menu once nothing is left waiting on them. Re-requesting a
+review after a push puts that person back, whatever they answered last time.
+Picking review states widens the reviewer filter to those states, which is how
+questions like "what did Alice approve" are still asked.
+
 ## Sharing a Stack of PRs
 
 Every pull request card carries an eye badge that focuses the graph on that PR
