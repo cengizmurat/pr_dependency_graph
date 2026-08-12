@@ -8,6 +8,10 @@
 // override only the values it put in the URL itself and leave manually picked
 // filters untouched — except for params a shortcut declares `exclusive`, which
 // it takes over completely (see `Entry`).
+//
+// A link can also carry the marker on its own (`?shortcut=requested`), naming
+// the preset without the filters it stands for. Those depend on who is looking,
+// so `hydrateShortcut` fills them in once the viewer's login is known.
 
 export const SHORTCUT_PARAM = "shortcut";
 
@@ -82,6 +86,16 @@ function removeEntry(
   for (const v of remaining) params.append(param, v);
 }
 
+// Writes a shortcut's values into the params, in place.
+function writeEntries(params: URLSearchParams, entries: Entry[]): void {
+  for (const entry of entries) {
+    // `set` drops any value already there, which is what makes an exclusive
+    // entry a reset rather than an addition.
+    if (entry.exclusive) params.set(entry.param, entry.value);
+    else if (!hasEntry(params, entry)) params.append(entry.param, entry.value);
+  }
+}
+
 // The shortcut the URL currently claims, but only while every value it
 // contributed is still there. Once a filter dropdown drops one of them the
 // marker is stale and the shortcut counts as inactive.
@@ -114,14 +128,32 @@ export function applyShortcut(
   // Clicking the active shortcut again just clears it.
   if (active !== key) {
     params.set(SHORTCUT_PARAM, key);
-    for (const entry of entriesFor(key, viewerLogin)) {
-      // `set` drops any value already there, which is what makes an exclusive
-      // entry a reset rather than an addition.
-      if (entry.exclusive) params.set(entry.param, entry.value);
-      else if (!hasEntry(params, entry)) params.append(entry.param, entry.value);
-    }
+    writeEntries(params, entriesFor(key, viewerLogin));
   }
   return params;
+}
+
+// Turns a bare `?shortcut=...` link into the filters it stands for. A
+// `requested` link means "waiting on *my* review", so the reviewer it wants
+// isn't knowable until the viewer's login has been fetched — and the preset is
+// applied whole or not at all, so its static filters wait for that too. When
+// the login arrives everything goes in at once, exactly as clicking the button
+// would: reviewer (or author) resolved to the viewer, plus `reviewState`.
+//
+// Returns null when there is nothing to write — no marker, an unknown one, no
+// viewer yet, or a shortcut whose values are already in the URL — so callers
+// can leave the address bar alone.
+export function hydrateShortcut(
+  params: URLSearchParams,
+  viewerLogin: string | undefined,
+): URLSearchParams | null {
+  const key = params.get(SHORTCUT_PARAM);
+  if (!isShortcutKey(key) || !viewerLogin) return null;
+  const entries = entriesFor(key, viewerLogin);
+  if (entries.every((entry) => hasEntry(params, entry))) return null;
+  const next = new URLSearchParams(params);
+  writeEntries(next, entries);
+  return next;
 }
 
 // Removes the marker once the filters it described no longer match, so a

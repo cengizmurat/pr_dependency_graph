@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useEffect, useLayoutEffect, useCallback } from "react";
-import { useParams, Link, Navigate, useSearchParams } from "react-router-dom";
+import { useParams, Link, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DatePicker, Dropdown } from "antd";
 import dayjs from "dayjs";
@@ -9,7 +9,7 @@ import { REVIEW_STATE_FILTER_VALUES } from "../types";
 import { EYE_ICON_PATH, LOOKBACK_DAYS_KEY } from "../constants";
 import { getStoredLookbackDays, buildDefaultRange, collectDescendantPRs, copyToClipboard } from "../utils";
 import { buildShareUrl, getFocusPR, withFocusPR } from "../prFocus";
-import { pruneStaleShortcut, SHORTCUT_PARAM } from "../filterShortcuts";
+import { hydrateShortcut, pruneStaleShortcut, SHORTCUT_PARAM } from "../filterShortcuts";
 import type { DateRange } from "../utils";
 import { useGithubToken } from "../hooks/useGithubToken";
 import { useIsMobile } from "../hooks/useIsMobile";
@@ -203,6 +203,7 @@ export default function GraphPage() {
   const queryClient = useQueryClient();
   const { token, source } = useGithubToken();
   const isMobile = useIsMobile();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
 
@@ -308,6 +309,20 @@ export default function GraphPage() {
     },
     [setSearchParams, viewerLogin],
   );
+
+  // A link can name a shortcut on its own (`?shortcut=requested`) without the
+  // filters it stands for, since those depend on who opens it. As soon as the
+  // viewer's login resolves — which, arriving from the API, is the first moment
+  // "me" means anything — the preset is written into the filter params, so the
+  // graph ends up in the same state as clicking the shortcut button. Editing a
+  // filter by hand drops the marker first (see `pruneStaleShortcut`), so this
+  // can't undo a deliberate change.
+  useEffect(() => {
+    if (!hydrateShortcut(searchParams, viewerLogin)) return;
+    setSearchParams((prev) => hydrateShortcut(prev, viewerLogin) ?? prev, {
+      replace: true,
+    });
+  }, [searchParams, viewerLogin, setSearchParams]);
 
   // A shared link carries the PR its stack is about in the `pr` param, which
   // is what the graph frames itself on once the data lands.
@@ -580,8 +595,15 @@ export default function GraphPage() {
 
   const error = prError ?? null;
 
+  // Signing in happens on the home page, so a visitor who opens a link to a
+  // repository without credentials is sent there — carrying where they meant to
+  // go, so the sign-in can put them back on it. Without that the query string
+  // is lost at the door, and a link like `?shortcut=requested` never gets the
+  // chance to resolve.
   if (!token) {
-    return <Navigate to="/" replace />;
+    return (
+      <Navigate to="/" replace state={{ from: location.pathname + location.search }} />
+    );
   }
 
   return (
