@@ -46,6 +46,28 @@
   --gantt-active-stroke: #5865c9;
   --gantt-grid: rgba(110, 118, 129, 0.35);
   --gantt-row-hover: rgba(9, 105, 218, 0.08);
+
+  /* Folder churn. The eight series colours are a palette validated for
+     colour-vision-deficiency separation and for contrast against both
+     surfaces; the dark block below only restates these same eight roles, so
+     no colour is ever defined by a media query alone. */
+  --churn-series-1: #2a78d6;
+  --churn-series-2: #eb6834;
+  --churn-series-3: #1baf7a;
+  --churn-series-4: #eda100;
+  --churn-series-5: #e87ba4;
+  --churn-series-6: #008300;
+  --churn-series-7: #4a3aa7;
+  --churn-series-8: #e34948;
+
+  /* Folders not on the trend chart are nominal categories with no value to
+     encode, so their bars stay a neutral grey rather than a colour ramp. */
+  --churn-bar-neutral: #c2c8d0;
+  --churn-bar-neutral-hover: #a8b1bc;
+  --churn-grid: rgba(110, 118, 129, 0.3);
+  --churn-tile-bg: #f6f8fa;
+  --churn-gone-bg: #fff1e5;
+  --churn-gone-text: #953800;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -95,6 +117,23 @@
     --gantt-active-stroke: #7d88e2;
     --gantt-grid: rgba(139, 148, 158, 0.3);
     --gantt-row-hover: rgba(88, 166, 255, 0.1);
+
+    /* Folder churn */
+    --churn-series-1: #3987e5;
+    --churn-series-2: #d95926;
+    --churn-series-3: #199e70;
+    --churn-series-4: #c98500;
+    --churn-series-5: #d55181;
+    --churn-series-6: #008300;
+    --churn-series-7: #9085e9;
+    --churn-series-8: #e66767;
+
+    --churn-bar-neutral: #3d444d;
+    --churn-bar-neutral-hover: #545d68;
+    --churn-grid: rgba(139, 148, 158, 0.25);
+    --churn-tile-bg: #161b22;
+    --churn-gone-bg: #2b1d12;
+    --churn-gone-text: #db9a63;
   }
 }
 
@@ -231,4 +270,74 @@ body {
 
 .focus-banner-btn:hover {
   background: var(--color-border-subtle);
+}
+
+/* --- Folder churn --- */
+
+.churn-axis-label {
+  font-size: 10px;
+  fill: var(--color-text-secondary);
+}
+
+.churn-grid {
+  stroke: var(--churn-grid);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.churn-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.churn-endpoint-label {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.churn-bar-row {
+  cursor: pointer;
+}
+.churn-bar-row:hover .churn-bar-hit {
+  fill: var(--gantt-row-hover);
+}
+.churn-bar-hit {
+  fill: transparent;
+}
+.churn-bar-row:focus-visible {
+  outline: none;
+}
+.churn-bar-row:focus-visible .churn-bar-hit {
+  stroke: var(--color-link);
+  stroke-width: 1.5;
+}
+
+.churn-bar-label {
+  font-size: 11px;
+  fill: var(--color-text);
+}
+.churn-bar-value {
+  font-size: 11px;
+  fill: var(--color-text-secondary);
+}
+
+.churn-table-row:hover {
+  background: var(--color-border-subtle);
+}
+
+.churn-suggestion:hover {
+  background: var(--color-border-subtle);
+  border-color: var(--color-link);
+}
+
+.churn-legend-item {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.churn-legend-item:hover {
+  text-decoration: line-through;
 }

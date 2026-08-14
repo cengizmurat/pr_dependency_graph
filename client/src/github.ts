@@ -13,6 +13,10 @@ import type {
   WorkflowRunInfo,
   WorkflowRunsPage,
   WorkflowsPage,
+  BranchList,
+  CommitFile,
+  CommitHistoryPage,
+  RepoTreeDirs,
 } from "./types";
 import { getToken } from "./auth";
 
@@ -918,4 +922,246 @@ export async function fetchUserRepos(token: string): Promise<UserRepo[]> {
   }
 
   return repos;
+}
+
+// --- Folder churn ---------------------------------------------------------
+
+// The branch selector lists this many branches at most. A repository with
+// more is reported as truncated; the default branch is fetched separately so
+// it is always offered even when it sorts past the cut.
+const BRANCH_PAGE_LIMIT = 5;
+
+const BRANCHES_QUERY = `
+query($owner: String!, $name: String!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    defaultBranchRef { name }
+    refs(refPrefix: "refs/heads/", first: 100, after: $cursor, orderBy: { field: ALPHABETICAL, direction: ASC }) {
+      pageInfo { hasNextPage endCursor }
+      nodes { name }
+    }
+  }
+}`;
+
+interface BranchesQueryResult {
+  repository: {
+    defaultBranchRef: { name: string } | null;
+    refs: {
+      pageInfo: { hasNextPage: boolean; endCursor: string | null };
+      nodes: { name: string }[];
+    };
+  } | null;
+}
+
+export async function fetchBranches(
+  token: string,
+  owner: string,
+  repo: string,
+): Promise<BranchList> {
+  const names: string[] = [];
+  let defaultBranch: string | null = null;
+  let cursor: string | null = null;
+  let truncated = false;
+
+  for (let page = 0; page < BRANCH_PAGE_LIMIT; page++) {
+    const data: BranchesQueryResult = await graphql<BranchesQueryResult>(
+      token,
+      BRANCHES_QUERY,
+      { owner, name: repo, cursor },
+    );
+
+    const repository = data.repository;
+    if (!repository) throw new Error(`Repository ${owner}/${repo} not found.`);
+
+    defaultBranch = repository.defaultBranchRef?.name ?? defaultBranch;
+    for (const node of repository.refs.nodes) names.push(node.name);
+
+    if (!repository.refs.pageInfo.hasNextPage) break;
+    cursor = repository.refs.pageInfo.endCursor;
+    if (page === BRANCH_PAGE_LIMIT - 1) truncated = true;
+  }
+
+  if (defaultBranch && !names.includes(defaultBranch)) names.unshift(defaultBranch);
+
+  return { names, defaultBranch, truncated };
+}
+
+// Commit metadata for a branch, oldest-relevant filtering done server-side by
+// `since`/`until`. `totalCount` is the whole reason this pass is a separate
+// (and cheap) one: it says exactly how many commits a window holds before the
+// expensive per-commit file fetch starts, so the size of the job can be shown
+// rather than discovered.
+const HISTORY_QUERY = `
+query($owner: String!, $name: String!, $branch: String!, $cursor: String, $since: GitTimestamp, $until: GitTimestamp) {
+  repository(owner: $owner, name: $name) {
+    ref(qualifiedName: $branch) {
+      target {
+        ... on Commit {
+          history(first: 100, after: $cursor, since: $since, until: $until) {
+            totalCount
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              oid
+              committedDate
+              parents(first: 2) { totalCount }
+            }
+          }
+        }
+      }
+    }
+  }
+}`;
+
+export async function fetchCommitHistoryPage(
+  token: string,
+  owner: string,
+  repo: string,
+  branch: string,
+  cursor: string | null,
+  since: string | null,
+  until: string | null,
+  signal?: AbortSignal,
+): Promise<CommitHistoryPage> {
+  const data = await graphql<{
+    repository: {
+      ref: {
+        target: {
+          history?: {
+            totalCount: number;
+            pageInfo: { hasNextPage: boolean; endCursor: string | null };
+            nodes: {
+              oid: string;
+              committedDate: string;
+              parents: { totalCount: number };
+            }[];
+          };
+        } | null;
+      } | null;
+    } | null;
+  }>(
+    token,
+    HISTORY_QUERY,
+    { owner, name: repo, branch, cursor, since, until },
+    signal,
+  );
+
+  const repository = data.repository;
+  if (!repository) throw new Error(`Repository ${owner}/${repo} not found.`);
+  if (!repository.ref) throw new Error(`Branch "${branch}" not found.`);
+
+  const history = repository.ref.target?.history;
+  // A ref pointing at a tag or tree object has no history to read.
+  if (!history) throw new Error(`Branch "${branch}" has no commit history.`);
+
+  return {
+    commits: history.nodes.map((n) => ({
+      sha: n.oid,
+      committedDate: n.committedDate,
+      isMerge: n.parents.totalCount > 1,
+    })),
+    totalCount: history.totalCount,
+    hasNextPage: history.pageInfo.hasNextPage,
+    endCursor: history.pageInfo.endCursor,
+  };
+}
+
+interface RawCommitFile {
+  filename: string;
+  status?: string;
+  previous_filename?: string;
+  changes?: number;
+  additions?: number;
+  deletions?: number;
+}
+
+// GitHub returns at most 300 files per page and stops paginating a commit
+// after this many pages. A commit touching more paths than that is rare
+// enough that the cut is worth the bounded request count.
+const COMMIT_FILES_PAGE_LIMIT = 10;
+
+// The one thing the GraphQL API cannot answer: which paths a commit touched.
+// The `Commit` object exposes additions, deletions and a changed-file *count*,
+// but no diff and no file connection, so the per-commit file list has to come
+// from REST — one request per commit.
+//
+// GitHub applies rename detection and reports a moved file once, as
+// `renamed` with a `previous_filename`. Folder churn wants the opposite (a
+// move is a modification of the folder it left as well as the one it joined),
+// so a rename is split back into both paths here — the equivalent of
+// `git --no-renames`. The line count stays on the destination: GitHub reports
+// a pure rename as a zero-line change and the original file's size is not in
+// the response, so it cannot be attributed to the source folder.
+export async function fetchCommitFiles(
+  token: string,
+  owner: string,
+  repo: string,
+  sha: string,
+  signal?: AbortSignal,
+): Promise<CommitFile[]> {
+  const files: CommitFile[] = [];
+
+  for (let page = 1; page <= COMMIT_FILES_PAGE_LIMIT; page++) {
+    const res = await fetchWithAuth(
+      token,
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits/${sha}?per_page=300&page=${page}`,
+      { headers: { Accept: "application/vnd.github+json" }, signal },
+    );
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      const error = new Error(
+        body?.message ?? `GitHub API returned ${res.status}`,
+      ) as Error & { status?: number; retryAfter?: number };
+      error.status = res.status;
+      const retryAfter = res.headers.get("Retry-After");
+      if (retryAfter) error.retryAfter = parseInt(retryAfter, 10);
+      throw error;
+    }
+
+    const data: { files?: RawCommitFile[] | null } = await res.json();
+    const batch = data.files ?? [];
+
+    for (const f of batch) {
+      const changes =
+        f.changes ?? (f.additions ?? 0) + (f.deletions ?? 0);
+      files.push({ path: f.filename, changes });
+      if (f.status === "renamed" && f.previous_filename) {
+        files.push({ path: f.previous_filename, changes: 0 });
+      }
+    }
+
+    if (batch.length < 300) break;
+  }
+
+  return files;
+}
+
+// Every directory present at a branch tip, from one recursive tree request.
+// Directories are read off blob paths as well as tree entries so the set is
+// right even if GitHub elides an entry.
+export async function fetchRepoTreeDirs(
+  token: string,
+  owner: string,
+  repo: string,
+  branch: string,
+): Promise<RepoTreeDirs> {
+  const data = await fetchRestJson<{
+    tree?: { path: string; type: string }[] | null;
+    truncated?: boolean;
+  }>(
+    token,
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
+  );
+
+  const dirs = new Set<string>([""]);
+  for (const entry of data.tree ?? []) {
+    const path = entry.type === "tree" ? entry.path : dirname(entry.path);
+    for (let p = path; p !== ""; p = dirname(p)) dirs.add(p);
+  }
+
+  return { dirs, truncated: data.truncated === true };
+}
+
+function dirname(path: string): string {
+  const slash = path.lastIndexOf("/");
+  return slash === -1 ? "" : path.slice(0, slash);
 }

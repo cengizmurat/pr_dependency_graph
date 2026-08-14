@@ -16,6 +16,13 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
+    version: 11,
+    title: "See which folders change most often",
+    description:
+      "A new Folder churn tab ranks every folder of the repository by how often it is modified over an interval you pick. Type a path to drill into its subfolders, switch between commits, files and lines, and click a bar to plot that folder over time.",
+    date: "2026-08-14",
+  },
+  {
     version: 10,
     title: "Card age tracks the draft/ready switch",
     description:

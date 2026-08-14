@@ -33,6 +33,53 @@ Go to your browser, sign in with GitHub (or paste a personal access token in the
 5. PRs belonging to a native GitHub stack also carry their stack membership, read from the `stack` and `stackEntry` fields on the GraphQL `PullRequest` type. A stack badge on the card shows the PR's layer, e.g. `2/3`. GitHub rejects the update-branch endpoint for a stacked PR — a stack is rebased as a whole, and only the PR's own "Rebase Stack" button or `gh stack rebase` can ask for that — so the update badge opens the pull request instead. Repositories without GitHub's stacked pull requests are unaffected: the fields are dropped from the query and the branch heuristic above still applies.
 6. An interactive force-directed graph is rendered with clickable PR nodes.
 
+## Folder Churn Counts Commits, Not Lines
+
+The Folder churn tab answers how *often* an area of the repository changes. A
+folder is modified by a commit when any file under it appears in that commit's
+diff, and it counts **once** for that commit however deep the change sat or how
+many of its files moved. Nested directories fold into the folder being listed:
+inside `src/`, a commit touching both `src/mastra/tools` and `src/mastra/db`
+counts once for `mastra`.
+
+Type a path to drill in — `src/` lists the folders under `src`, `src/mastra/`
+goes deeper, and an empty box means the repository root. `src`, `/src`, `./src/`
+and `src//` all name the same folder, and a leading dot is kept, so `.github` is
+a folder like any other. Files sitting directly in the folder rather than in a
+subfolder get their own bucket, `(root files)` at the root and `(direct files)`
+deeper down. A folder that no longer exists at the branch tip is badged `GONE`
+rather than hidden — it was real churn at the time.
+
+Two folder views are not a breakdown of each other. A change to
+`src/mastra/tools/x.ts` counts for `src` at the root and for `mastra` inside
+`src/`; they overlap rather than partition, and they are not meant to add up.
+The trend chart is a set of separate lines for the same reason: one commit
+touches several folders, so stacking them would draw a total that does not
+exist. A colour belongs to a folder from the moment it joins the chart until it
+leaves it, so changing the interval, branch, measure or bucket size never
+repaints a line that is already drawn.
+
+Merge commits are skipped: their file changes are already attributed to the
+commits they bring in, so counting both would double every folder they pass
+through. Renames are counted as a change to the folder the file left as well as
+the one it joined.
+
+### Where the numbers come from
+
+GitHub's GraphQL API has no field for the files a commit touched — `Commit`
+carries additions, deletions and a changed-file count, but no diff — so the file
+list comes from `GET /repos/{owner}/{repo}/commits/{sha}`, one request per
+commit. GraphQL still does the cheap half: the branch list, and a history query
+whose `totalCount` says how big an interval is before a single file list is
+fetched. Above ~600 commits the tab reports the size and waits for you to
+confirm.
+
+A commit's diff never changes, so each one is fetched at most once: the interned
+per-commit records are cached in `localStorage` by SHA and shared across
+branches and intervals. Commit dates are stored as days since the unix epoch, so
+switching branches does not invalidate a selected date range, and every folder
+prefix, time bucket and measure is recomputed in the browser without refetching.
+
 ## Card Age Is Time in the Current State
 
 The `x ago` on a pull request card is how long the PR has been draft or ready,
