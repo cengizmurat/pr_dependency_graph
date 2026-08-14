@@ -992,12 +992,12 @@ export async function fetchBranches(
 // expensive per-commit file fetch starts, so the size of the job can be shown
 // rather than discovered.
 const HISTORY_QUERY = `
-query($owner: String!, $name: String!, $branch: String!, $cursor: String, $since: GitTimestamp, $until: GitTimestamp) {
+query($owner: String!, $name: String!, $branch: String!, $cursor: String, $since: GitTimestamp, $until: GitTimestamp, $path: String) {
   repository(owner: $owner, name: $name) {
     ref(qualifiedName: $branch) {
       target {
         ... on Commit {
-          history(first: 100, after: $cursor, since: $since, until: $until) {
+          history(first: 100, after: $cursor, since: $since, until: $until, path: $path) {
             totalCount
             pageInfo { hasNextPage endCursor }
             nodes {
@@ -1020,6 +1020,17 @@ export async function fetchCommitHistoryPage(
   cursor: string | null,
   since: string | null,
   until: string | null,
+  // Repository-relative directory to restrict the history to, or null for the
+  // whole repository. Scoping the query is what keeps drilling into a folder
+  // from costing a request per commit in the rest of the repository.
+  //
+  // The filter carries git's own path-filtering semantics, which simplify
+  // history rather than walking every ancestor: on a merge that is TREESAME to
+  // one parent, git follows only that parent. A merge-heavy history can
+  // therefore report slightly fewer commits for a path here than
+  // `git log --full-history` would. Both agree on ordinary histories, and the
+  // scoped view is self-consistent either way.
+  path: string | null,
   signal?: AbortSignal,
 ): Promise<CommitHistoryPage> {
   const data = await graphql<{
@@ -1041,7 +1052,7 @@ export async function fetchCommitHistoryPage(
   }>(
     token,
     HISTORY_QUERY,
-    { owner, name: repo, branch, cursor, since, until },
+    { owner, name: repo, branch, cursor, since, until, path },
     signal,
   );
 

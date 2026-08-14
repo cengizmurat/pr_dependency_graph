@@ -60,6 +60,60 @@ export const styles: Record<string, React.CSSProperties> = {
     paddingBottom: 2,
   },
 
+  // --- The fetch action bar ---
+
+  // Deliberately loud and directly under the controls: nothing is read from
+  // GitHub until this is pressed, so it has to be the obvious next move.
+  actionBar: {
+    display: "flex",
+    flexWrap: "wrap" as const,
+    alignItems: "center",
+    gap: 16,
+    marginTop: 12,
+    padding: "12px 14px",
+    borderRadius: 8,
+    border: "1px solid var(--color-border)",
+    background: "var(--churn-tile-bg)",
+  },
+  fetchBtn: {
+    padding: "10px 20px",
+    borderRadius: 6,
+    border: "none",
+    background: "var(--color-button-bg)",
+    color: "var(--color-button-text)",
+    fontSize: 15,
+    fontWeight: 600,
+    cursor: "pointer",
+    whiteSpace: "nowrap" as const,
+    flexShrink: 0,
+  },
+  fetchBtnDisabled: {
+    opacity: 0.55,
+    cursor: "default",
+  },
+  // Once a window has been read the button is still there to re-read it, but
+  // it stops competing with the charts for attention.
+  fetchBtnDone: {
+    background: "transparent",
+    color: "var(--color-link)",
+    border: "1px solid var(--color-border)",
+    fontSize: 13,
+    padding: "7px 14px",
+  },
+  actionText: {
+    minWidth: 0,
+  },
+  actionHeadline: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: "var(--color-text)",
+  },
+  actionDetail: {
+    marginTop: 2,
+    fontSize: 12,
+    color: "var(--color-text-secondary)",
+  },
+
   // --- Explanatory notes ---
 
   note: {

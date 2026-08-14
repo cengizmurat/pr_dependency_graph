@@ -149,6 +149,9 @@ export default function FolderChurnView({
     return { fromDay: today - days + 1, toDay: today };
   }, [preset, customFrom, customTo, today]);
 
+  // The typed folder scopes the history query itself, so drilling into an area
+  // costs a request per commit that touched *it* rather than one per commit in
+  // the repository.
   const churn = useFolderChurn({
     token,
     owner,
@@ -156,6 +159,7 @@ export default function FolderChurnView({
     branch,
     since: fromDay === null ? null : isoFromDayStart(fromDay),
     until: isoFromDayEnd(toDay),
+    path: prefix === "" ? null : prefix,
     active: true,
   });
 
@@ -322,6 +326,85 @@ export default function FolderChurnView({
   const progress =
     data && data.needed > 0 ? Math.round((data.resolved / data.needed) * 100) : 0;
 
+  // --- The fetch button and what it says it will cost ---------------------
+
+  const estimate = churn.estimate;
+  const scopeSuffix =
+    prefix === "" ? "" : ` under ${prefix}/`;
+
+  const fetchDisabled =
+    churn.isCounting || churn.isStreaming || estimate?.totalCommits === 0;
+
+  const fetchButtonLabel = churn.isCounting
+    ? "Counting commits…"
+    : churn.isStreaming && data
+      ? `Fetching ${data.resolved.toLocaleString()} / ${data.needed.toLocaleString()}…`
+      : churn.isStreaming
+        ? "Fetching…"
+        : estimate?.totalCommits === 0
+          ? "Nothing to fetch"
+          : churn.started && data
+            ? "Refetch"
+            : estimate?.toFetch !== null && estimate?.toFetch !== undefined
+              ? `Fetch ${estimate.toFetch.toLocaleString()} commit${estimate.toFetch === 1 ? "" : "s"}`
+              : `Fetch up to ${(estimate?.totalCommits ?? 0).toLocaleString()} commit${estimate?.totalCommits === 1 ? "" : "s"}`;
+
+  // Merges are skipped everywhere else, so the headline counts what the tab is
+  // actually about — and matches the number on the button rather than sitting
+  // beside it saying something different.
+  const headlineCount = estimate?.commits ?? estimate?.totalCommits ?? 0;
+  const skippedMerges =
+    estimate == null || estimate.commits === null
+      ? 0
+      : estimate.totalCommits - estimate.commits;
+
+  const estimateHeadline = churn.isCounting
+    ? "Sizing this interval…"
+    : estimate === null
+      ? ""
+      : `${headlineCount.toLocaleString()} commit${
+          headlineCount === 1 ? "" : "s"
+        } in this interval${scopeSuffix}${
+          skippedMerges > 0
+            ? ` (${skippedMerges.toLocaleString()} merge${skippedMerges === 1 ? "" : "s"} skipped)`
+            : ""
+        }`;
+
+  const estimateDetail = churn.isCounting
+    ? null
+    : estimate === null
+      ? null
+      : churn.started && data && !churn.isStreaming
+        ? `${data.resolved.toLocaleString()} read${
+            data.fromCache > 0 ? `, ${data.fromCache.toLocaleString()} of them from the cache` : ""
+          }${data.mergesSkipped > 0 ? `, ${data.mergesSkipped.toLocaleString()} merge${data.mergesSkipped === 1 ? "" : "s"} skipped` : ""}.`
+        : estimate.toFetch === null
+          ? churn.isEstimating
+            ? "Working out how many still need reading…"
+            : "Too long a history to count what is already cached — the fetch will skip anything it has."
+          : estimate.toFetch === 0
+            ? "All of them are already cached, so this costs no requests."
+            : `${estimate.cached?.toLocaleString() ?? 0} already cached · ${estimate.toFetch.toLocaleString()} request${
+                estimate.toFetch === 1 ? "" : "s"
+              } to GitHub.`;
+
+  // The scoped history costing nothing means the folder saw no commits in this
+  // window — which is answered without fetching anything. Whether the folder is
+  // unknown or merely quiet is decided by the branch tip, which the tree query
+  // already has.
+  const emptyScope =
+    prefix !== "" &&
+    estimate !== null &&
+    estimate.totalCommits === 0 &&
+    !churn.isCounting &&
+    !pathExists;
+  const emptyInInterval =
+    prefix !== "" &&
+    estimate !== null &&
+    estimate.totalCommits === 0 &&
+    !churn.isCounting &&
+    pathExists;
+
   return (
     <div style={styles.container}>
       <div style={styles.controls}>
@@ -442,6 +525,29 @@ export default function FolderChurnView({
         meant to add up.
       </p>
 
+      {/* Nothing is read until this is pressed. The count beside it is the
+          answer to "what will this cost", refreshed whenever an input that
+          changes the answer is touched. */}
+      {!churn.error && (
+        <div style={styles.actionBar}>
+          <button
+            style={{
+              ...styles.fetchBtn,
+              ...(fetchDisabled ? styles.fetchBtnDisabled : {}),
+              ...(churn.started && !churn.isStreaming ? styles.fetchBtnDone : {}),
+            }}
+            disabled={fetchDisabled}
+            onClick={churn.started && !churn.isStreaming ? churn.refetch : churn.start}
+          >
+            {fetchButtonLabel}
+          </button>
+          <div style={styles.actionText}>
+            <div style={styles.actionHeadline}>{estimateHeadline}</div>
+            {estimateDetail && <div style={styles.actionDetail}>{estimateDetail}</div>}
+          </div>
+        </div>
+      )}
+
       {churn.error && (
         <div style={styles.panel}>
           <h3 style={{ ...styles.panelTitle, ...styles.errorText }}>
@@ -504,16 +610,20 @@ export default function FolderChurnView({
         </div>
       )}
 
-      {!churn.error && churn.isCounting && (
+      {/* Nothing has been read yet and nothing is on its way. Say what the
+          button will do rather than showing empty charts. */}
+      {!churn.error && !churn.started && !aggregate && !emptyScope && !churn.isCounting && (
         <div style={styles.panel}>
-          <h3 style={styles.panelTitle}>Sizing this interval…</h3>
+          <h3 style={styles.panelTitle}>Ready when you are</h3>
           <p style={styles.panelText}>
-            Asking GitHub how many commits it covers before reading any of them.
+            {estimateHeadline}. Press <strong>{fetchButtonLabel}</strong> above to
+            read them; the tiles, charts and table build up as the commits
+            arrive. Nothing is fetched until you ask.
           </p>
         </div>
       )}
 
-      {!churn.error && aggregate && !pathExists && suggestions && (
+      {!churn.error && emptyScope && suggestions && (
         <div style={styles.panel}>
           <h3 style={styles.panelTitle}>
             Nothing has ever lived under <code style={styles.noteCode}>{prefix}</code>
@@ -551,7 +661,7 @@ export default function FolderChurnView({
         </div>
       )}
 
-      {!churn.error && aggregate && pathExists && !pathHadChurn && !churn.isStreaming && (
+      {!churn.error && emptyScope === false && emptyInInterval && (
         <div style={styles.panel}>
           <h3 style={styles.panelTitle}>
             <code style={styles.noteCode}>{prefix}/</code> exists, but nothing under

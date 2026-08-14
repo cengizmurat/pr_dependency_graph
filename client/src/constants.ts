@@ -88,6 +88,12 @@ export const CHURN_RATE_LIMIT_HEADROOM = 0.9;
 
 export const CHURN_MAX_RETRIES = 4;
 
+// History pages read in the background to work out exactly how many commits a
+// window still needs. Each page is one cheap GraphQL request covering 100
+// commits; past this the total is reported without the cached/missing split
+// rather than paging a very long history nobody has asked to fetch yet.
+export const CHURN_HISTORY_PAGE_LIMIT = 20;
+
 // Commits between cache checkpoints during a long fetch.
 export const CHURN_SAVE_EVERY = 200;
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchCommitFiles,
@@ -12,6 +12,7 @@ import type { ChurnCommit } from "../folderChurn";
 import { loadChurnCache, saveChurnCache } from "../churnCache";
 import {
   CHURN_CONCURRENCY,
+  CHURN_HISTORY_PAGE_LIMIT,
   CHURN_MAX_RETRIES,
   CHURN_PROGRESS_MS,
   CHURN_RATE_LIMIT_HEADROOM,
@@ -19,11 +20,11 @@ import {
 } from "../constants";
 
 // The interned directory table and the per-commit records are per repository,
-// not per branch or per window: a commit's diff is the same whichever branch
-// reaches it, and directory indices have to stay stable for records loaded
-// from the cache to keep meaning what they meant. One store per repository is
-// kept for the life of the session, seeded from the persistent cache on first
-// use, and every commit ever fetched stays in it.
+// not per branch, folder or window: a commit's diff is the same whichever
+// query reached it, and directory indices have to stay stable for records
+// loaded from the cache to keep meaning what they meant. One store per
+// repository is kept for the life of the session, seeded from the persistent
+// cache on first use, and every commit ever fetched stays in it.
 interface RepoStore {
   intern: DirIntern;
   commits: Map<string, ChurnCommit>;
@@ -62,10 +63,9 @@ async function checkpoint(owner: string, repo: string): Promise<void> {
 export interface ChurnData {
   dirs: string[];
   commits: ChurnCommit[];
-  // File lists resolved so far, against the number the window needs.
   resolved: number;
   needed: number;
-  // Resolved without a request, because a previous visit already fetched them.
+  // Resolved without a request, because a previous fetch already read them.
   fromCache: number;
   mergesSkipped: number;
   // The hourly budget ran out partway through. Whatever arrived before that is
@@ -74,6 +74,22 @@ export interface ChurnData {
   // Commits whose file list could not be read, for reasons other than the
   // rate limit. One bad commit does not stop the rest.
   failed: number;
+}
+
+// What one press of the fetch button would cost, worked out before it is
+// pressed.
+export interface ChurnEstimate {
+  // Commits the window holds, merges included — what GitHub's history reports.
+  totalCommits: number;
+  // The same window with merges dropped: the commits that actually carry file
+  // changes, and so the number the rest of the tab is about. Null until the
+  // background pass has walked the list.
+  commits: number | null;
+  // Commits whose file lists still have to be read. Null while the background
+  // pass has not resolved it, in which case only the total is known.
+  toFetch: number | null;
+  // Commits already in the cache and free to reuse.
+  cached: number | null;
 }
 
 function isAbort(err: unknown): boolean {
@@ -126,8 +142,8 @@ async function fetchFilesWithRetry(
 
 // A fixed pool of workers pulling from one queue, rather than a batch at a
 // time: a single slow commit then delays only its own slot instead of holding
-// up the whole batch behind it. `stop` lets a spent budget end the run without
-// abandoning the commits already fetched.
+// up the whole batch behind it. `shouldStop` lets a spent budget end the run
+// without abandoning the commits already fetched.
 async function runPool<T>(
   items: readonly T[],
   limit: number,
@@ -144,32 +160,37 @@ async function runPool<T>(
   );
 }
 
-async function fetchHistory(
+// Walks the history from a page already in hand. `maxPages` bounds the walk for
+// the background estimate; the fetch itself passes Infinity.
+async function pageHistory(
   token: string,
   owner: string,
   repo: string,
   branch: string,
   since: string | null,
   until: string | null,
-  firstPage: HistoryCommit[],
-  firstCursor: string | null,
-  hasNextPage: boolean,
+  path: string | null,
+  first: { commits: HistoryCommit[]; hasNextPage: boolean; endCursor: string | null },
+  maxPages: number,
   signal: AbortSignal,
-): Promise<HistoryCommit[]> {
-  const commits = [...firstPage];
-  let cursor = firstCursor;
-  let more = hasNextPage;
+): Promise<{ commits: HistoryCommit[]; complete: boolean }> {
+  const commits = [...first.commits];
+  let cursor = first.endCursor;
+  let more = first.hasNextPage;
+  let pages = 1;
 
   while (more) {
+    if (pages >= maxPages) return { commits, complete: false };
     const page = await fetchCommitHistoryPage(
-      token, owner, repo, branch, cursor, since, until, signal,
+      token, owner, repo, branch, cursor, since, until, path, signal,
     );
     commits.push(...page.commits);
     cursor = page.endCursor;
     more = page.hasNextPage;
+    pages++;
   }
 
-  return commits;
+  return { commits, complete: true };
 }
 
 export function useFolderChurn({
@@ -179,6 +200,7 @@ export function useFolderChurn({
   branch,
   since,
   until,
+  path,
   active,
 }: {
   token: string | null;
@@ -187,13 +209,21 @@ export function useFolderChurn({
   branch: string | null;
   since: string | null;
   until: string | null;
+  // Directory to scope the history to, or null for the whole repository.
+  path: string | null;
   active: boolean;
 }) {
   const queryClient = useQueryClient();
   const enabled = !!token && !!owner && !!repo && !!branch && active;
 
+  // Everything that decides which commits a view needs. Changing any of it
+  // re-sizes the job and re-arms the fetch button.
+  const windowKey = `${owner}/${repo}@${branch}:${since ?? ""}..${until ?? ""}:${path ?? ""}`;
+  const [startedKey, setStartedKey] = useState<string | null>(null);
+  const start = useCallback(() => setStartedKey(windowKey), [windowKey]);
+
   // Whatever has been fetched is worth keeping even if the tab is closed or
-  // the interval changed mid-run, so a checkpoint is forced when the page goes
+  // the inputs changed mid-run, so a checkpoint is forced when the page goes
   // away rather than only every N commits.
   const checkpointRef = useRef<() => void>(() => {});
   checkpointRef.current = () => {
@@ -210,19 +240,44 @@ export function useFolderChurn({
     };
   }, []);
 
-  // Pass one, on every interval change: how big is this job? The history's
-  // totalCount comes back on the very first page, so one cheap request sizes a
-  // window before anything commits to fetching file lists.
+  // Pass one, on every input change: how big is this job? The history's
+  // totalCount comes back on the very first page, so one request sizes a
+  // window — and when a folder is given, the history is scoped to it, so the
+  // number is the commits that actually touched that folder rather than every
+  // commit in the repository.
   const countQuery = useQuery({
-    queryKey: ["churnCount", owner, repo, branch, since, until],
+    queryKey: ["churnCount", owner, repo, branch, since, until, path],
     enabled,
     staleTime: 5 * 60 * 1000,
     queryFn: ({ signal }) =>
-      fetchCommitHistoryPage(token!, owner, repo, branch!, null, since, until, signal),
+      fetchCommitHistoryPage(
+        token!, owner, repo, branch!, null, since, until, path, signal,
+      ),
+  });
+
+  // Pass two, in the background: the rest of the commit list, so the button can
+  // say how many of them still need reading rather than only how many exist.
+  // Bounded, because this runs without being asked.
+  const estimateQuery = useQuery({
+    queryKey: ["churnEstimate", owner, repo, branch, since, until, path],
+    enabled: enabled && countQuery.data !== undefined,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async ({ signal }) => {
+      const first = countQuery.data!;
+      const { commits, complete } = await pageHistory(
+        token!, owner, repo, branch!, since, until, path,
+        first, CHURN_HISTORY_PAGE_LIMIT, signal,
+      );
+      if (!complete) return { commits: null, toFetch: null, cached: null };
+      const store = await getStore(owner, repo);
+      const relevant = commits.filter((c) => !c.isMerge);
+      const cached = relevant.filter((c) => store.commits.has(c.sha)).length;
+      return { commits: relevant.length, toFetch: relevant.length - cached, cached };
+    },
   });
 
   // What is left of the hourly budget. /rate_limit is free, so asking costs
-  // nothing but tells the estimate below whether the interval actually fits.
+  // nothing but tells the estimate whether the window actually fits.
   const rateLimitQuery = useQuery({
     queryKey: ["rateLimit", token],
     enabled,
@@ -231,17 +286,25 @@ export function useFolderChurn({
     queryFn: () => fetchRateLimit(token!),
   });
 
+  // Nothing here costs a request, so a window whose commits are all in the
+  // cache opens without waiting to be asked. Anything that would spend the
+  // budget waits for the button.
+  const isFree = estimateQuery.data?.toFetch === 0;
+
   const dataQuery = useQuery({
-    queryKey: ["churnData", owner, repo, branch, since, until],
-    enabled: enabled && countQuery.data !== undefined,
+    queryKey: ["churnData", owner, repo, branch, since, until, path],
+    enabled:
+      enabled &&
+      countQuery.data !== undefined &&
+      (startedKey === windowKey || isFree),
     staleTime: 5 * 60 * 1000,
     queryFn: async ({ queryKey, signal }): Promise<ChurnData> => {
       const store = await getStore(owner, repo);
       const first = countQuery.data!;
 
-      const history = await fetchHistory(
-        token!, owner, repo, branch!, since, until,
-        first.commits, first.endCursor, first.hasNextPage, signal,
+      const { commits: history } = await pageHistory(
+        token!, owner, repo, branch!, since, until, path,
+        first, Infinity, signal,
       );
 
       // Merge commits drop out here. Their file changes are already
@@ -306,7 +369,7 @@ export function useFolderChurn({
               return;
             }
             // A commit GitHub will not describe (too large, or gone) should
-            // not cost the rest of the interval.
+            // not cost the rest of the window.
             failed++;
           }
 
@@ -325,6 +388,7 @@ export function useFolderChurn({
 
       await checkpoint(owner, repo);
       void rateLimitQuery.refetch();
+      void estimateQuery.refetch();
       return snapshot();
     },
   });
@@ -341,42 +405,60 @@ export function useFolderChurn({
   const data = dataQuery.data ?? null;
   const rateLimit: RateLimitStatus | null = rateLimitQuery.data ?? null;
 
-  // Requests this window needs in total, cache hits already deducted. This is
-  // deliberately the size of the whole job rather than what is left of it: a
-  // warning about the job must not evaporate halfway through just because the
-  // queue has drained past the threshold. Before the history has been paged
-  // the only figure available is the commit count including merges, which is
-  // an upper bound.
+  const estimate: ChurnEstimate | null =
+    countQuery.data === undefined
+      ? null
+      : {
+          totalCommits: countQuery.data.totalCount,
+          commits: estimateQuery.data?.commits ?? null,
+          toFetch: estimateQuery.data?.toFetch ?? null,
+          cached: estimateQuery.data?.cached ?? null,
+        };
+
+  const isStreaming = dataQuery.isFetching && (!data || data.resolved < data.needed);
+
+  // Requests this window needs, cache hits already deducted where they are
+  // known. Deliberately the size of the whole job rather than what is left of
+  // it, so a warning about the job does not evaporate halfway through.
   const requiredRequests = data
     ? data.needed - data.fromCache
-    : (countQuery.data?.totalCount ?? null);
+    : (estimate?.toFetch ?? estimate?.totalCommits ?? null);
+
+  // Is there anything left to read? True before the button is pressed and
+  // while commits are still arriving, false once the window is complete.
+  const hasOutstandingWork = !data || data.resolved < data.needed;
 
   // Headroom rather than the bare remainder, so the warning arrives while
-  // choosing a narrower interval is still worth doing.
+  // choosing a narrower interval is still worth doing. It is shown from the
+  // moment an input makes the job too big — before anything is fetched — and
+  // stops once the window has been read, when it has been overtaken by events.
   const mayExceedRateLimit =
     requiredRequests !== null &&
+    requiredRequests > 0 &&
     rateLimit !== null &&
+    hasOutstandingWork &&
     requiredRequests > rateLimit.remaining * CHURN_RATE_LIMIT_HEADROOM;
 
   const error = countQuery.error ?? dataQuery.error;
 
-  const isStreaming = dataQuery.isFetching && (!data || data.resolved < data.needed);
-
   return {
     data,
-    totalCount: countQuery.data?.totalCount ?? null,
+    estimate,
     requiredRequests,
     rateLimit,
-    // Only worth saying while there is still fetching to do; once the window
-    // is complete the warning has been overtaken by events.
-    mayExceedRateLimit: mayExceedRateLimit && (isStreaming || !data),
+    mayExceedRateLimit,
+    // True once this exact window has been asked for, or is free to open.
+    started: startedKey === windowKey || isFree,
+    start,
     // The tree is a nicety; failing to read it only costs the GONE badges.
     tipDirs: treeQuery.data && !treeQuery.data.truncated ? treeQuery.data.dirs : null,
     isCounting: countQuery.isLoading,
+    isEstimating: estimateQuery.isFetching,
     isStreaming,
     error: error ? (error as Error).message : null,
     refetch: () => {
       countQuery.refetch();
+      estimateQuery.refetch();
       dataQuery.refetch();
       rateLimitQuery.refetch();
     },
