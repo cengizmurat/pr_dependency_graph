@@ -252,13 +252,34 @@ export default function FolderChurnView({
     return all;
   }, [historyDirs, churn.tipDirs]);
 
-  const autocompleteOptions = useMemo(
-    () =>
-      [...knownDirs]
-        .sort((a, b) => a.localeCompare(b))
-        .map((dir) => ({ value: dir })),
-    [knownDirs],
-  );
+  // Ordered so the list reads top-down rather than as one flat alphabet:
+  // shallowest folders first, then the ones still at the branch tip ahead of
+  // the ones that only live in the history, then alphabetically. A folder that
+  // is gone is labelled as such but still offered — it was real churn at the
+  // time, and typing its path is a legitimate thing to want.
+  const autocompleteOptions = useMemo(() => {
+    const tip = churn.tipDirs;
+    return [...knownDirs]
+      .map((dir) => ({
+        dir,
+        depth: dir.split("/").length,
+        // Unknowable when the branch tree was too large to read, in which case
+        // nothing is marked rather than everything being guessed at.
+        gone: tip !== null && !tip.has(dir),
+      }))
+      .sort(
+        (a, b) =>
+          a.depth - b.depth ||
+          Number(a.gone) - Number(b.gone) ||
+          a.dir.localeCompare(b.dir),
+      )
+      .map(({ dir, gone }) => ({
+        // The label is what the list shows; the value is what typing it fills
+        // in, and what the filter matches, so the marker never has to be typed.
+        value: dir,
+        label: gone ? `(gone) ${dir}` : dir,
+      }));
+  }, [knownDirs, churn.tipDirs]);
 
   const pathExists = prefix === "" || knownDirs.has(prefix);
   const pathHadChurn = prefix === "" || historyDirs.has(prefix);

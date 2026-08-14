@@ -50,6 +50,12 @@ subfolder get their own bucket, `(root files)` at the root and `(direct files)`
 deeper down. A folder that no longer exists at the branch tip is badged `GONE`
 rather than hidden — it was real churn at the time.
 
+The box completes from every directory the history knows about, listed
+top-down rather than as one flat alphabet: shallowest folders first, and within
+each level the ones still at the branch tip ahead of the ones that only live in
+the history, which are marked `(gone)`. Picking one fills in its plain path —
+the marker is a label, never part of what you typed.
+
 Two folder views are not a breakdown of each other. A change to
 `src/mastra/tools/x.ts` counts for `src` at the root and for `mastra` inside
 `src/`; they overlap rather than partition, and they are not meant to add up.
