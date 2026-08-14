@@ -187,6 +187,16 @@ export interface CommitFile {
   changes: number;
 }
 
+// What is left of the token's hourly REST budget. Read from /rate_limit,
+// which is itself free — it does not spend a request — so the cost of a
+// pending fetch can be weighed against the budget before starting it.
+export interface RateLimitStatus {
+  limit: number;
+  remaining: number;
+  // Epoch ms when the window resets.
+  resetAt: number;
+}
+
 // Every directory that exists at a branch tip, used to tell folders that are
 // still there from ones that only exist in the history. `truncated` is
 // GitHub's flag for a tree too large to return in one response — the GONE

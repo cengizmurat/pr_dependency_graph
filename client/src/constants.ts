@@ -80,10 +80,11 @@ export const STATE_ICONS: Record<string, string> = {
 // window to a few seconds without tripping GitHub's secondary rate limit.
 export const CHURN_CONCURRENCY = 8;
 
-// Above this many commits in the window the fetch waits for an explicit click.
-// At one request per commit it is also the point where a window starts to eat
-// a noticeable share of the 5,000-per-hour quota.
-export const CHURN_CONFIRM_THRESHOLD = 600;
+// A fetch is flagged as likely to run out of budget once it needs more than
+// this share of what is left of the hourly quota. Below 1 so the warning
+// arrives while a narrower interval is still worth choosing, rather than at
+// the moment the requests start failing.
+export const CHURN_RATE_LIMIT_HEADROOM = 0.9;
 
 export const CHURN_MAX_RETRIES = 4;
 

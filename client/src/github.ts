@@ -17,6 +17,7 @@ import type {
   CommitFile,
   CommitHistoryPage,
   RepoTreeDirs,
+  RateLimitStatus,
 } from "./types";
 import { getToken } from "./auth";
 
@@ -1078,6 +1079,15 @@ interface RawCommitFile {
 // enough that the cut is worth the bounded request count.
 const COMMIT_FILES_PAGE_LIMIT = 10;
 
+// GitHub says "API rate limit exceeded for ..." when the hourly budget is
+// gone, and "You have exceeded a secondary rate limit" when a burst tripped
+// the short-term one. Only the first is worth stopping for.
+function isPrimaryRateLimitMessage(message: unknown): boolean {
+  if (typeof message !== "string") return false;
+  const m = message.toLowerCase();
+  return m.includes("rate limit exceeded") && !m.includes("secondary");
+}
+
 // The one thing the GraphQL API cannot answer: which paths a commit touched.
 // The `Commit` object exposes additions, deletions and a changed-file *count*,
 // but no diff and no file connection, so the per-commit file list has to come
@@ -1110,10 +1120,23 @@ export async function fetchCommitFiles(
       const body = await res.json().catch(() => null);
       const error = new Error(
         body?.message ?? `GitHub API returned ${res.status}`,
-      ) as Error & { status?: number; retryAfter?: number };
+      ) as Error & {
+        status?: number;
+        retryAfter?: number;
+        rateLimited?: boolean;
+      };
       error.status = res.status;
       const retryAfter = res.headers.get("Retry-After");
       if (retryAfter) error.retryAfter = parseInt(retryAfter, 10);
+      // A spent hourly budget is not something backing off can recover from
+      // inside a session — the window can be an hour away — while a tripped
+      // secondary limit clears in seconds. Telling them apart decides between
+      // stopping and retrying, so it is read from the message as well as the
+      // header: a proxy that drops the header would otherwise leave the
+      // client retrying into a wall it cannot clear.
+      error.rateLimited =
+        res.headers.get("X-RateLimit-Remaining") === "0" ||
+        isPrimaryRateLimitMessage(body?.message);
       throw error;
     }
 
@@ -1164,4 +1187,20 @@ export async function fetchRepoTreeDirs(
 function dirname(path: string): string {
   const slash = path.lastIndexOf("/");
   return slash === -1 ? "" : path.slice(0, slash);
+}
+
+// What is left of the hourly REST budget. This endpoint is free — GitHub
+// documents it as not counting against the limit — so it can be asked before
+// every fetch to weigh the cost of an interval against what remains.
+export async function fetchRateLimit(token: string): Promise<RateLimitStatus> {
+  const data = await fetchRestJson<{
+    resources?: { core?: { limit?: number; remaining?: number; reset?: number } };
+  }>(token, "https://api.github.com/rate_limit");
+
+  const core = data.resources?.core;
+  return {
+    limit: core?.limit ?? 5000,
+    remaining: core?.remaining ?? 5000,
+    resetAt: (core?.reset ?? Math.floor(Date.now() / 1000) + 3600) * 1000,
+  };
 }

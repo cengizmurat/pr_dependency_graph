@@ -14,5 +14,6 @@ export {
   fetchCommitHistoryPage,
   fetchCommitFiles,
   fetchRepoTreeDirs,
+  fetchRateLimit,
 } from "./github";
 export { buildDependencyGraph } from "./graph";

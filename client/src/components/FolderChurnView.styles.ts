@@ -322,8 +322,40 @@ export const styles: Record<string, React.CSSProperties> = {
     fontWeight: 500,
     cursor: "pointer",
   },
+  panelWarning: {
+    borderColor: "var(--churn-warn-border)",
+    background: "var(--churn-warn-bg)",
+  },
+
+  // The progress strip sits above the charts rather than replacing them: the
+  // numbers are live from the first commit, and this says how much is still
+  // to come.
+  progressPanel: {
+    marginTop: 16,
+    padding: "10px 14px",
+    borderRadius: 8,
+    border: "1px solid var(--color-border)",
+    background: "var(--churn-tile-bg)",
+  },
+  progressRow: {
+    display: "flex",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  progressText: {
+    fontSize: 12,
+    color: "var(--color-text-secondary)",
+  },
+  progressPercent: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: "var(--color-text)",
+    fontVariantNumeric: "tabular-nums",
+    flexShrink: 0,
+  },
   progressTrack: {
-    marginTop: 10,
+    marginTop: 8,
     height: 4,
     borderRadius: 2,
     background: "var(--color-border)",

@@ -220,10 +220,14 @@ export default function FolderChurnView({
   // reassign a colour without the folder list changing too.
   const [charted, setCharted] = useState<{ folder: string; slot: number }[]>([]);
   const seededPrefixRef = useRef<string | null>(null);
+  // Once the viewer has picked folders themselves, the automatic fill stops
+  // interfering with the selection.
+  const pickedByHandRef = useRef(false);
   const [capNotice, setCapNotice] = useState(false);
 
   const toggleFolder = useCallback((folder: string) => {
     setCapNotice(false);
+    pickedByHandRef.current = true;
     setCharted((prev) => {
       if (prev.some((c) => c.folder === folder)) {
         return prev.filter((c) => c.folder !== folder);
@@ -238,19 +242,46 @@ export default function FolderChurnView({
   }, []);
 
   // A different folder prefix is a different set of folders, so the selection
-  // starts again — seeded with the busiest few, and only once the fetch has
-  // finished so the seed is not chosen from a partial history.
+  // starts again, filled with the busiest few. While commits are still coming
+  // in the fill tops up as new folders appear rather than waiting for the end
+  // — but it only ever claims free slots, never moves a folder already drawn,
+  // so a line's colour is fixed from the moment it is first drawn.
   useEffect(() => {
-    if (seededPrefixRef.current === prefix) return;
-    if (!aggregate || !data || data.resolved < data.needed) return;
-    setCharted(
-      aggregate.folders
-        .slice(0, CHURN_DEFAULT_SERIES)
-        .map((f, slot) => ({ folder: f.folder, slot })),
-    );
-    setCapNotice(false);
-    seededPrefixRef.current = prefix;
-  }, [prefix, aggregate, data]);
+    if (!aggregate) return;
+    const isNewPrefix = seededPrefixRef.current !== prefix;
+    if (isNewPrefix) {
+      seededPrefixRef.current = prefix;
+      pickedByHandRef.current = false;
+      setCapNotice(false);
+      setCharted(
+        aggregate.folders
+          .slice(0, CHURN_DEFAULT_SERIES)
+          .map((f, slot) => ({ folder: f.folder, slot })),
+      );
+      return;
+    }
+    // The top-up keeps running rather than stopping when the stream ends: the
+    // last folders to appear arrive in the same update that ends it, and would
+    // otherwise never be offered a slot. It only ever claims free ones, so
+    // running again costs nothing once there is nothing left to add.
+    if (pickedByHandRef.current) return;
+
+    setCharted((prev) => {
+      if (prev.length >= CHURN_DEFAULT_SERIES) return prev;
+      const already = new Set(prev.map((c) => c.folder));
+      const taken = new Set(prev.map((c) => c.slot));
+      const next = [...prev];
+      for (const folder of aggregate.folders) {
+        if (next.length >= CHURN_DEFAULT_SERIES) break;
+        if (already.has(folder.folder)) continue;
+        const slot = [...Array(CHURN_MAX_SERIES).keys()].find((s) => !taken.has(s));
+        if (slot === undefined) break;
+        taken.add(slot);
+        next.push({ folder: folder.folder, slot });
+      }
+      return next.length === prev.length ? prev : next;
+    });
+  }, [prefix, aggregate]);
 
   const colorFor = useCallback(
     (folder: string) => {
@@ -290,7 +321,6 @@ export default function FolderChurnView({
 
   const progress =
     data && data.needed > 0 ? Math.round((data.resolved / data.needed) * 100) : 0;
-  const isStreaming = !!data && data.resolved < data.needed;
 
   return (
     <div style={styles.container}>
@@ -424,43 +454,66 @@ export default function FolderChurnView({
         </div>
       )}
 
-      {!churn.error && churn.needsConfirm && (
-        <div style={styles.panel}>
+      {/* Sizing the interval is one cheap request, so it happens on every
+          change and reports before the per-commit fetch gets going. The
+          warning is information, not a gate: the fetch runs either way and the
+          charts fill in as commits land. */}
+      {!churn.error && churn.mayExceedRateLimit && (
+        <div style={{ ...styles.panel, ...styles.panelWarning }}>
           <h3 style={styles.panelTitle}>
-            {churn.totalCount?.toLocaleString()} commits in this interval
+            That is a lot of commits for one interval
           </h3>
           <p style={styles.panelText}>
-            GitHub's API returns a commit's file list one commit at a time, so
-            this needs about {churn.totalCount?.toLocaleString()} requests
-            against an hourly budget of 5,000. They are cached by commit, so it
-            is paid once — but a narrower interval or a shorter branch gets you
-            an answer sooner.
+            This interval needs about{" "}
+            {churn.requiredRequests?.toLocaleString()} commit
+            {churn.requiredRequests === 1 ? "" : "s"} that have not been read
+            before, and GitHub returns a commit's file list one commit at a
+            time. Your hourly budget has{" "}
+            {churn.rateLimit?.remaining.toLocaleString()} of{" "}
+            {churn.rateLimit?.limit.toLocaleString()} requests left
+            {churn.rateLimit
+              ? `, resetting at ${new Date(churn.rateLimit.resetAt).toLocaleTimeString()}`
+              : ""}
+            , so the fetch may run out before it finishes.
           </p>
-          <button style={styles.primaryBtn} onClick={churn.confirm}>
-            Load {churn.totalCount?.toLocaleString()} commits
+          <p style={styles.panelText}>
+            Nothing is lost if it does: everything read is kept, the charts
+            below build up as the commits arrive, and picking up again after the
+            reset only fetches what is still missing. A narrower interval gets
+            you a complete answer sooner.
+          </p>
+        </div>
+      )}
+
+      {!churn.error && data?.rateLimited && (
+        <div style={{ ...styles.panel, ...styles.panelWarning }}>
+          <h3 style={styles.panelTitle}>The hourly budget ran out</h3>
+          <p style={styles.panelText}>
+            {data.resolved.toLocaleString()} of {data.needed.toLocaleString()}{" "}
+            commits were read before GitHub stopped answering, and those are
+            what the charts below show. The budget resets at{" "}
+            {churn.rateLimit
+              ? new Date(churn.rateLimit.resetAt).toLocaleTimeString()
+              : "the top of the hour"}
+            ; everything already read is cached, so continuing then costs only
+            the remaining {(data.needed - data.resolved).toLocaleString()}.
+          </p>
+          <button style={styles.primaryBtn} onClick={churn.refetch}>
+            Try again
           </button>
         </div>
       )}
 
-      {!churn.error && !churn.needsConfirm && (churn.isCounting || churn.isLoading) && (
+      {!churn.error && churn.isCounting && (
         <div style={styles.panel}>
-          <h3 style={styles.panelTitle}>
-            {churn.isCounting ? "Counting commits…" : "Reading commit contents…"}
-          </h3>
+          <h3 style={styles.panelTitle}>Sizing this interval…</h3>
           <p style={styles.panelText}>
-            {data
-              ? `${data.resolved.toLocaleString()} of ${data.needed.toLocaleString()} commits read.`
-              : "Asking GitHub how much history this interval covers."}
+            Asking GitHub how many commits it covers before reading any of them.
           </p>
-          {data && data.needed > 0 && (
-            <div style={styles.progressTrack}>
-              <div style={{ ...styles.progressFill, width: `${progress}%` }} />
-            </div>
-          )}
         </div>
       )}
 
-      {!churn.error && !churn.needsConfirm && aggregate && !pathExists && suggestions && (
+      {!churn.error && aggregate && !pathExists && suggestions && (
         <div style={styles.panel}>
           <h3 style={styles.panelTitle}>
             Nothing has ever lived under <code style={styles.noteCode}>{prefix}</code>
@@ -498,7 +551,7 @@ export default function FolderChurnView({
         </div>
       )}
 
-      {!churn.error && !churn.needsConfirm && aggregate && pathExists && !pathHadChurn && (
+      {!churn.error && aggregate && pathExists && !pathHadChurn && !churn.isStreaming && (
         <div style={styles.panel}>
           <h3 style={styles.panelTitle}>
             <code style={styles.noteCode}>{prefix}/</code> exists, but nothing under
@@ -512,12 +565,33 @@ export default function FolderChurnView({
         </div>
       )}
 
-      {!churn.error && !churn.needsConfirm && aggregate && pathExists && pathHadChurn && (
+      {!churn.error && aggregate && pathExists && pathHadChurn && (
         <>
-          {isStreaming && (
+          {/* The charts are built from whatever has arrived, always — the
+              progress strip says so rather than hiding them behind a spinner. */}
+          {churn.isStreaming && data && (
+            <div style={styles.progressPanel}>
+              <div style={styles.progressRow}>
+                <span style={styles.progressText}>
+                  Reading commits — {data.resolved.toLocaleString()} of{" "}
+                  {data.needed.toLocaleString()}
+                  {data.fromCache > 0 &&
+                    ` (${data.fromCache.toLocaleString()} already cached)`}
+                  . The charts below grow as they arrive.
+                </span>
+                <span style={styles.progressPercent}>{progress}%</span>
+              </div>
+              <div style={styles.progressTrack}>
+                <div style={{ ...styles.progressFill, width: `${progress}%` }} />
+              </div>
+            </div>
+          )}
+
+          {!churn.isStreaming && data && data.failed > 0 && (
             <p style={styles.note}>
-              Still reading commits — {data!.resolved.toLocaleString()} of{" "}
-              {data!.needed.toLocaleString()} so far, so these numbers will grow.
+              {data.failed.toLocaleString()} commit
+              {data.failed === 1 ? "" : "s"} could not be read and{" "}
+              {data.failed === 1 ? "is" : "are"} left out of these numbers.
             </p>
           )}
 

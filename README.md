@@ -69,16 +69,29 @@ the one it joined.
 GitHub's GraphQL API has no field for the files a commit touched — `Commit`
 carries additions, deletions and a changed-file count, but no diff — so the file
 list comes from `GET /repos/{owner}/{repo}/commits/{sha}`, one request per
-commit. GraphQL still does the cheap half: the branch list, and a history query
-whose `totalCount` says how big an interval is before a single file list is
-fetched. Above ~600 commits the tab reports the size and waits for you to
-confirm.
+commit. GraphQL does the cheap half: the branch list, and a history query whose
+`totalCount` sizes an interval in a single request.
 
-A commit's diff never changes, so each one is fetched at most once: the interned
-per-commit records are cached in `localStorage` by SHA and shared across
-branches and intervals. Commit dates are stored as days since the unix epoch, so
-switching branches does not invalidate a selected date range, and every folder
-prefix, time bucket and measure is recomputed in the browser without refetching.
+Changing the interval re-sizes it that way before reading anything, and weighs
+the result against what `GET /rate_limit` says is left of the hourly budget —
+an endpoint that is itself free. If the interval needs more requests than the
+budget can cover, the tab says so and carries on: the message is information,
+not a gate. The charts are built from whatever has arrived either way, growing
+as commits land, with a progress strip above them saying how much is still to
+come. If the budget does run out mid-fetch, the reading stops there rather than
+retrying into a wall an hour wide, and everything read so far stays on screen.
+
+Nothing is ever fetched twice. A commit's diff cannot change, so the interned
+per-commit records are kept in IndexedDB keyed by SHA, written incrementally as
+they arrive and flushed when the page is hidden, so even an interrupted run
+keeps what it read. The cache is per repository rather than per branch or
+interval, so widening a window, switching branches or coming back tomorrow costs
+only the commits that are genuinely new — and picking up after a rate-limit
+reset fetches only the remainder. Commit dates are stored as days since the unix
+epoch, so switching branches does not invalidate a selected date range, and
+every folder prefix, time bucket and measure is recomputed in the browser
+without refetching. (Where IndexedDB is unavailable, a capped `localStorage`
+cache stands in.)
 
 ## Card Age Is Time in the Current State
 
