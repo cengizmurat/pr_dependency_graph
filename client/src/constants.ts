@@ -72,3 +72,75 @@ export const STATE_ICONS: Record<string, string> = {
   DISMISSED: "M8 0a8 8 0 110 16A8 8 0 018 0zm3.28 5.78a.75.75 0 00-1.06-1.06L8 6.94 5.78 4.72a.75.75 0 00-1.06 1.06L6.94 8l-2.22 2.22a.75.75 0 101.06 1.06L8 9.06l2.22 2.22a.75.75 0 101.06-1.06L9.06 8z",
   REQUESTED: "M8 2a6 6 0 110 12A6 6 0 018 2zm0 1.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9zM8 5a.75.75 0 01.75.75v1.5h1.5a.75.75 0 010 1.5h-1.5v1.5a.75.75 0 01-1.5 0v-1.5h-1.5a.75.75 0 010-1.5h1.5v-1.5A.75.75 0 018 5z",
 };
+
+// --- Folder churn tab ---
+
+// A folder's file lists are fetched one REST request per commit, so the
+// request count is the commit count. Eight at a time keeps a few-hundred-commit
+// window to a few seconds without tripping GitHub's secondary rate limit.
+export const CHURN_CONCURRENCY = 8;
+
+// A fetch is flagged as likely to run out of budget once it needs more than
+// this share of what is left of the hourly quota. Below 1 so the warning
+// arrives while a narrower interval is still worth choosing, rather than at
+// the moment the requests start failing.
+export const CHURN_RATE_LIMIT_HEADROOM = 0.9;
+
+export const CHURN_MAX_RETRIES = 4;
+
+// History pages read in the background to work out exactly how many commits a
+// window still needs. Each page is one cheap GraphQL request covering 100
+// commits; past this the total is reported without the cached/missing split
+// rather than paging a very long history nobody has asked to fetch yet.
+export const CHURN_HISTORY_PAGE_LIMIT = 20;
+
+// Commits between cache checkpoints during a long fetch.
+export const CHURN_SAVE_EVERY = 200;
+
+// Shortest gap between progress renders while commits stream in. Publishing
+// every commit would re-aggregate the whole history once per commit.
+export const CHURN_PROGRESS_MS = 250;
+
+// The trend chart holds at most this many folders — the length of the colour
+// palette, and about as many lines as stay readable at once.
+export const CHURN_MAX_SERIES = 8;
+
+// Folders charted automatically when a new folder prefix is opened. Below the
+// cap, so there is room to add a few by hand before anything has to be dropped.
+export const CHURN_DEFAULT_SERIES = 5;
+
+// Colour follows the folder, never its rank: a slot is claimed when a folder
+// joins the chart and held until it leaves, so changing the interval, branch,
+// measure or bucket size never repaints a series. The values behind these
+// custom properties are a palette validated for colour-vision-deficiency
+// separation and for contrast against both the light and the dark surface.
+export const CHURN_SERIES_VARS = [
+  "--churn-series-1",
+  "--churn-series-2",
+  "--churn-series-3",
+  "--churn-series-4",
+  "--churn-series-5",
+  "--churn-series-6",
+  "--churn-series-7",
+  "--churn-series-8",
+] as const;
+
+export function churnSeriesColor(slot: number): string {
+  return `var(${CHURN_SERIES_VARS[slot % CHURN_SERIES_VARS.length]})`;
+}
+
+export const CHURN_INTERVAL_PRESETS = [
+  { id: "all", label: "All time", days: null },
+  { id: "12m", label: "12 months", days: 365 },
+  { id: "6m", label: "6 months", days: 182 },
+  { id: "90d", label: "90 days", days: 90 },
+  { id: "30d", label: "30 days", days: 30 },
+] as const;
+
+export type ChurnIntervalPreset = (typeof CHURN_INTERVAL_PRESETS)[number]["id"];
+
+export const CHURN_DEFAULT_PRESET: ChurnIntervalPreset = "12m";
+
+// GitHub's "file-directory" octicon (16px), the tab's glyph.
+export const FOLDER_ICON_PATH =
+  "M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z";

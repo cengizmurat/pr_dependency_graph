@@ -1,0 +1,283 @@
+import type { ChurnCommit, DirEntry } from "./folderChurn";
+
+// A commit's diff never changes, so the expensive half of folder churn — one
+// REST request per commit for its file list — only ever has to be paid once
+// for a given commit, ever. Everything fetched is kept, keyed by SHA, so
+// widening an interval, switching branches or coming back tomorrow costs only
+// the commits that are genuinely new.
+//
+// IndexedDB is the store because it holds orders of magnitude more than
+// localStorage and takes incremental writes: only the commits added since the
+// last checkpoint are written, rather than the whole history being
+// re-serialised each time. localStorage stands in where IndexedDB is
+// unavailable (private windows, old browsers), and only there does a size cap
+// and any eviction apply.
+
+const DB_NAME = "pr-graph-folder-churn";
+const DB_VERSION = 1;
+const COMMIT_STORE = "commits";
+const DIR_STORE = "dirs";
+const REPO_INDEX = "repo";
+
+const LS_PREFIX = "folder-churn:";
+const LS_VERSION = 2;
+// Only the localStorage fallback needs a ceiling; its budget is shared with
+// everything else the origin stores.
+const LS_MAX_BYTES = 2_000_000;
+
+type StoredCommit = [number, DirEntry[]];
+
+export interface LoadedCache {
+  dirs: string[];
+  commits: Map<string, ChurnCommit>;
+}
+
+export interface CacheWrite {
+  dirs: readonly string[];
+  // Every commit known for the repository. The localStorage fallback rewrites
+  // from this; IndexedDB ignores it.
+  all: ReadonlyMap<string, ChurnCommit>;
+  // Commits added since the last checkpoint — all IndexedDB has to write.
+  added: readonly ChurnCommit[];
+}
+
+function repoKey(owner: string, repo: string): string {
+  return `${owner.toLowerCase()}/${repo.toLowerCase()}`;
+}
+
+// --- IndexedDB ------------------------------------------------------------
+
+let dbPromise: Promise<IDBDatabase | null> | null = null;
+
+function openDb(): Promise<IDBDatabase | null> {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve) => {
+    if (typeof indexedDB === "undefined") return resolve(null);
+    let request: IDBOpenDBRequest;
+    try {
+      request = indexedDB.open(DB_NAME, DB_VERSION);
+    } catch {
+      return resolve(null);
+    }
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(COMMIT_STORE)) {
+        const store = db.createObjectStore(COMMIT_STORE, { keyPath: "k" });
+        store.createIndex(REPO_INDEX, "repo", { unique: false });
+      }
+      if (!db.objectStoreNames.contains(DIR_STORE)) {
+        db.createObjectStore(DIR_STORE, { keyPath: "repo" });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => resolve(null);
+    request.onblocked = () => resolve(null);
+  });
+  return dbPromise;
+}
+
+function promisify<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+interface CommitRecord {
+  k: string;
+  repo: string;
+  sha: string;
+  day: number;
+  entries: DirEntry[];
+}
+
+async function loadFromDb(db: IDBDatabase, key: string): Promise<LoadedCache> {
+  const tx = db.transaction([COMMIT_STORE, DIR_STORE], "readonly");
+  const records = await promisify<CommitRecord[]>(
+    tx.objectStore(COMMIT_STORE).index(REPO_INDEX).getAll(key),
+  );
+  const dirRow = await promisify<{ repo: string; dirs: string[] } | undefined>(
+    tx.objectStore(DIR_STORE).get(key),
+  );
+
+  const commits = new Map<string, ChurnCommit>();
+  for (const record of records) {
+    commits.set(record.sha, {
+      sha: record.sha,
+      day: record.day,
+      entries: record.entries,
+    });
+  }
+  // Directory indices are only meaningful against the table they were interned
+  // into, so a missing table invalidates the commits that reference it.
+  if (!dirRow) return { dirs: [], commits: new Map() };
+  return { dirs: dirRow.dirs, commits };
+}
+
+async function saveToDb(
+  db: IDBDatabase,
+  key: string,
+  write: CacheWrite,
+): Promise<void> {
+  const tx = db.transaction([COMMIT_STORE, DIR_STORE], "readwrite");
+  const commitStore = tx.objectStore(COMMIT_STORE);
+  for (const commit of write.added) {
+    commitStore.put({
+      // NUL separates the two halves of the key: it cannot occur in an
+      // owner, a repository name or a SHA. Written as an escape rather than
+      // a literal byte, which would make this source a binary file to every
+      // tool that reads it.
+      k: `${key}\u0000${commit.sha}`,
+      repo: key,
+      sha: commit.sha,
+      day: commit.day,
+      entries: commit.entries,
+    });
+  }
+  // The directory table grows as commits are interned, so it is rewritten
+  // whenever commits are; it is one small array.
+  tx.objectStore(DIR_STORE).put({ repo: key, dirs: [...write.dirs] });
+
+  await new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+// --- localStorage fallback ------------------------------------------------
+
+interface StoredCache {
+  v: number;
+  dirs: string[];
+  commits: Record<string, StoredCommit>;
+  touched: number;
+}
+
+function loadFromLocalStorage(key: string): LoadedCache {
+  const empty: LoadedCache = { dirs: [], commits: new Map() };
+  let parsed: StoredCache;
+  try {
+    const raw = localStorage.getItem(LS_PREFIX + key);
+    if (!raw) return empty;
+    parsed = JSON.parse(raw) as StoredCache;
+  } catch {
+    return empty;
+  }
+  if (parsed?.v !== LS_VERSION || !Array.isArray(parsed.dirs)) return empty;
+
+  const commits = new Map<string, ChurnCommit>();
+  for (const [sha, stored] of Object.entries(parsed.commits ?? {})) {
+    if (!Array.isArray(stored) || stored.length !== 2) continue;
+    commits.set(sha, { sha, day: stored[0], entries: stored[1] });
+  }
+  return { dirs: parsed.dirs, commits };
+}
+
+function saveToLocalStorage(key: string, write: CacheWrite): void {
+  const storageKey = LS_PREFIX + key;
+  // Oldest first, so trimming to fit gives up the commits least likely to be
+  // inside a default window.
+  const ordered = [...write.all.values()].sort((a, b) => a.day - b.day);
+
+  const serialize = (from: number): string => {
+    const commits: Record<string, StoredCommit> = {};
+    for (let i = from; i < ordered.length; i++) {
+      commits[ordered[i].sha] = [ordered[i].day, ordered[i].entries];
+    }
+    return JSON.stringify({
+      v: LS_VERSION,
+      dirs: [...write.dirs],
+      commits,
+      touched: Date.now(),
+    } satisfies StoredCache);
+  };
+
+  let serialized = serialize(0);
+  let from = 0;
+  while (serialized.length > LS_MAX_BYTES && from < ordered.length) {
+    from += Math.max(1, Math.ceil((ordered.length - from) / 4));
+    serialized = serialize(from);
+  }
+
+  try {
+    localStorage.setItem(storageKey, serialized);
+  } catch {
+    evictOtherRepos(storageKey);
+    try {
+      localStorage.setItem(storageKey, serialized);
+    } catch {
+      try {
+        localStorage.removeItem(storageKey);
+      } catch {
+        /* nothing further to try */
+      }
+    }
+  }
+}
+
+function evictOtherRepos(keepKey: string): void {
+  const victims: { key: string; touched: number }[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key?.startsWith(LS_PREFIX) || key === keepKey) continue;
+    let touched = 0;
+    try {
+      touched = (JSON.parse(localStorage.getItem(key) ?? "{}") as StoredCache).touched ?? 0;
+    } catch {
+      /* an unreadable entry is evicted first */
+    }
+    victims.push({ key, touched });
+  }
+  victims.sort((a, b) => a.touched - b.touched);
+  for (const victim of victims) {
+    try {
+      localStorage.removeItem(victim.key);
+    } catch {
+      /* nothing further to try */
+    }
+  }
+}
+
+// --- Public API -----------------------------------------------------------
+
+export async function loadChurnCache(
+  owner: string,
+  repo: string,
+): Promise<LoadedCache> {
+  const key = repoKey(owner, repo);
+  const db = await openDb();
+  if (db) {
+    try {
+      const cached = await loadFromDb(db, key);
+      if (cached.commits.size > 0) return cached;
+      // Nothing in IndexedDB yet: a cache written before the move is still
+      // worth reading once, and is written back to IndexedDB on the next save.
+      const legacy = loadFromLocalStorage(key);
+      return legacy.commits.size > 0 ? legacy : cached;
+    } catch {
+      /* fall through to localStorage */
+    }
+  }
+  return loadFromLocalStorage(key);
+}
+
+export async function saveChurnCache(
+  owner: string,
+  repo: string,
+  write: CacheWrite,
+): Promise<void> {
+  if (write.added.length === 0) return;
+  const key = repoKey(owner, repo);
+  const db = await openDb();
+  if (db) {
+    try {
+      await saveToDb(db, key, write);
+      return;
+    } catch {
+      // Quota, a private window, or a blocked upgrade — the localStorage path
+      // still gives some caching rather than none.
+    }
+  }
+  saveToLocalStorage(key, write);
+}

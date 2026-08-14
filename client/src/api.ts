@@ -10,5 +10,12 @@ export {
   fetchWorkflowRuns,
   fetchWorkflowRun,
   fetchWorkflowRunJobs,
+  fetchBranches,
+  fetchCommitHistoryPage,
+  fetchCommitFiles,
+  fetchRepoTreeDirs,
+  fetchRateLimit,
+  getObservedRateLimit,
+  subscribeRateLimit,
 } from "./github";
 export { buildDependencyGraph } from "./graph";

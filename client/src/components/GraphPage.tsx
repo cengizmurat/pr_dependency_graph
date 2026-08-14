@@ -18,6 +18,7 @@ import FeatureAnnouncementPopup from "./FeatureAnnouncement";
 import PageTabs from "./PageTabs";
 import type { PageTab } from "./PageTabs";
 import WorkflowsView from "./WorkflowsView";
+import FolderChurnView from "./FolderChurnView";
 import { styles, dropdownStyles, BANNER_EDGE_GAP } from "./GraphPage.styles";
 
 function looksLikeRepoNotFound(message: string): boolean {
@@ -207,18 +208,20 @@ export default function GraphPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
 
-  // The page has two views selected by a tab bar: the PR dependency graph
-  // (default) and the GitHub Actions workflows browser. The active tab lives in
-  // the URL so a view can be bookmarked or shared; switching pushes history so
-  // the back button walks out of the drill-down.
+  // The page has three views selected by a tab bar: the PR dependency graph
+  // (default), the GitHub Actions workflows browser and the folder churn
+  // report. The active tab lives in the URL so a view can be bookmarked or
+  // shared; switching pushes history so the back button walks out of the
+  // drill-down.
+  const tabParam = searchParams.get("tab");
   const activeTab: PageTab =
-    searchParams.get("tab") === "workflows" ? "workflows" : "prs";
+    tabParam === "workflows" || tabParam === "churn" ? tabParam : "prs";
   const setActiveTab = useCallback(
     (next: PageTab) => {
       setSearchParams((prev) => {
         const params = new URLSearchParams(prev);
-        if (next === "workflows") params.set("tab", "workflows");
-        else params.delete("tab");
+        if (next === "prs") params.delete("tab");
+        else params.set("tab", next);
         return params;
       });
     },
@@ -746,6 +749,9 @@ export default function GraphPage() {
       <div style={styles.content}>
         {activeTab === "workflows" && owner && repo && (
           <WorkflowsView token={token} owner={owner} repo={repo} isMobile={isMobile} />
+        )}
+        {activeTab === "churn" && owner && repo && (
+          <FolderChurnView token={token} owner={owner} repo={repo} />
         )}
         {activeTab === "prs" && (
           <>

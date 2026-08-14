@@ -155,6 +155,57 @@ export interface WorkflowJob {
   steps: WorkflowStep[];
 }
 
+// --- Folder churn ---
+
+export interface BranchList {
+  names: string[];
+  defaultBranch: string | null;
+  // True when the repository has more branches than the selector fetched.
+  truncated: boolean;
+}
+
+// One commit as the history query returns it, before its file list is known.
+// `isMerge` comes from the parent count: a merge's file changes are already
+// attributed to the commits it brings in, so counting it too double-counts.
+export interface HistoryCommit {
+  sha: string;
+  committedDate: string;
+  isMerge: boolean;
+}
+
+export interface CommitHistoryPage {
+  commits: HistoryCommit[];
+  totalCount: number;
+  hasNextPage: boolean;
+  endCursor: string | null;
+}
+
+// A path touched by a commit, with the size of the change. `changes` is
+// additions + deletions as GitHub reports them.
+export interface CommitFile {
+  path: string;
+  changes: number;
+}
+
+// What is left of the token's hourly REST budget. Read from /rate_limit,
+// which is itself free — it does not spend a request — so the cost of a
+// pending fetch can be weighed against the budget before starting it.
+export interface RateLimitStatus {
+  limit: number;
+  remaining: number;
+  // Epoch ms when the window resets.
+  resetAt: number;
+}
+
+// Every directory that exists at a branch tip, used to tell folders that are
+// still there from ones that only exist in the history. `truncated` is
+// GitHub's flag for a tree too large to return in one response — the GONE
+// badge is suppressed rather than guessed when it is set.
+export interface RepoTreeDirs {
+  dirs: Set<string>;
+  truncated: boolean;
+}
+
 // --- Graph data model types ---
 
 export interface PRNode {
