@@ -70,6 +70,7 @@
   --churn-gone-text: #953800;
   --churn-warn-bg: #fff8c5;
   --churn-warn-border: #d4a72c;
+  --churn-budget-short: #bc4c00;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -138,6 +139,7 @@
     --churn-gone-text: #db9a63;
     --churn-warn-bg: #272115;
     --churn-warn-border: #7d6a2b;
+    --churn-budget-short: #e09b5a;
   }
 }
 

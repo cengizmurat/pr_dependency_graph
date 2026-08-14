@@ -29,6 +29,7 @@ import {
   MS_PER_DAY,
 } from "../folderChurn";
 import type { BucketChoice, Measure } from "../folderChurn";
+import type { RateLimitStatus } from "../types";
 import { useFolderChurn } from "../hooks/useFolderChurn";
 import ChurnBarChart from "./ChurnBarChart";
 import ChurnTrendChart from "./ChurnTrendChart";
@@ -69,6 +70,54 @@ function isoFromDayStart(day: number): string {
 
 function isoFromDayEnd(day: number): string {
   return new Date((day + 1) * MS_PER_DAY - 1).toISOString();
+}
+
+// How much of the hourly budget is left, and when it comes back. Shown beside
+// the count that says what a fetch will cost, so the two numbers can be read
+// against each other, and again beside the progress bar, where it ticks down
+// as commits are read.
+function BudgetReadout({
+  rateLimit,
+  needed,
+  compact,
+}: {
+  rateLimit: RateLimitStatus | null;
+  // Requests the pending fetch wants, so a budget that cannot cover it can say
+  // so where it is read rather than only in the warning panel.
+  needed: number | null;
+  compact?: boolean;
+}) {
+  if (!rateLimit) return null;
+
+  const short = rateLimit.remaining <= 0 || (needed !== null && needed > rateLimit.remaining);
+  const resetClock = new Date(rateLimit.resetAt).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const minutes = Math.max(0, Math.round((rateLimit.resetAt - Date.now()) / 60_000));
+  const resetIn =
+    minutes < 1 ? "any moment now" : minutes < 60 ? `in ${minutes} min` : `in ${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+
+  if (compact) {
+    return (
+      <span style={{ ...styles.budgetCompact, ...(short ? styles.budgetShort : {}) }}>
+        {rateLimit.remaining.toLocaleString()} API request
+        {rateLimit.remaining === 1 ? "" : "s"} left · resets {resetClock}
+      </span>
+    );
+  }
+
+  return (
+    <div style={styles.budget}>
+      <div style={styles.budgetLabel}>API budget</div>
+      <div style={{ ...styles.budgetValue, ...(short ? styles.budgetShort : {}) }}>
+        {rateLimit.remaining.toLocaleString()} of {rateLimit.limit.toLocaleString()} left
+      </div>
+      <div style={styles.budgetDetail}>
+        resets {resetClock} · {resetIn}
+      </div>
+    </div>
+  );
 }
 
 export default function FolderChurnView({
@@ -545,6 +594,10 @@ export default function FolderChurnView({
             <div style={styles.actionHeadline}>{estimateHeadline}</div>
             {estimateDetail && <div style={styles.actionDetail}>{estimateDetail}</div>}
           </div>
+          <BudgetReadout
+            rateLimit={churn.rateLimit}
+            needed={churn.requiredRequests}
+          />
         </div>
       )}
 
@@ -689,7 +742,14 @@ export default function FolderChurnView({
                     ` (${data.fromCache.toLocaleString()} already cached)`}
                   . The charts below grow as they arrive.
                 </span>
-                <span style={styles.progressPercent}>{progress}%</span>
+                <span style={styles.progressRight}>
+                  <BudgetReadout
+                    rateLimit={churn.rateLimit}
+                    needed={data.needed - data.resolved}
+                    compact
+                  />
+                  <span style={styles.progressPercent}>{progress}%</span>
+                </span>
               </div>
               <div style={styles.progressTrack}>
                 <div style={{ ...styles.progressFill, width: `${progress}%` }} />

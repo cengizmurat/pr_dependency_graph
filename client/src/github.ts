@@ -721,12 +721,65 @@ interface RawWorkflowJob {
   steps?: RawWorkflowStep[] | null;
 }
 
+// Every REST response states the budget it was charged against, so the readout
+// can follow a long fetch request by request without spending anything on
+// /rate_limit. GraphQL responses are deliberately not fed in here: they draw on
+// a separate budget with the same header names, and mixing the two would make
+// both numbers wrong.
+let observedRateLimit: RateLimitStatus | null = null;
+const rateLimitWatchers = new Set<() => void>();
+let notifyTimer: ReturnType<typeof setTimeout> | null = null;
+
+function noteRestRateLimit(res: Response): void {
+  const limit = Number(res.headers.get("X-RateLimit-Limit"));
+  const remaining = Number(res.headers.get("X-RateLimit-Remaining"));
+  const reset = Number(res.headers.get("X-RateLimit-Reset"));
+  if (!Number.isFinite(limit) || !Number.isFinite(remaining) || !Number.isFinite(reset)) {
+    return;
+  }
+  if (res.headers.get("X-RateLimit-Remaining") === null) return;
+
+  const next: RateLimitStatus = { limit, remaining, resetAt: reset * 1000 };
+  // Responses come back out of order under concurrency, so the freshest view
+  // within one window is the one that has seen the most spent, not the one
+  // that arrived last.
+  if (
+    observedRateLimit &&
+    observedRateLimit.resetAt === next.resetAt &&
+    observedRateLimit.remaining <= next.remaining
+  ) {
+    return;
+  }
+  observedRateLimit = next;
+
+  // Eight requests a second would otherwise be eight re-renders a second, for
+  // a number that only has to look live.
+  if (notifyTimer) return;
+  notifyTimer = setTimeout(() => {
+    notifyTimer = null;
+    for (const watcher of rateLimitWatchers) watcher();
+  }, 500);
+}
+
+export function getObservedRateLimit(): RateLimitStatus | null {
+  return observedRateLimit;
+}
+
+export function subscribeRateLimit(watcher: () => void): () => void {
+  rateLimitWatchers.add(watcher);
+  return () => {
+    rateLimitWatchers.delete(watcher);
+  };
+}
+
 async function fetchRestJson<T>(token: string, url: string): Promise<T> {
   const res = await fetchWithAuth(token, url, {
     headers: {
       Accept: "application/vnd.github+json",
     },
   });
+
+  noteRestRateLimit(res);
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
@@ -1126,6 +1179,8 @@ export async function fetchCommitFiles(
       `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits/${sha}?per_page=300&page=${page}`,
       { headers: { Accept: "application/vnd.github+json" }, signal },
     );
+
+    noteRestRateLimit(res);
 
     if (!res.ok) {
       const body = await res.json().catch(() => null);

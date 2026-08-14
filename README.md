@@ -78,10 +78,14 @@ settles on the number of requests that will actually reach GitHub rather than
 the number of commits in the window. Where a window is all cache, it opens on
 its own — there is nothing to ask about.
 
-The estimate is weighed against what `GET /rate_limit` says is left of the
-hourly budget, an endpoint that is itself free. If the window needs more
-requests than the budget can cover, that is said before the button is pressed,
-so a narrower interval or a deeper folder is still a choice worth making.
+The estimate is weighed against what is left of the hourly budget, shown beside
+it: how many requests remain of the limit, when the window resets and how long
+that is. The first reading comes from `GET /rate_limit`, an endpoint that is
+itself free. After that the counter follows the fetch request by request,
+because every REST response states the budget it was charged against — so
+watching it move costs nothing. It is picked out in a warning colour whenever
+what remains cannot cover what is pending, and the same figure sits next to the
+progress bar while commits are being read.
 
 Once running, the charts are built from whatever has arrived, growing as
 commits land, with a progress strip above them saying how much is still to

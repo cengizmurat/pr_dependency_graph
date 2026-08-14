@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchCommitFiles,
   fetchCommitHistoryPage,
   fetchRateLimit,
   fetchRepoTreeDirs,
+  getObservedRateLimit,
+  subscribeRateLimit,
 } from "../api";
 import type { HistoryCommit, RateLimitStatus } from "../types";
 import { DirIntern, dayFromIso, entriesFromFiles } from "../folderChurn";
@@ -191,6 +193,29 @@ async function pageHistory(
   }
 
   return { commits, complete: true };
+}
+
+// Two readings of the same budget are compared by window first: a later window
+// means the budget has reset since. Within one window the further-along reading
+// is the one that has seen more of it spent.
+//
+// The window is matched with a tolerance rather than exactly. The two readings
+// are taken at different moments and GitHub reports the reset as whole seconds,
+// so an exact comparison would let a stale reading with a reset one second
+// later win over a fresh one — which is how a live counter silently stops
+// moving.
+const SAME_WINDOW_MS = 90_000;
+
+function freshestRateLimit(
+  a: RateLimitStatus | null,
+  b: RateLimitStatus | null,
+): RateLimitStatus | null {
+  if (!a) return b;
+  if (!b) return a;
+  if (Math.abs(a.resetAt - b.resetAt) > SAME_WINDOW_MS) {
+    return a.resetAt > b.resetAt ? a : b;
+  }
+  return a.remaining <= b.remaining ? a : b;
 }
 
 export function useFolderChurn({
@@ -403,7 +428,16 @@ export function useFolderChurn({
   });
 
   const data = dataQuery.data ?? null;
-  const rateLimit: RateLimitStatus | null = rateLimitQuery.data ?? null;
+
+  // Two views of the same budget: what /rate_limit last reported, and what the
+  // headers on the fetch's own responses have seen since. The second is free
+  // and moves with every commit read, so during a fetch it is the live one.
+  const observed = useSyncExternalStore(
+    subscribeRateLimit,
+    getObservedRateLimit,
+    () => null,
+  );
+  const rateLimit = freshestRateLimit(observed, rateLimitQuery.data ?? null);
 
   const estimate: ChurnEstimate | null =
     countQuery.data === undefined

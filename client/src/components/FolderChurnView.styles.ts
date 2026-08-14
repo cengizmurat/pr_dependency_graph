@@ -102,6 +102,45 @@ export const styles: Record<string, React.CSSProperties> = {
   },
   actionText: {
     minWidth: 0,
+    flex: "1 1 auto",
+  },
+
+  // The budget sits at the far end of the action bar, so "what this costs" and
+  // "what is left" can be read against each other in one glance.
+  budget: {
+    flexShrink: 0,
+    paddingLeft: 14,
+    borderLeft: "1px solid var(--color-border)",
+    textAlign: "right" as const,
+  },
+  budgetLabel: {
+    fontSize: 10,
+    fontWeight: 600,
+    textTransform: "uppercase" as const,
+    letterSpacing: 0.4,
+    color: "var(--color-text-secondary)",
+  },
+  budgetValue: {
+    marginTop: 2,
+    fontSize: 14,
+    fontWeight: 600,
+    color: "var(--color-text)",
+    fontVariantNumeric: "tabular-nums",
+  },
+  budgetDetail: {
+    marginTop: 1,
+    fontSize: 11,
+    color: "var(--color-text-secondary)",
+  },
+  budgetCompact: {
+    fontSize: 12,
+    color: "var(--color-text-secondary)",
+    fontVariantNumeric: "tabular-nums",
+  },
+  // A budget that cannot cover what is pending is worth picking out, wherever
+  // it is being read.
+  budgetShort: {
+    color: "var(--churn-budget-short)",
   },
   actionHeadline: {
     fontSize: 14,
@@ -400,6 +439,12 @@ export const styles: Record<string, React.CSSProperties> = {
   progressText: {
     fontSize: 12,
     color: "var(--color-text-secondary)",
+  },
+  progressRight: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: 12,
+    flexShrink: 0,
   },
   progressPercent: {
     fontSize: 12,
