@@ -11,6 +11,7 @@ import type { WorkflowInfo, WorkflowRunInfo } from "../types";
 import { WORKFLOWS_PAGE_SIZE, WORKFLOW_RUNS_PAGE_SIZE } from "../constants";
 import { timeAgo } from "../utils";
 import RunTimeline, { formatDuration } from "./RunTimeline";
+import RuntimeTrendChart, { BackArrow } from "./RuntimeTrendChart";
 import { styles } from "./WorkflowsView.styles";
 
 // Runs of the expanded workflow refresh on this interval so new pushes show up
@@ -85,6 +86,16 @@ export default function WorkflowsView({
     },
     [setSearchParams],
   );
+
+  // Dropping the run keeps the workflow expanded, so the detail pane falls back
+  // to the workflow's run-time trend.
+  const clearRun = useCallback(() => {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      params.delete("run");
+      return params;
+    });
+  }, [setSearchParams]);
 
   const workflowsQuery = useInfiniteQuery({
     queryKey: ["workflows", owner, repo],
@@ -209,16 +220,9 @@ export default function WorkflowsView({
       </aside>
 
       <main style={{ ...styles.detail, ...(isMobile ? styles.detailMobile : {}) }}>
-        {selectedRunId === null ? (
-          <div style={styles.emptyState}>
-            <WorkflowIcon size={28} />
-            <span>
-              {selectedWorkflowId === null
-                ? "Pick a workflow to browse its recent runs."
-                : "Pick a run to see its timeline."}
-            </span>
-          </div>
-        ) : (
+        {/* A run wins over the trend chart, so a shared link carrying only a
+            run id still opens that run. */}
+        {selectedRunId !== null ? (
           <RunDetail
             token={token}
             owner={owner}
@@ -226,7 +230,29 @@ export default function WorkflowsView({
             runId={selectedRunId}
             seed={seedRun}
             workflowName={selectedWorkflow?.name}
+            onBack={clearRun}
           />
+        ) : selectedWorkflowId !== null ? (
+          <RuntimeTrendChart
+            // Keyed by workflow so nothing from the previous workflow's chart
+            // lingers while the new one measures.
+            key={selectedWorkflowId}
+            token={token}
+            owner={owner}
+            repo={repo}
+            workflowName={selectedWorkflow?.name}
+            runs={runs}
+            runsLoading={runsQuery.isLoading}
+            hasOlderRuns={!!runsQuery.hasNextPage}
+            loadingOlderRuns={runsQuery.isFetchingNextPage}
+            onLoadOlderRuns={() => runsQuery.fetchNextPage()}
+            onSelectRun={selectRun}
+          />
+        ) : (
+          <div style={styles.emptyState}>
+            <WorkflowIcon size={28} />
+            <span>Pick a workflow to browse its recent runs.</span>
+          </div>
         )}
       </main>
     </div>
@@ -303,6 +329,7 @@ function RunDetail({
   runId,
   seed,
   workflowName,
+  onBack,
 }: {
   token: string;
   owner: string;
@@ -310,6 +337,7 @@ function RunDetail({
   runId: number;
   seed: WorkflowRunInfo | undefined;
   workflowName: string | undefined;
+  onBack: () => void;
 }) {
   const runQuery = useQuery({
     queryKey: ["workflowRun", owner, repo, runId],
@@ -334,6 +362,17 @@ function RunDetail({
 
   return (
     <div>
+      <div style={styles.backRow}>
+        <button
+          className="workflow-back-btn"
+          style={styles.backBtn}
+          onClick={onBack}
+          title="Back to this workflow's run time over time"
+        >
+          <BackArrow />
+          Run time over time
+        </button>
+      </div>
       {run && (
         <header style={styles.runHeader}>
           <div style={styles.runTitleRow}>

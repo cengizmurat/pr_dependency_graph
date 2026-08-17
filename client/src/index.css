@@ -261,6 +261,41 @@ body {
   background: var(--color-border-subtle);
 }
 
+.workflow-back-btn:hover {
+  background: var(--color-border-subtle);
+}
+
+/* --- Workflow run-time trend --- */
+
+.runtime-line {
+  fill: none;
+  stroke: var(--color-text-secondary);
+  stroke-opacity: 0.35;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.runtime-point {
+  cursor: pointer;
+  outline: none;
+}
+.runtime-hit {
+  fill: transparent;
+}
+.runtime-point:hover .runtime-hit,
+.runtime-point:focus-visible .runtime-hit {
+  fill: var(--gantt-row-hover);
+}
+.runtime-dot {
+  stroke: var(--color-page-bg);
+  stroke-width: 1.5;
+}
+.runtime-point:hover .runtime-dot,
+.runtime-point:focus-visible .runtime-dot {
+  stroke: var(--color-link);
+}
+
 .page-tab:hover {
   color: var(--color-text);
 }

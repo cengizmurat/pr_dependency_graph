@@ -170,6 +170,22 @@ export const styles: Record<string, React.CSSProperties> = {
     gap: 8,
     marginBottom: 12,
   },
+  backRow: {
+    marginBottom: 10,
+  },
+  backBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "4px 10px 4px 8px",
+    fontSize: 12.5,
+    fontWeight: 500,
+    borderRadius: 6,
+    border: "1px solid var(--color-border-subtle)",
+    background: "transparent",
+    color: "var(--color-link)",
+    cursor: "pointer",
+  },
   runTitleRow: {
     display: "flex",
     alignItems: "center",
@@ -251,6 +267,102 @@ export const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     padding: "20px 12px",
     textAlign: "center" as const,
+  },
+  trendCard: {
+    border: "1px solid var(--color-border-subtle)",
+    borderRadius: 8,
+    background: "var(--color-page-bg)",
+    padding: "14px 14px 10px",
+  },
+  trendHeader: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 4,
+    marginBottom: 8,
+  },
+  trendTitle: {
+    fontSize: 15,
+    fontWeight: 600,
+    margin: 0,
+  },
+  trendSubtitle: {
+    fontSize: 12.5,
+    lineHeight: 1.5,
+    color: "var(--color-text-secondary)",
+    margin: 0,
+    maxWidth: 760,
+  },
+  // The load-older control and the plot share a row; on a narrow screen the
+  // control wraps above the plot rather than squeezing it.
+  trendPlotRow: {
+    display: "flex",
+    flexWrap: "wrap" as const,
+    alignItems: "center",
+    gap: 8,
+  },
+  loadOlderBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 0,
+    padding: "5px 10px 5px 8px",
+    fontSize: 12.5,
+    fontWeight: 500,
+    borderRadius: 6,
+    border: "1px solid var(--color-border-subtle)",
+    background: "transparent",
+    color: "var(--color-link)",
+    cursor: "pointer",
+  },
+  loadOlderBtnBusy: {
+    opacity: 0.6,
+    cursor: "default",
+  },
+  trendBody: {
+    // A fixed basis rather than `auto`: the plot sizes itself from this box, so
+    // letting the box size itself from the plot would chase its own tail. Below
+    // that basis the row wraps and the plot takes the full width instead.
+    flex: "1 1 320px",
+    minWidth: 0,
+    minHeight: 120,
+    // The plot has a minimum readable width; on a phone it scrolls inside the
+    // card rather than stretching the whole view.
+    overflowX: "auto" as const,
+  },
+  trendFooter: {
+    display: "flex",
+    flexWrap: "wrap" as const,
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "4px 16px",
+    paddingTop: 6,
+  },
+  trendLegend: {
+    display: "flex",
+    flexWrap: "wrap" as const,
+    alignItems: "center",
+    gap: "4px 14px",
+    listStyle: "none",
+    margin: 0,
+    padding: 0,
+  },
+  trendLegendItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: 12,
+    color: "var(--color-text-secondary)",
+  },
+  trendLegendDot: {
+    width: 9,
+    height: 9,
+    borderRadius: "50%",
+    flexShrink: 0,
+  },
+  trendNote: {
+    fontSize: 11.5,
+    color: "var(--color-text-secondary)",
+    margin: 0,
   },
   retryBtn: {
     padding: "4px 12px",
