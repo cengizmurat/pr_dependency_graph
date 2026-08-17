@@ -11,7 +11,7 @@ import type { WorkflowInfo, WorkflowRunInfo } from "../types";
 import { WORKFLOWS_PAGE_SIZE, WORKFLOW_RUNS_PAGE_SIZE } from "../constants";
 import { timeAgo } from "../utils";
 import RunTimeline, { formatDuration } from "./RunTimeline";
-import RuntimeTrendChart from "./RuntimeTrendChart";
+import RuntimeTrendChart, { BackArrow } from "./RuntimeTrendChart";
 import { styles } from "./WorkflowsView.styles";
 
 // Runs of the expanded workflow refresh on this interval so new pushes show up
@@ -243,6 +243,9 @@ export default function WorkflowsView({
             workflowName={selectedWorkflow?.name}
             runs={runs}
             runsLoading={runsQuery.isLoading}
+            hasOlderRuns={!!runsQuery.hasNextPage}
+            loadingOlderRuns={runsQuery.isFetchingNextPage}
+            onLoadOlderRuns={() => runsQuery.fetchNextPage()}
             onSelectRun={selectRun}
           />
         ) : (
@@ -428,27 +431,6 @@ function RunDetail({
         )}
       </div>
     </div>
-  );
-}
-
-function BackArrow() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="none"
-      style={{ flexShrink: 0 }}
-      aria-hidden="true"
-    >
-      <path
-        d="M7 2.5 3.5 6 7 9.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 

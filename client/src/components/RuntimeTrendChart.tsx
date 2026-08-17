@@ -21,9 +21,10 @@ const PAD_LEFT = 62;
 const PAD_RIGHT = 18;
 const MIN_WIDTH = 420;
 const MAX_Y_TICKS = 5;
-// Every charted run costs one jobs request, so the history is capped; loading
-// more runs in the list raises the ceiling one page at a time.
-const MAX_CHARTED_RUNS = 60;
+// Every charted run costs one jobs request. Past the first page the history
+// only grows when the viewer asks for it, so this cap is a runaway guard rather
+// than a budget — it sits far above any hand-driven amount of paging.
+const MAX_CHARTED_RUNS = 200;
 // A dot's clickable area is bigger than the dot, so dense stretches stay usable.
 const DOT_R = 4.5;
 const HIT_R = 9;
@@ -146,6 +147,29 @@ function formatAxisTime(ms: number, spanMs: number): string {
   return new Date(ms).toLocaleString(undefined, options);
 }
 
+// Points back the way the chart's history extends: to older runs on the left,
+// and out of a run's detail to the chart itself.
+export function BackArrow() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      fill="none"
+      style={{ flexShrink: 0 }}
+      aria-hidden="true"
+    >
+      <path
+        d="M7 2.5 3.5 6 7 9.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 interface RunPoint {
   run: WorkflowRunInfo;
   timeMs: number;
@@ -160,6 +184,9 @@ export default function RuntimeTrendChart({
   workflowName,
   runs,
   runsLoading,
+  hasOlderRuns,
+  loadingOlderRuns,
+  onLoadOlderRuns,
   onSelectRun,
 }: {
   token: string;
@@ -168,6 +195,9 @@ export default function RuntimeTrendChart({
   workflowName: string | undefined;
   runs: WorkflowRunInfo[] | undefined;
   runsLoading: boolean;
+  hasOlderRuns: boolean;
+  loadingOlderRuns: boolean;
+  onLoadOlderRuns: () => void;
   onSelectRun: (id: number) => void;
 }) {
   const [containerRef, containerWidth] = useContainerWidth();
@@ -388,8 +418,28 @@ export default function RuntimeTrendChart({
         </p>
       </div>
 
-      <div ref={containerRef} style={styles.trendBody}>
-        {body}
+      {/* Older runs extend the axis to the left, so the control that fetches
+          them sits at that end of the plot. It pulls the next page of the very
+          same runs query the sidebar lists, so the list grows with the chart. */}
+      <div style={styles.trendPlotRow}>
+        {hasOlderRuns && (
+          <button
+            className="workflow-back-btn"
+            style={{
+              ...styles.loadOlderBtn,
+              ...(loadingOlderRuns ? styles.loadOlderBtnBusy : {}),
+            }}
+            onClick={onLoadOlderRuns}
+            disabled={loadingOlderRuns}
+            title="Load the previous batch of runs, extending the chart and the run list"
+          >
+            <BackArrow />
+            {loadingOlderRuns ? "Loading…" : "Load older runs"}
+          </button>
+        )}
+        <div ref={containerRef} style={styles.trendBody}>
+          {body}
+        </div>
       </div>
 
       <div style={styles.trendFooter}>

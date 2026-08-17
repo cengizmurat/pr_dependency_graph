@@ -292,8 +292,38 @@ export const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     maxWidth: 760,
   },
+  // The load-older control and the plot share a row; on a narrow screen the
+  // control wraps above the plot rather than squeezing it.
+  trendPlotRow: {
+    display: "flex",
+    flexWrap: "wrap" as const,
+    alignItems: "center",
+    gap: 8,
+  },
+  loadOlderBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 0,
+    padding: "5px 10px 5px 8px",
+    fontSize: 12.5,
+    fontWeight: 500,
+    borderRadius: 6,
+    border: "1px solid var(--color-border-subtle)",
+    background: "transparent",
+    color: "var(--color-link)",
+    cursor: "pointer",
+  },
+  loadOlderBtnBusy: {
+    opacity: 0.6,
+    cursor: "default",
+  },
   trendBody: {
-    width: "100%",
+    // A fixed basis rather than `auto`: the plot sizes itself from this box, so
+    // letting the box size itself from the plot would chase its own tail. Below
+    // that basis the row wraps and the plot takes the full width instead.
+    flex: "1 1 320px",
+    minWidth: 0,
     minHeight: 120,
     // The plot has a minimum readable width; on a phone it scrolls inside the
     // card rather than stretching the whole view.
