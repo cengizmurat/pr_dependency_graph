@@ -116,6 +116,9 @@ function filterPRs(
 // one option would zero out every other option in the same menu.
 const AUTHOR_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>(["author"]);
 const REVIEWER_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>(["reviewer"]);
+const REVIEW_STATE_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>([
+  "reviewState",
+]);
 
 // --- Focused PR --------------------------------------------------------
 
@@ -423,6 +426,18 @@ export default function GraphPage() {
     );
   }, [allPRs, filters, reviewerFilter]);
 
+  // How many PRs each review state would leave on screen. As with the author
+  // counts, every other filter still applies, so the number beside a state is
+  // what picking it actually shows rather than its share of the whole range.
+  const prCountByReviewState = useMemo(() => {
+    const counts = new Map<PRReviewState, number>();
+    for (const pr of filterPRs(allPRs, filters, REVIEW_STATE_FACET_SKIP)) {
+      const state = prReviewState(pr);
+      counts.set(state, (counts.get(state) ?? 0) + 1);
+    }
+    return counts;
+  }, [allPRs, filters]);
+
   // The graph is always built from every PR in the date range: filters pick
   // out which of them to highlight, they don't decide who is on the graph.
   // Dependencies stay drawn either way, so a highlighted PR is still shown in
@@ -642,6 +657,7 @@ export default function GraphPage() {
           selected={reviewStateFilter}
           onChange={setReviewStateFilter}
           isMobile={isMobile}
+          prCountByState={prCountByReviewState}
         />
           </>
         )}
@@ -1412,10 +1428,12 @@ function ReviewStateDropdown({
   selected,
   onChange,
   isMobile,
+  prCountByState,
 }: {
   selected: PRReviewState[];
   onChange: (next: PRReviewState[]) => void;
   isMobile: boolean;
+  prCountByState: Map<PRReviewState, number>;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -1495,6 +1513,7 @@ function ReviewStateDropdown({
           <div style={dropdownStyles.list}>
             {REVIEW_STATE_OPTIONS.map((opt) => {
               const isSelected = selected.includes(opt.value);
+              const count = prCountByState.get(opt.value) ?? 0;
               return (
                 <button
                   key={opt.value}
@@ -1504,9 +1523,11 @@ function ReviewStateDropdown({
                     fontWeight: isSelected ? 600 : 400,
                   }}
                   onClick={() => toggle(opt.value)}
+                  title={`${count} PR${count === 1 ? "" : "s"} in this state`}
                 >
                   <ReviewStateDot color={opt.color} />
                   <span>{opt.label}</span>
+                  <span style={dropdownStyles.count}>({count})</span>
                   {isSelected && (
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--color-ready)" style={{ marginLeft: "auto", flexShrink: 0 }}>
                       <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
