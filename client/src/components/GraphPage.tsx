@@ -116,6 +116,7 @@ function filterPRs(
 // one option would zero out every other option in the same menu.
 const AUTHOR_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>(["author"]);
 const REVIEWER_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>(["reviewer"]);
+const STATUS_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>(["status"]);
 const REVIEW_STATE_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>([
   "reviewState",
 ]);
@@ -426,6 +427,15 @@ export default function GraphPage() {
     );
   }, [allPRs, filters, reviewerFilter]);
 
+  // Draft/ready split of the PRs the other filters leave, so each status shows
+  // what picking it would put on screen. "All PRs" is the whole pool, which is
+  // also what the two halves add up to.
+  const prCountByStatus = useMemo<Record<PRStatusFilter, number>>(() => {
+    const pool = filterPRs(allPRs, filters, STATUS_FACET_SKIP);
+    const draft = pool.reduce((n, pr) => n + (pr.isDraft ? 1 : 0), 0);
+    return { all: pool.length, ready: pool.length - draft, draft };
+  }, [allPRs, filters]);
+
   // How many PRs each review state would leave on screen. As with the author
   // counts, every other filter still applies, so the number beside a state is
   // what picking it actually shows rather than its share of the whole range.
@@ -652,7 +662,12 @@ export default function GraphPage() {
           onChange={setReviewerFilter}
           isMobile={isMobile}
         />
-        <StatusDropdown selected={statusFilter} onChange={setStatusFilter} isMobile={isMobile} />
+        <StatusDropdown
+          selected={statusFilter}
+          onChange={setStatusFilter}
+          isMobile={isMobile}
+          prCountByStatus={prCountByStatus}
+        />
         <ReviewStateDropdown
           selected={reviewStateFilter}
           onChange={setReviewStateFilter}
@@ -1337,10 +1352,12 @@ function StatusDropdown({
   selected,
   onChange,
   isMobile,
+  prCountByStatus,
 }: {
   selected: PRStatusFilter;
   onChange: (next: PRStatusFilter) => void;
   isMobile: boolean;
+  prCountByStatus: Record<PRStatusFilter, number>;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -1385,6 +1402,7 @@ function StatusDropdown({
         <div style={{ ...dropdownStyles.menu, ...(isMobile ? dropdownStyles.menuMobile : {}) }}>
           {STATUS_OPTIONS.map((opt) => {
             const isSelected = opt.value === selected;
+            const count = prCountByStatus[opt.value];
             return (
               <button
                 key={opt.value}
@@ -1397,9 +1415,11 @@ function StatusDropdown({
                   onChange(opt.value);
                   setOpen(false);
                 }}
+                title={`${count} PR${count === 1 ? "" : "s"}`}
               >
                 <StatusIndicator color={opt.color} />
                 <span>{opt.label}</span>
+                <span style={dropdownStyles.count}>({count})</span>
                 {isSelected && (
                   <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--color-ready)" style={{ marginLeft: "auto", flexShrink: 0 }}>
                     <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
