@@ -29,6 +29,8 @@
   --color-stack: #8250df;
   --color-review-requested: #bf8700;
   --color-review-commented: #6e7681;
+  /* Faded on purpose: nothing is being asked of these PRs. */
+  --color-review-none: #afb8c1;
   --color-additions: #1a7f37;
   --color-deletions: #cf222e;
   --color-avatar-border: #ffffff;
@@ -103,6 +105,7 @@
     --color-stack: #8957e5;
     --color-review-requested: #d29922;
     --color-review-commented: #8b949e;
+    --color-review-none: #484f58;
     --color-additions: #3fb950;
     --color-deletions: #f85149;
     --color-avatar-border: #0d1117;

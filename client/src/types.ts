@@ -7,6 +7,21 @@ export type ReviewState =
   | "DISMISSED"
   | "REQUESTED";
 
+// Review states from strongest to weakest, used to collapse one reviewer's
+// several reviews into the single state shown against their avatar. A reviewer
+// can hold more than one at a time — an approval followed by a comment, a fresh
+// review request on top of an earlier verdict — and this order resolves it
+// rather than recency, so a passing comment never buries the approval
+// underneath it. (The PR's own state is a separate thing that GitHub decides:
+// see prReviewState.)
+export const REVIEW_STATE_PRIORITY: readonly ReviewState[] = [
+  "CHANGES_REQUESTED",
+  "APPROVED",
+  "COMMENTED",
+  "DISMISSED",
+  "REQUESTED",
+];
+
 export type Mergeable = "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
 
 export interface Reviewer {
@@ -230,6 +245,9 @@ export interface PRNode {
     avatarUrl: string;
     state: ReviewState;
   }[];
+  // GitHub's own verdict on the PR, which is what its review state is read
+  // from — see prReviewState.
+  reviewDecision: ReviewDecision;
   commentCount: number;
   behindBy?: number;
   stack?: PRStack | null;
@@ -291,15 +309,6 @@ export interface EdgeFlags {
 // --- Component types ---
 
 export type PRStatusFilter = "all" | "ready" | "draft";
-
-export const REVIEW_STATE_FILTER_VALUES = [
-  "REQUESTED",
-  "APPROVED",
-  "CHANGES_REQUESTED",
-  "COMMENTED",
-  "DISMISSED",
-] as const;
-export type ReviewStateFilter = (typeof REVIEW_STATE_FILTER_VALUES)[number];
 
 export interface MergeStatus {
   hasConflict: boolean;

@@ -19,6 +19,7 @@ import type {
   RepoTreeDirs,
   RateLimitStatus,
 } from "./types";
+import { REVIEW_STATE_PRIORITY } from "./types";
 import { getToken } from "./auth";
 
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
@@ -82,6 +83,35 @@ const STATE_CHANGE_FIELDS = `
           }
         }`;
 
+// Each reviewer's current review state takes two connections to pin down.
+// `latestReviews` is the newest review per reviewer whatever its state, so a
+// reviewer who approves and then drops a comment comes back COMMENTED and the
+// approval vanishes. `latestOpinionatedReviews` is the newest APPROVED or
+// CHANGES_REQUESTED review per reviewer that GitHub still counts — a dismissed
+// verdict is absent from it, which is what keeps a dismissal from being undone
+// here. Merging the two by REVIEW_STATE_PRIORITY gives the state that survives.
+const REVIEW_FIELDS = `
+        latestReviews(first: 100) {
+          nodes {
+            state
+            author { login avatarUrl }
+            comments { totalCount }
+          }
+        }
+        latestOpinionatedReviews(first: 100) {
+          nodes {
+            state
+            author { login avatarUrl }
+          }
+        }
+        reviewRequests(first: 100) {
+          nodes {
+            requestedReviewer {
+              ... on User { login avatarUrl }
+            }
+          }
+        }`;
+
 const prQuery = (stackFields: string) => `
 query($owner: String!, $name: String!, $cursor: String, $first: Int!) {
   repository(owner: $owner, name: $name) {
@@ -91,21 +121,7 @@ query($owner: String!, $name: String!, $cursor: String, $first: Int!) {
         number title url isDraft createdAt additions deletions
         headRefName baseRefName mergeable mergeStateStatus reviewDecision
         author { login avatarUrl }
-        labels(first: 20) { nodes { name color } }
-        latestReviews(first: 100) {
-          nodes {
-            state
-            author { login avatarUrl }
-            comments { totalCount }
-          }
-        }
-        reviewRequests(first: 100) {
-          nodes {
-            requestedReviewer {
-              ... on User { login avatarUrl }
-            }
-          }
-        }
+        labels(first: 20) { nodes { name color } }${REVIEW_FIELDS}
         comments { totalCount }${STATE_CHANGE_FIELDS}${stackFields}
       }
     }
@@ -405,6 +421,14 @@ interface PRPageInfo {
   endCursor: string | null;
 }
 
+interface RawReview {
+  state: string;
+  author: { login: string; avatarUrl: string } | null;
+  // Only selected on `latestReviews`; the opinionated pass leaves it out so the
+  // same review is not counted twice.
+  comments?: { totalCount: number } | null;
+}
+
 interface PRNodeRaw {
   number: number;
   title: string;
@@ -420,15 +444,10 @@ interface PRNodeRaw {
   reviewDecision: string | null;
   author: { login: string; avatarUrl: string } | null;
   labels: { nodes: ({ name: string; color: string } | null)[] | null } | null;
-  latestReviews: {
-    nodes:
-      | ({
-          state: string;
-          author: { login: string; avatarUrl: string } | null;
-          comments: { totalCount: number } | null;
-        } | null)[]
-      | null;
-  } | null;
+  latestReviews: { nodes: (RawReview | null)[] | null } | null;
+  // The APPROVED / CHANGES_REQUESTED review each reviewer still stands behind,
+  // which `latestReviews` loses as soon as they say anything after it.
+  latestOpinionatedReviews: { nodes: (RawReview | null)[] | null } | null;
   reviewRequests: {
     nodes:
       | ({
@@ -511,23 +530,52 @@ function stateChangedAt(pr: PRNodeRaw): string {
   return pr.createdAt;
 }
 
+const REVIEW_STATE_RANK: ReadonlyMap<ReviewState, number> = new Map(
+  REVIEW_STATE_PRIORITY.map((state, i) => [state, i] as const),
+);
+
+// The stronger of two states for the same reviewer, by REVIEW_STATE_PRIORITY.
+// An unrecognised state ranks last so a future GitHub state never outranks one
+// we do understand.
+function strongerReviewState(a: ReviewState, b: ReviewState): ReviewState {
+  const rankA = REVIEW_STATE_RANK.get(a) ?? Number.MAX_SAFE_INTEGER;
+  const rankB = REVIEW_STATE_RANK.get(b) ?? Number.MAX_SAFE_INTEGER;
+  return rankA <= rankB ? a : b;
+}
+
 function processRawPR(pr: PRNodeRaw): GraphQLPullRequest {
   const reviewerMap = new Map<string, Reviewer>();
   let reviewCommentCount = 0;
 
+  // Folds one review into the reviewer's running state. A reviewer shows up in
+  // both review connections, so whichever review lands second only wins if it
+  // is the stronger of the two.
+  const recordReview = (review: RawReview | null): void => {
+    const login = review?.author?.login;
+    if (!login) return;
+    const state = (review.state as ReviewState) ?? "COMMENTED";
+    const existing = reviewerMap.get(login);
+    reviewerMap.set(login, {
+      login,
+      avatarUrl: existing?.avatarUrl || review.author?.avatarUrl || "",
+      state: existing ? strongerReviewState(existing.state, state) : state,
+    });
+  };
+
+  // Comment totals come off this pass alone — `latestOpinionatedReviews`
+  // repeats reviews that are already here, and adding them would double-count.
   for (const review of pr.latestReviews?.nodes ?? []) {
     if (!review) continue;
     reviewCommentCount += review.comments?.totalCount ?? 0;
-    const login = review.author?.login;
-    if (login) {
-      reviewerMap.set(login, {
-        login,
-        avatarUrl: review.author?.avatarUrl ?? "",
-        state: (review.state as ReviewState) ?? "COMMENTED",
-      });
-    }
+    recordReview(review);
   }
 
+  for (const review of pr.latestOpinionatedReviews?.nodes ?? []) {
+    recordReview(review);
+  }
+
+  // REQUESTED is the weakest state, so a reviewer who has already reviewed
+  // keeps that verdict even once they are asked for another look.
   for (const req of pr.reviewRequests?.nodes ?? []) {
     const reviewer = req?.requestedReviewer;
     if (!reviewer?.login) continue;
@@ -606,21 +654,7 @@ query($query: String!, $cursor: String, $first: Int!) {
         number title url isDraft createdAt additions deletions
         headRefName baseRefName mergeable mergeStateStatus reviewDecision
         author { login avatarUrl }
-        labels(first: 20) { nodes { name color } }
-        latestReviews(first: 100) {
-          nodes {
-            state
-            author { login avatarUrl }
-            comments { totalCount }
-          }
-        }
-        reviewRequests(first: 100) {
-          nodes {
-            requestedReviewer {
-              ... on User { login avatarUrl }
-            }
-          }
-        }
+        labels(first: 20) { nodes { name color } }${REVIEW_FIELDS}
         comments { totalCount }${STATE_CHANGE_FIELDS}${stackFields}
       }
     }

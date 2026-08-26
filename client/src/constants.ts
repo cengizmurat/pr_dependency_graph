@@ -24,6 +24,7 @@ export const COLORS = {
   stack: "var(--color-stack)",
   reviewRequested: "var(--color-review-requested)",
   reviewCommented: "var(--color-review-commented)",
+  reviewNone: "var(--color-review-none)",
 };
 
 // --- GraphPage settings ---

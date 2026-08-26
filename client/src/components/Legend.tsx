@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { COLORS, EYE_ICON_PATH, SHARE_BADGE_COLOR, STACK_ICON_PATH } from "../constants";
 import {
+  PR_REVIEW_STATES,
+  PR_REVIEW_STATE_COLOR,
+  PR_REVIEW_STATE_LABEL,
+} from "../reviewState";
+import {
   getStoredLegendCollapsed,
   hasStoredLegendPreference,
   setStoredLegendCollapsed,
@@ -8,12 +13,10 @@ import {
 import { useIsMobile } from "../hooks/useIsMobile";
 import { styles } from "./Legend.styles";
 
-const REVIEW_OUTLINE_ITEMS = [
-  { color: COLORS.conflict, label: "Changes requested" },
-  { color: COLORS.ready, label: "Approved" },
-  { color: COLORS.reviewCommented, label: "Commented" },
-  { color: COLORS.reviewRequested, label: "Review requested" },
-];
+const REVIEW_OUTLINE_ITEMS = PR_REVIEW_STATES.map((state) => ({
+  color: PR_REVIEW_STATE_COLOR[state],
+  label: PR_REVIEW_STATE_LABEL[state],
+}));
 
 export default function Legend() {
   const isMobile = useIsMobile();
