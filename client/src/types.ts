@@ -7,12 +7,13 @@ export type ReviewState =
   | "DISMISSED"
   | "REQUESTED";
 
-// Review states from strongest to weakest. A reviewer can hold several at once
-// — an approval followed by a comment, a review request on top of an earlier
-// verdict — and every place that has to show a single state resolves the tie
-// with this order rather than with recency, so a passing comment never buries
-// the approval underneath it. DISMISSED ranks with COMMENTED: GitHub has
-// retired the verdict it carried, so it says nothing about the PR either way.
+// Review states from strongest to weakest, used to collapse one reviewer's
+// several reviews into the single state shown against their avatar. A reviewer
+// can hold more than one at a time — an approval followed by a comment, a fresh
+// review request on top of an earlier verdict — and this order resolves it
+// rather than recency, so a passing comment never buries the approval
+// underneath it. (The PR's own state is a separate thing that GitHub decides:
+// see prReviewState.)
 export const REVIEW_STATE_PRIORITY: readonly ReviewState[] = [
   "CHANGES_REQUESTED",
   "APPROVED",
@@ -244,6 +245,9 @@ export interface PRNode {
     avatarUrl: string;
     state: ReviewState;
   }[];
+  // GitHub's own verdict on the PR, which is what its review state is read
+  // from — see prReviewState.
+  reviewDecision: ReviewDecision;
   commentCount: number;
   behindBy?: number;
   stack?: PRStack | null;
@@ -306,12 +310,15 @@ export interface EdgeFlags {
 
 export type PRStatusFilter = "all" | "ready" | "draft";
 
+// The reviewer states the toolbar can filter on. DISMISSED is deliberately not
+// among them: a dismissed review is a verdict GitHub has retired, so it is not
+// something to go looking for. A stale `?reviewState=DISMISSED` link still
+// loads — the value is simply dropped.
 export const REVIEW_STATE_FILTER_VALUES = [
   "REQUESTED",
   "APPROVED",
   "CHANGES_REQUESTED",
   "COMMENTED",
-  "DISMISSED",
 ] as const;
 export type ReviewStateFilter = (typeof REVIEW_STATE_FILTER_VALUES)[number];
 

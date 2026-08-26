@@ -16,9 +16,8 @@ import {
   edgePath,
   strokeColor,
   bgColor,
-  reviewOutlineKind,
-  REVIEW_OUTLINE_COLOR,
 } from "../graphLayout";
+import { prReviewState, PR_REVIEW_STATE_COLOR } from "../reviewState";
 import PRCard from "./PRCard";
 import BranchCard from "./BranchCard";
 import Legend from "./Legend";
@@ -429,13 +428,13 @@ export default function GraphView({
             const w = nodeWidth(n.data);
             const h = nodeHeight(n.data);
             const isHovered = hoveredId === n.data.id;
-            const outlineKind = isPR(n.data)
-              ? reviewOutlineKind(n.data, data.viewerLogin)
-              : null;
+            // Every PR carries a review state, so a PR node's border always
+            // shows it; only branch nodes fall back to the plain stroke.
+            const reviewState = isPR(n.data) ? prReviewState(n.data) : null;
             const stroke = isHovered
               ? COLORS.hover
-              : outlineKind
-                ? REVIEW_OUTLINE_COLOR[outlineKind]
+              : reviewState
+                ? PR_REVIEW_STATE_COLOR[reviewState]
                 : strokeColor(n.data);
 
             return (
@@ -460,7 +459,10 @@ export default function GraphView({
                   ry={8}
                   fill={bgColor(n.data)}
                   stroke={stroke}
-                  strokeWidth={outlineKind ? 5 : 1.5}
+                  // Thick border for the states worth noticing. "No review
+                  // requested" stays hairline: every PR has a state now, so
+                  // emphasising all of them would emphasise none of them.
+                  strokeWidth={reviewState && reviewState !== "none" ? 5 : 1.5}
                 />
                 <foreignObject
                   x={-w / 2}

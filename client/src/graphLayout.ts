@@ -1,5 +1,4 @@
-import type { GraphData, GraphNode, PRNode, PRLabel, Orientation, LayoutNode, FlatEdge, EdgeFlags, ReviewState } from "./types";
-import { REVIEW_STATE_PRIORITY } from "./types";
+import type { GraphData, GraphNode, PRNode, PRLabel, Orientation, LayoutNode, FlatEdge, EdgeFlags } from "./types";
 import { PR_WIDTH, PR_HEIGHT, BRANCH_WIDTH, BRANCH_HEIGHT, SPACING, COLORS } from "./constants";
 import { isPR } from "./utils";
 
@@ -238,79 +237,4 @@ export function strokeColor(d: GraphNode): string {
 export function bgColor(d: GraphNode): string {
   if (!isPR(d)) return COLORS.branchBg;
   return d.isDraft ? COLORS.draftBg : COLORS.readyBg;
-}
-
-// Kinds of review-state highlight for a PR node's outer border, ordered by the
-// priority used when a PR carries multiple relevant states: red > green > gray
-// > yellow.
-export type ReviewOutlineKind =
-  | "changes_requested"
-  | "approved"
-  | "commented"
-  | "requested";
-
-// Derived from REVIEW_STATE_PRIORITY so the border and the reviewer badges can
-// never disagree about which state outranks which. COMMENTED and DISMISSED both
-// map to "commented", hence the dedupe.
-const REVIEW_OUTLINE_PRIORITY: ReviewOutlineKind[] = REVIEW_STATE_PRIORITY.map(
-  reviewStateToKind,
-).filter(
-  (kind, i, kinds): kind is ReviewOutlineKind =>
-    kind !== null && kinds.indexOf(kind) === i,
-);
-
-export const REVIEW_OUTLINE_COLOR: Record<ReviewOutlineKind, string> = {
-  changes_requested: COLORS.conflict,
-  approved: COLORS.ready,
-  commented: COLORS.reviewCommented,
-  requested: COLORS.reviewRequested,
-};
-
-function reviewStateToKind(state: ReviewState): ReviewOutlineKind | null {
-  switch (state) {
-    case "CHANGES_REQUESTED":
-      return "changes_requested";
-    case "APPROVED":
-      return "approved";
-    case "COMMENTED":
-    case "DISMISSED":
-      return "commented";
-    case "REQUESTED":
-      return "requested";
-    default:
-      return null;
-  }
-}
-
-function pickHighestKind(
-  kinds: (ReviewOutlineKind | null)[],
-): ReviewOutlineKind | null {
-  const seen = new Set(kinds.filter((k): k is ReviewOutlineKind => k !== null));
-  for (const k of REVIEW_OUTLINE_PRIORITY) {
-    if (seen.has(k)) return k;
-  }
-  return null;
-}
-
-// Which review-state color (if any) should highlight the outer border of this
-// PR node.
-//
-// The viewer decides *whether* a PR is outlined, never which color: only the
-// PRs they author or review are highlighted, so the graph picks out their own
-// work instead of lighting up whole. The color itself is always the PR's
-// state, not the viewer's — the strongest state any reviewer holds, by
-// REVIEW_OUTLINE_PRIORITY. So a PR one reviewer has approved stays green for
-// everyone, including a second reviewer who has since only commented on it.
-export function reviewOutlineKind(
-  pr: PRNode,
-  viewerLogin: string | undefined,
-): ReviewOutlineKind | null {
-  if (!viewerLogin) return null;
-
-  const involved =
-    pr.author === viewerLogin ||
-    pr.reviewers.some((r) => r.login === viewerLogin);
-  if (!involved) return null;
-
-  return pickHighestKind(pr.reviewers.map((r) => reviewStateToKind(r.state)));
 }

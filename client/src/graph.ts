@@ -39,6 +39,7 @@ export function buildDependencyGraph(
     additions: pr.additions,
     deletions: pr.deletions,
     reviewers: pr.reviewers,
+    reviewDecision: pr.reviewDecision,
     commentCount: pr.commentCount,
     stack: pr.stack,
   }));

@@ -1428,7 +1428,6 @@ const REVIEW_STATE_OPTIONS: {
   { value: "APPROVED", label: "Approved", color: "var(--color-ready)" },
   { value: "CHANGES_REQUESTED", label: "Changes requested", color: "var(--color-conflict)" },
   { value: "COMMENTED", label: "Commented", color: "var(--color-review-commented)" },
-  { value: "DISMISSED", label: "Dismissed", color: "var(--color-review-commented)" },
 ];
 
 function ReviewStateDropdown({
