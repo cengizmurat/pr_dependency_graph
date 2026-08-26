@@ -4,8 +4,15 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DatePicker, Dropdown } from "antd";
 import dayjs from "dayjs";
 import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, fetchPullRequestSummary, fetchBehindByCounts, buildDependencyGraph } from "../api";
-import type { GraphQLPullRequest, Contributor, Orientation, PRNode, PRStatusFilter, ReviewStateFilter } from "../types";
-import { REVIEW_STATE_FILTER_VALUES } from "../types";
+import type { GraphQLPullRequest, Contributor, Orientation, PRNode, PRStatusFilter } from "../types";
+import type { PRReviewState } from "../reviewState";
+import {
+  prReviewState,
+  parsePRReviewState,
+  PR_REVIEW_STATES,
+  PR_REVIEW_STATE_COLOR,
+  PR_REVIEW_STATE_LABEL,
+} from "../reviewState";
 import { EYE_ICON_PATH, LOOKBACK_DAYS_KEY } from "../constants";
 import { getStoredLookbackDays, buildDefaultRange, collectDescendantPRs, copyToClipboard } from "../utils";
 import { buildShareUrl, getFocusPR, withFocusPR } from "../prFocus";
@@ -46,8 +53,7 @@ interface PRFilters {
   authors: string[];
   reviewers: string[];
   status: PRStatusFilter;
-  reviewStates: ReviewStateFilter[];
-  viewerLogin: string | null;
+  reviewStates: PRReviewState[];
 }
 
 type FilterName = "author" | "reviewer" | "status" | "reviewState";
@@ -75,26 +81,14 @@ function matchesReviewerFilter(
   );
 }
 
-// Review-state filter: keep PRs where one of the selected states applies. It
-// reads against whoever the reviewer filter names, and falls back to the viewer
-// when no reviewer is picked — so "Alice" + "Review requested" answers "what is
-// still waiting on Alice". The viewer fallback is skipped until viewerLogin
-// loads so it doesn't briefly wipe the graph out on first paint.
+// Review-state filter: keep PRs whose own review state is one of the selected
+// ones — the same state that colours the node, so picking "Approved" leaves
+// exactly the PRs outlined green.
 function matchesReviewStateFilter(
   pr: GraphQLPullRequest,
-  states: ReviewStateFilter[],
-  wantedReviewers: ReadonlySet<string> | null,
-  viewerLogin: string | null,
+  states: PRReviewState[],
 ): boolean {
-  if (states.length === 0) return true;
-  if (!wantedReviewers && !viewerLogin) return true;
-  const wantedStates = new Set<string>(states);
-  return pr.reviewers.some(
-    (r) =>
-      (wantedReviewers
-        ? wantedReviewers.has(r.login.toLowerCase())
-        : r.login === viewerLogin) && wantedStates.has(r.state),
-  );
+  return states.length === 0 || states.includes(prReviewState(pr));
 }
 
 // Applies the toolbar filters to a PR list. `skip` names filters to leave out,
@@ -114,20 +108,14 @@ function filterPRs(
       (skip?.has("author") || matchesAuthorFilter(pr, f.authors)) &&
       (skip?.has("status") || matchesStatusFilter(pr, f.status)) &&
       matchesReviewerFilter(pr, wantedReviewers) &&
-      (skip?.has("reviewState") ||
-        matchesReviewStateFilter(pr, f.reviewStates, wantedReviewers, f.viewerLogin)),
+      (skip?.has("reviewState") || matchesReviewStateFilter(pr, f.reviewStates)),
   );
 }
 
 // A dropdown's own filter is left out of its option counts, otherwise picking
-// one option would zero out every other option in the same menu. The reviewer
-// menu also drops the review-state filter, which reads against the selected
-// reviewer and so has to be applied per candidate instead of to the pool.
+// one option would zero out every other option in the same menu.
 const AUTHOR_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>(["author"]);
-const REVIEWER_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>([
-  "reviewer",
-  "reviewState",
-]);
+const REVIEWER_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>(["reviewer"]);
 
 // --- Focused PR --------------------------------------------------------
 
@@ -291,15 +279,14 @@ export default function GraphPage() {
     [setSearchParams, viewerLogin],
   );
 
-  const reviewStateFilter = useMemo<ReviewStateFilter[]>(() => {
-    const allowed = new Set<string>(REVIEW_STATE_FILTER_VALUES);
+  const reviewStateFilter = useMemo<PRReviewState[]>(() => {
     return searchParams
       .getAll("reviewState")
-      .map((v) => v.toUpperCase())
-      .filter((v): v is ReviewStateFilter => allowed.has(v));
+      .map(parsePRReviewState)
+      .filter((v): v is PRReviewState => v !== null);
   }, [searchParams]);
   const setReviewStateFilter = useCallback(
-    (next: ReviewStateFilter[]) => {
+    (next: PRReviewState[]) => {
       setSearchParams(
         (prev) => {
           const params = new URLSearchParams(prev);
@@ -384,9 +371,8 @@ export default function GraphPage() {
       reviewers: reviewerFilter,
       status: statusFilter,
       reviewStates: reviewStateFilter,
-      viewerLogin: viewerLogin ?? null,
     }),
-    [authorFilter, reviewerFilter, statusFilter, reviewStateFilter, viewerLogin],
+    [authorFilter, reviewerFilter, statusFilter, reviewStateFilter],
   );
 
   // How many PRs each author would leave on screen — every other filter still
@@ -403,17 +389,12 @@ export default function GraphPage() {
   // Everyone who appears as a reviewer on at least one PR that clears the other
   // filters, with how many of those PRs are on their plate. Built from the PRs
   // themselves rather than the contributor list because a reviewer need not
-  // have committed to the repo. The review-state filter is applied per reviewer
-  // here, since selecting one would make that filter read against them — so
-  // each count is what selecting that reviewer alone would show. Sorted by PR
-  // count so the busiest reviewers are at the top of the menu.
+  // have committed to the repo. Sorted by PR count so the busiest reviewers are
+  // at the top of the menu.
   const reviewerOptions = useMemo(() => {
-    const wantedStates =
-      reviewStateFilter.length > 0 ? new Set<string>(reviewStateFilter) : null;
     const byLogin = new Map<string, ReviewerOption>();
     for (const pr of filterPRs(allPRs, filters, REVIEWER_FACET_SKIP)) {
       for (const reviewer of pr.reviewers) {
-        if (wantedStates && !wantedStates.has(reviewer.state)) continue;
         const entry = byLogin.get(reviewer.login);
         if (entry) {
           entry.count += 1;
@@ -440,7 +421,7 @@ export default function GraphPage() {
     return [...byLogin.values()].sort(
       (a, b) => b.count - a.count || a.login.localeCompare(b.login),
     );
-  }, [allPRs, filters, reviewStateFilter, reviewerFilter]);
+  }, [allPRs, filters, reviewerFilter]);
 
   // The graph is always built from every PR in the date range: filters pick
   // out which of them to highlight, they don't decide who is on the graph.
@@ -661,8 +642,6 @@ export default function GraphPage() {
           selected={reviewStateFilter}
           onChange={setReviewStateFilter}
           isMobile={isMobile}
-          viewerLogin={viewerLogin}
-          reviewerFilter={reviewerFilter}
         />
           </>
         )}
@@ -1420,28 +1399,23 @@ function StatusDropdown({
 }
 
 const REVIEW_STATE_OPTIONS: {
-  value: ReviewStateFilter;
+  value: PRReviewState;
   label: string;
   color: string;
-}[] = [
-  { value: "REQUESTED", label: "Review requested", color: "var(--color-review-requested)" },
-  { value: "APPROVED", label: "Approved", color: "var(--color-ready)" },
-  { value: "CHANGES_REQUESTED", label: "Changes requested", color: "var(--color-conflict)" },
-  { value: "COMMENTED", label: "Commented", color: "var(--color-review-commented)" },
-];
+}[] = PR_REVIEW_STATES.map((state) => ({
+  value: state,
+  label: PR_REVIEW_STATE_LABEL[state],
+  color: PR_REVIEW_STATE_COLOR[state],
+}));
 
 function ReviewStateDropdown({
   selected,
   onChange,
   isMobile,
-  viewerLogin,
-  reviewerFilter,
 }: {
-  selected: ReviewStateFilter[];
-  onChange: (next: ReviewStateFilter[]) => void;
+  selected: PRReviewState[];
+  onChange: (next: PRReviewState[]) => void;
   isMobile: boolean;
-  viewerLogin: string | undefined;
-  reviewerFilter: string[];
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -1460,7 +1434,7 @@ function ReviewStateDropdown({
   }, []);
 
   const toggle = useCallback(
-    (state: ReviewStateFilter) => {
+    (state: PRReviewState) => {
       onChange(
         selected.includes(state)
           ? selected.filter((s) => s !== state)
@@ -1482,17 +1456,8 @@ function ReviewStateDropdown({
         ? soleSelected?.label ?? "Review state"
         : `${selected.length} review states`;
 
-  // The state is read against whoever the reviewer filter names; with no
-  // reviewer picked it falls back to the viewer's own review state.
-  const subject =
-    reviewerFilter.length === 1
-      ? `@${reviewerFilter[0]}`
-      : reviewerFilter.length > 1
-        ? "the selected reviewers"
-        : viewerLogin
-          ? `you (@${viewerLogin})`
-          : "you";
-  const triggerTitle = `Filter by the review state of ${subject} on each PR`;
+  const triggerTitle =
+    "Filter by each PR's review state — the state its node is outlined with";
 
   return (
     <div

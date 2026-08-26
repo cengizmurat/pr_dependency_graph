@@ -310,18 +310,6 @@ export interface EdgeFlags {
 
 export type PRStatusFilter = "all" | "ready" | "draft";
 
-// The reviewer states the toolbar can filter on. DISMISSED is deliberately not
-// among them: a dismissed review is a verdict GitHub has retired, so it is not
-// something to go looking for. A stale `?reviewState=DISMISSED` link still
-// loads — the value is simply dropped.
-export const REVIEW_STATE_FILTER_VALUES = [
-  "REQUESTED",
-  "APPROVED",
-  "CHANGES_REQUESTED",
-  "COMMENTED",
-] as const;
-export type ReviewStateFilter = (typeof REVIEW_STATE_FILTER_VALUES)[number];
-
 export interface MergeStatus {
   hasConflict: boolean;
   isMergeable: boolean;

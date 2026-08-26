@@ -66,3 +66,14 @@ export const PR_REVIEW_STATE_COLOR: Record<PRReviewState, string> = {
   requested: COLORS.reviewRequested,
   none: COLORS.reviewNone,
 };
+
+// A review state named in the URL's `reviewState` param. Matched
+// case-insensitively so links written against the older uppercase filter values
+// (?reviewState=APPROVED) still resolve; anything unrecognised — a hand-edited
+// value, or the retired DISMISSED — returns null and is dropped.
+export function parsePRReviewState(value: string): PRReviewState | null {
+  const lower = value.toLowerCase();
+  return (PR_REVIEW_STATES as readonly string[]).includes(lower)
+    ? (lower as PRReviewState)
+    : null;
+}
