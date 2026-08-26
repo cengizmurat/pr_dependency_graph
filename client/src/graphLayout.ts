@@ -293,26 +293,24 @@ function pickHighestKind(
 }
 
 // Which review-state color (if any) should highlight the outer border of this
-// PR node for the current viewer.
-//   - If the viewer is a reviewer, use their own review state.
-//   - If the viewer is only the author, aggregate across all reviewers.
-//   - Otherwise no highlight.
-// When multiple states apply, resolve by REVIEW_OUTLINE_PRIORITY.
+// PR node.
+//
+// The viewer decides *whether* a PR is outlined, never which color: only the
+// PRs they author or review are highlighted, so the graph picks out their own
+// work instead of lighting up whole. The color itself is always the PR's
+// state, not the viewer's — the strongest state any reviewer holds, by
+// REVIEW_OUTLINE_PRIORITY. So a PR one reviewer has approved stays green for
+// everyone, including a second reviewer who has since only commented on it.
 export function reviewOutlineKind(
   pr: PRNode,
   viewerLogin: string | undefined,
 ): ReviewOutlineKind | null {
   if (!viewerLogin) return null;
 
-  const viewerKinds = pr.reviewers
-    .filter((r) => r.login === viewerLogin)
-    .map((r) => reviewStateToKind(r.state));
-  if (viewerKinds.length > 0) return pickHighestKind(viewerKinds);
+  const involved =
+    pr.author === viewerLogin ||
+    pr.reviewers.some((r) => r.login === viewerLogin);
+  if (!involved) return null;
 
-  if (pr.author === viewerLogin) {
-    const allKinds = pr.reviewers.map((r) => reviewStateToKind(r.state));
-    return pickHighestKind(allKinds);
-  }
-
-  return null;
+  return pickHighestKind(pr.reviewers.map((r) => reviewStateToKind(r.state)));
 }
