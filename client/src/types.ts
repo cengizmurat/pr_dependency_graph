@@ -28,6 +28,9 @@ export interface Reviewer {
   login: string;
   avatarUrl: string;
   state: ReviewState;
+  // A GitHub App rather than a person. Bot reviewers are fetched either way and
+  // hidden downstream when the setting says so — see withoutBotContributions.
+  isBot: boolean;
 }
 
 export interface PRLabel {
@@ -67,6 +70,9 @@ export interface GraphQLPullRequest {
   labels: PRLabel[];
   reviewers: Reviewer[];
   commentCount: number;
+  // The share of commentCount that came from bot reviews, so hiding bots is a
+  // subtraction rather than a refetch.
+  botCommentCount: number;
   mergeable: Mergeable;
   mergeStateStatus: string;
   reviewDecision: ReviewDecision;

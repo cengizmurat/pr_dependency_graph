@@ -34,6 +34,12 @@ export const DEFAULT_LOOKBACK_DAYS = 7;
 
 export const LEGEND_COLLAPSED_KEY = "pr-graph-legend-collapsed";
 
+// Whether reviews left by GitHub Apps are counted. Off by default: a bot that
+// reviews every PR would otherwise top the reviewer list and leave PRs reading
+// "Commented" on the strength of its comment alone.
+export const INCLUDE_BOTS_KEY = "pr-graph-include-bots";
+export const DEFAULT_INCLUDE_BOTS = false;
+
 // --- Workflows tab ---
 
 // Batch sizes for the sidebar lists; a "Load more" button fetches the next

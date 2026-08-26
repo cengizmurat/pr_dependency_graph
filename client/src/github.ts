@@ -21,6 +21,7 @@ import type {
 } from "./types";
 import { REVIEW_STATE_PRIORITY } from "./types";
 import { getToken } from "./auth";
+import { isBotActor } from "./bots";
 
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 
@@ -90,24 +91,30 @@ const STATE_CHANGE_FIELDS = `
 // CHANGES_REQUESTED review per reviewer that GitHub still counts — a dismissed
 // verdict is absent from it, which is what keeps a dismissal from being undone
 // here. Merging the two by REVIEW_STATE_PRIORITY gives the state that survives.
+// A review's author is an Actor, so `__typename` says whether a GitHub App or
+// a person left it — the only reliable way to tell, since an App's login is not
+// always suffixed. `requestedReviewer` asks for Bot as well as User, so a review
+// request sitting with an App is visible too rather than silently dropped.
 const REVIEW_FIELDS = `
         latestReviews(first: 100) {
           nodes {
             state
-            author { login avatarUrl }
+            author { __typename login avatarUrl }
             comments { totalCount }
           }
         }
         latestOpinionatedReviews(first: 100) {
           nodes {
             state
-            author { login avatarUrl }
+            author { __typename login avatarUrl }
           }
         }
         reviewRequests(first: 100) {
           nodes {
             requestedReviewer {
+              __typename
               ... on User { login avatarUrl }
+              ... on Bot { login avatarUrl }
             }
           }
         }`;
@@ -423,7 +430,7 @@ interface PRPageInfo {
 
 interface RawReview {
   state: string;
-  author: { login: string; avatarUrl: string } | null;
+  author: { __typename?: string; login: string; avatarUrl: string } | null;
   // Only selected on `latestReviews`; the opinionated pass leaves it out so the
   // same review is not counted twice.
   comments?: { totalCount: number } | null;
@@ -451,7 +458,11 @@ interface PRNodeRaw {
   reviewRequests: {
     nodes:
       | ({
-          requestedReviewer: { login?: string; avatarUrl?: string } | null;
+          requestedReviewer: {
+            __typename?: string;
+            login?: string;
+            avatarUrl?: string;
+          } | null;
         } | null)[]
       | null;
   } | null;
@@ -546,6 +557,7 @@ function strongerReviewState(a: ReviewState, b: ReviewState): ReviewState {
 function processRawPR(pr: PRNodeRaw): GraphQLPullRequest {
   const reviewerMap = new Map<string, Reviewer>();
   let reviewCommentCount = 0;
+  let botReviewCommentCount = 0;
 
   // Folds one review into the reviewer's running state. A reviewer shows up in
   // both review connections, so whichever review lands second only wins if it
@@ -559,6 +571,7 @@ function processRawPR(pr: PRNodeRaw): GraphQLPullRequest {
       login,
       avatarUrl: existing?.avatarUrl || review.author?.avatarUrl || "",
       state: existing ? strongerReviewState(existing.state, state) : state,
+      isBot: isBotActor(review.author?.__typename, login),
     });
   };
 
@@ -566,7 +579,11 @@ function processRawPR(pr: PRNodeRaw): GraphQLPullRequest {
   // repeats reviews that are already here, and adding them would double-count.
   for (const review of pr.latestReviews?.nodes ?? []) {
     if (!review) continue;
-    reviewCommentCount += review.comments?.totalCount ?? 0;
+    const comments = review.comments?.totalCount ?? 0;
+    reviewCommentCount += comments;
+    if (isBotActor(review.author?.__typename, review.author?.login)) {
+      botReviewCommentCount += comments;
+    }
     recordReview(review);
   }
 
@@ -584,6 +601,7 @@ function processRawPR(pr: PRNodeRaw): GraphQLPullRequest {
         login: reviewer.login,
         avatarUrl: reviewer.avatarUrl ?? "",
         state: "REQUESTED",
+        isBot: isBotActor(reviewer.__typename, reviewer.login),
       });
     }
   }
@@ -612,6 +630,7 @@ function processRawPR(pr: PRNodeRaw): GraphQLPullRequest {
       })),
     reviewers: [...reviewerMap.values()],
     commentCount: (pr.comments?.totalCount ?? 0) + reviewCommentCount,
+    botCommentCount: botReviewCommentCount,
     mergeable: pr.mergeable ?? "UNKNOWN",
     mergeStateStatus: pr.mergeStateStatus ?? "UNKNOWN",
     reviewDecision: (pr.reviewDecision as ReviewDecision) ?? null,
