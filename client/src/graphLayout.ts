@@ -1,4 +1,5 @@
 import type { GraphData, GraphNode, PRNode, PRLabel, Orientation, LayoutNode, FlatEdge, EdgeFlags, ReviewState } from "./types";
+import { REVIEW_STATE_PRIORITY } from "./types";
 import { PR_WIDTH, PR_HEIGHT, BRANCH_WIDTH, BRANCH_HEIGHT, SPACING, COLORS } from "./constants";
 import { isPR } from "./utils";
 
@@ -248,12 +249,15 @@ export type ReviewOutlineKind =
   | "commented"
   | "requested";
 
-const REVIEW_OUTLINE_PRIORITY: ReviewOutlineKind[] = [
-  "changes_requested",
-  "approved",
-  "commented",
-  "requested",
-];
+// Derived from REVIEW_STATE_PRIORITY so the border and the reviewer badges can
+// never disagree about which state outranks which. COMMENTED and DISMISSED both
+// map to "commented", hence the dedupe.
+const REVIEW_OUTLINE_PRIORITY: ReviewOutlineKind[] = REVIEW_STATE_PRIORITY.map(
+  reviewStateToKind,
+).filter(
+  (kind, i, kinds): kind is ReviewOutlineKind =>
+    kind !== null && kinds.indexOf(kind) === i,
+);
 
 export const REVIEW_OUTLINE_COLOR: Record<ReviewOutlineKind, string> = {
   changes_requested: COLORS.conflict,

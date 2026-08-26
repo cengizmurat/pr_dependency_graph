@@ -7,6 +7,20 @@ export type ReviewState =
   | "DISMISSED"
   | "REQUESTED";
 
+// Review states from strongest to weakest. A reviewer can hold several at once
+// — an approval followed by a comment, a review request on top of an earlier
+// verdict — and every place that has to show a single state resolves the tie
+// with this order rather than with recency, so a passing comment never buries
+// the approval underneath it. DISMISSED ranks with COMMENTED: GitHub has
+// retired the verdict it carried, so it says nothing about the PR either way.
+export const REVIEW_STATE_PRIORITY: readonly ReviewState[] = [
+  "CHANGES_REQUESTED",
+  "APPROVED",
+  "COMMENTED",
+  "DISMISSED",
+  "REQUESTED",
+];
+
 export type Mergeable = "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
 
 export interface Reviewer {
