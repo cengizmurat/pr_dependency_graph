@@ -14,7 +14,15 @@ import {
   PR_REVIEW_STATE_LABEL,
 } from "../reviewState";
 import { EYE_ICON_PATH, LOOKBACK_DAYS_KEY } from "../constants";
-import { getStoredLookbackDays, buildDefaultRange, collectDescendantPRs, copyToClipboard } from "../utils";
+import {
+  getStoredLookbackDays,
+  getStoredIncludeBots,
+  setStoredIncludeBots,
+  buildDefaultRange,
+  collectDescendantPRs,
+  copyToClipboard,
+} from "../utils";
+import { withoutBotContributions } from "../bots";
 import { buildShareUrl, getFocusPR, withFocusPR } from "../prFocus";
 import { hydrateShortcut, pruneStaleShortcut, SHORTCUT_PARAM } from "../filterShortcuts";
 import type { DateRange } from "../utils";
@@ -347,12 +355,27 @@ export default function GraphPage() {
   const endDate = dateRange[1].toISOString();
 
   const {
-    prs: allPRs,
+    prs: fetchedPRs,
     isLoading,
     isFetchingMore,
     error: prError,
     refetch,
   } = useIncrementalPRs(token, owner, repo, startDate, endDate, activeTab === "prs");
+
+  const [includeBots, setIncludeBots] = useState(getStoredIncludeBots);
+  const toggleIncludeBots = useCallback(() => {
+    setIncludeBots((prev) => {
+      setStoredIncludeBots(!prev);
+      return !prev;
+    });
+  }, []);
+
+  // Everything below reads this rather than the fetched list, so hiding bots
+  // reaches the graph, the cards, the filters and their counts at once.
+  const allPRs = useMemo(
+    () => (includeBots ? fetchedPRs : withoutBotContributions(fetchedPRs)),
+    [fetchedPRs, includeBots],
+  );
 
   const { data: contributors } = useQuery({
     queryKey: ["contributors", owner, repo],
@@ -702,6 +725,35 @@ export default function GraphPage() {
                         )}
                       </svg>
                       {orientation === "horizontal" ? "Horizontal" : "Vertical"}
+                    </button>
+                  </div>
+                ),
+              },
+              {
+                key: "bots",
+                label: (
+                  <div style={styles.menuItemRow}>
+                    <span>Bot reviews</span>
+                    <button
+                      style={styles.menuToggleBtn}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleIncludeBots();
+                      }}
+                      title={
+                        includeBots
+                          ? "Bot reviews count toward reviewers, comments and PR state"
+                          : "Bot reviews are left out of reviewers, comments and PR state"
+                      }
+                    >
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                        {includeBots ? (
+                          <path d="M1 7l4 4 8-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        ) : (
+                          <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        )}
+                      </svg>
+                      {includeBots ? "Included" : "Hidden"}
                     </button>
                   </div>
                 ),

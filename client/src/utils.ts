@@ -1,7 +1,13 @@
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import type { GraphNode, PRNode } from "./types";
-import { LOOKBACK_DAYS_KEY, DEFAULT_LOOKBACK_DAYS, LEGEND_COLLAPSED_KEY } from "./constants";
+import {
+  LOOKBACK_DAYS_KEY,
+  DEFAULT_LOOKBACK_DAYS,
+  LEGEND_COLLAPSED_KEY,
+  INCLUDE_BOTS_KEY,
+  DEFAULT_INCLUDE_BOTS,
+} from "./constants";
 
 export function isPR(d: GraphNode): d is PRNode {
   return d.type === "pr";
@@ -111,6 +117,23 @@ export function hasStoredLegendPreference(): boolean {
 export function setStoredLegendCollapsed(collapsed: boolean): void {
   try {
     localStorage.setItem(LEGEND_COLLAPSED_KEY, String(collapsed));
+  } catch {
+    // localStorage unavailable (e.g. private mode); preference won't persist.
+  }
+}
+
+export function getStoredIncludeBots(): boolean {
+  try {
+    const stored = localStorage.getItem(INCLUDE_BOTS_KEY);
+    return stored === null ? DEFAULT_INCLUDE_BOTS : stored === "true";
+  } catch {
+    return DEFAULT_INCLUDE_BOTS;
+  }
+}
+
+export function setStoredIncludeBots(include: boolean): void {
+  try {
+    localStorage.setItem(INCLUDE_BOTS_KEY, String(include));
   } catch {
     // localStorage unavailable (e.g. private mode); preference won't persist.
   }
