@@ -39,9 +39,9 @@ function entriesFor(key: ShortcutKey, viewerLogin: string): Entry[] {
       // The reviewer is pinned to the viewer (exclusively, so the shortcut
       // resets a reviewer picked by hand) and the PR's own state to a pending
       // request: together they mean "PRs I review that are still waiting on a
-      // first look". Note that a PR someone else has already commented on reads
-      // as "commented", so it drops out even while the viewer's own review is
-      // outstanding.
+      // first look". Note that a PR someone else has already approved or
+      // commented on reads as that stronger state, so it drops out even while
+      // the viewer's own review is outstanding.
       return [
         { param: "reviewer", value: viewerLogin, exclusive: true },
         { param: "reviewState", value: "requested" },

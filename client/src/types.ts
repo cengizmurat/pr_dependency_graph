@@ -12,8 +12,8 @@ export type ReviewState =
 // can hold more than one at a time — an approval followed by a comment, a fresh
 // review request on top of an earlier verdict — and this order resolves it
 // rather than recency, so a passing comment never buries the approval
-// underneath it. (The PR's own state is a separate thing that GitHub decides:
-// see prReviewState.)
+// underneath it. (The PR's own state is settled the same way, across every
+// reviewer and GitHub's verdict together: see prReviewState.)
 export const REVIEW_STATE_PRIORITY: readonly ReviewState[] = [
   "CHANGES_REQUESTED",
   "APPROVED",
