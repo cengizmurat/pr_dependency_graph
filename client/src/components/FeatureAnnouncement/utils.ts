@@ -16,6 +16,13 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
+    version: 13,
+    title: "Take the filtered-out PRs off the graph",
+    description:
+      "Settings has a new \"Filtered-out PRs\" row. On \"Faded\", the default, a PR your filters leave out stays drawn and dimmed in the stack it belongs to. Switch it to \"Hidden\" and those PRs come off the graph, so only what matched is laid out — a much smaller graph to read on a busy repository.",
+    date: "2026-09-04",
+  },
+  {
     version: 12,
     title: "Filter pull requests by label",
     description:
