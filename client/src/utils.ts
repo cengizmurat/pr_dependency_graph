@@ -1,12 +1,14 @@
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
-import type { GraphNode, PRNode } from "./types";
+import type { GraphNode, PRNode, FilteredDisplay } from "./types";
 import {
   LOOKBACK_DAYS_KEY,
   DEFAULT_LOOKBACK_DAYS,
   LEGEND_COLLAPSED_KEY,
   INCLUDE_BOTS_KEY,
   DEFAULT_INCLUDE_BOTS,
+  FILTERED_DISPLAY_KEY,
+  DEFAULT_FILTERED_DISPLAY,
 } from "./constants";
 
 export function isPR(d: GraphNode): d is PRNode {
@@ -134,6 +136,23 @@ export function getStoredIncludeBots(): boolean {
 export function setStoredIncludeBots(include: boolean): void {
   try {
     localStorage.setItem(INCLUDE_BOTS_KEY, String(include));
+  } catch {
+    // localStorage unavailable (e.g. private mode); preference won't persist.
+  }
+}
+
+export function getStoredFilteredDisplay(): FilteredDisplay {
+  try {
+    const stored = localStorage.getItem(FILTERED_DISPLAY_KEY);
+    return stored === "fade" || stored === "hide" ? stored : DEFAULT_FILTERED_DISPLAY;
+  } catch {
+    return DEFAULT_FILTERED_DISPLAY;
+  }
+}
+
+export function setStoredFilteredDisplay(display: FilteredDisplay): void {
+  try {
+    localStorage.setItem(FILTERED_DISPLAY_KEY, display);
   } catch {
     // localStorage unavailable (e.g. private mode); preference won't persist.
   }

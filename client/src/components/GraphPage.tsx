@@ -4,7 +4,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DatePicker, Dropdown } from "antd";
 import dayjs from "dayjs";
 import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, fetchPullRequestSummary, fetchBehindByCounts, buildDependencyGraph } from "../api";
-import type { GraphQLPullRequest, Contributor, Orientation, PRNode, PRStatusFilter } from "../types";
+import type {
+  GraphQLPullRequest,
+  Contributor,
+  Orientation,
+  PRNode,
+  PRStatusFilter,
+  FilteredDisplay,
+} from "../types";
 import type { PRReviewState } from "../reviewState";
 import {
   prReviewState,
@@ -18,6 +25,8 @@ import {
   getStoredLookbackDays,
   getStoredIncludeBots,
   setStoredIncludeBots,
+  getStoredFilteredDisplay,
+  setStoredFilteredDisplay,
   buildDefaultRange,
   collectDescendantPRs,
   copyToClipboard,
@@ -367,6 +376,17 @@ export default function GraphPage() {
     setIncludeBots((prev) => {
       setStoredIncludeBots(!prev);
       return !prev;
+    });
+  }, []);
+
+  // Whether the PRs the filters leave out stay on the graph, faded, or come off
+  // it so what matched is laid out on its own — a smaller graph to read.
+  const [filteredDisplay, setFilteredDisplay] = useState(getStoredFilteredDisplay);
+  const toggleFilteredDisplay = useCallback(() => {
+    setFilteredDisplay((prev) => {
+      const next: FilteredDisplay = prev === "fade" ? "hide" : "fade";
+      setStoredFilteredDisplay(next);
+      return next;
     });
   }, []);
 
@@ -759,6 +779,49 @@ export default function GraphPage() {
                 ),
               },
               {
+                key: "filtered",
+                label: (
+                  <div style={styles.menuItemRow}>
+                    <span>Filtered-out PRs</span>
+                    <button
+                      style={styles.menuToggleBtn}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleFilteredDisplay();
+                      }}
+                      title={
+                        filteredDisplay === "fade"
+                          ? "PRs the filters leave out stay on the graph, faded back"
+                          : "PRs the filters leave out come off the graph, leaving a smaller one"
+                      }
+                    >
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                        <rect x="1" y="3.5" width="4.5" height="7" rx="1" fill="currentColor" />
+                        {filteredDisplay === "fade" ? (
+                          <rect
+                            x="8.5"
+                            y="3.5"
+                            width="4.5"
+                            height="7"
+                            rx="1"
+                            fill="currentColor"
+                            opacity="0.3"
+                          />
+                        ) : (
+                          <path
+                            d="M8 4l4.5 6M12.5 4l-4.5 6"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                          />
+                        )}
+                      </svg>
+                      {filteredDisplay === "fade" ? "Faded" : "Hidden"}
+                    </button>
+                  </div>
+                ),
+              },
+              {
                 key: "lookback",
                 label: (
                   <div
@@ -855,6 +918,7 @@ export default function GraphPage() {
               focusPR={focusPR}
               onFocusPR={setFocusPR}
               highlightPRs={matchedPRs}
+              filteredDisplay={filteredDisplay}
             />
             <FeatureAnnouncementPopup />
           </>

@@ -84,3 +84,38 @@ export function buildDependencyGraph(
 
   return { nodes, edges, owner, repo };
 }
+
+// The graph with only the given pull requests left on it — what the "Filtered
+// out PRs: Hidden" setting draws, so the PRs a filter kept are laid out on
+// their own rather than faded in place among the ones it dropped.
+//
+// A dependency leaves with either of its ends, which makes a kept PR whose
+// parent was dropped a root of its own rather than something hanging off a PR
+// that is no longer there. The base branches under the kept PRs stay: a chip is
+// small, and a PR still has to say what it is opened against.
+//
+// Keeping nothing would leave an empty page to look at, so a set that matches
+// no PR on the graph gives the graph back whole.
+export function restrictGraphToPRs(
+  data: GraphData,
+  prNumbers: ReadonlySet<number>,
+): GraphData {
+  const kept = new Set<string>();
+  for (const node of data.nodes) {
+    if (node.type === "pr" && prNumbers.has(node.number)) kept.add(node.id);
+  }
+  if (kept.size === 0) return data;
+
+  const branchIds = new Set(
+    data.nodes.filter((n) => n.type === "branch").map((n) => n.id),
+  );
+  for (const edge of data.edges) {
+    if (branchIds.has(edge.source) && kept.has(edge.target)) kept.add(edge.source);
+  }
+
+  return {
+    ...data,
+    nodes: data.nodes.filter((n) => kept.has(n.id)),
+    edges: data.edges.filter((e) => kept.has(e.source) && kept.has(e.target)),
+  };
+}
