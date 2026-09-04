@@ -365,6 +365,21 @@ export const dropdownStyles: Record<string, React.CSSProperties> = {
     maxHeight: 280,
     overflowY: "auto" as const,
   },
+  // Label names run much longer than a login, so their trigger and menu are
+  // capped and the name ellipsizes inside them rather than stretching the
+  // dropdown across the header.
+  menuCapped: {
+    maxWidth: 280,
+  },
+  triggerLabelCapped: {
+    maxWidth: 150,
+  },
+  itemName: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap" as const,
+  },
   item: {
     display: "flex",
     alignItems: "center",

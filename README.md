@@ -150,12 +150,20 @@ order holds still across the automatic refresh.
 
 ## Filters Highlight, They Don't Hide
 
-The author, reviewer, status and review-state filters — and the shortcut
+The author, reviewer, label, status and review-state filters — and the shortcut
 buttons beside the legend — never take pull requests off the graph. Every open
 PR in the date range stays drawn, with its dependencies intact; the ones a
 filter keeps are shown at full strength and the rest fade back. So narrowing to
 one author still shows their PRs in the context of the stacks they sit in, and
 the header reads `2 of 5 open PRs`.
+
+The author, reviewer and label menus each keep a pull request that matches any
+one of the values picked in them, so adding a second value widens that filter.
+Different menus narrow each other, though: an author and a label together mean
+that author's PRs carrying that label. Every menu lists what picking each of its
+values would actually leave on screen, counted with the other filters already
+applied — the label menu is built from the labels the loaded PRs carry, not from
+the repository's whole label list, so a label nobody has used never appears.
 
 Focusing a PR works the same way and composes with the filters: a PR is picked
 out when it satisfies both, so filtering inside a focused stack narrows that
