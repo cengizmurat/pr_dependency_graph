@@ -1,3 +1,5 @@
+import type { FilteredDisplay } from "./types";
+
 // --- Graph layout dimensions ---
 
 export const PR_WIDTH = 280;
@@ -39,6 +41,14 @@ export const LEGEND_COLLAPSED_KEY = "pr-graph-legend-collapsed";
 // "Commented" on the strength of its comment alone.
 export const INCLUDE_BOTS_KEY = "pr-graph-include-bots";
 export const DEFAULT_INCLUDE_BOTS = false;
+
+// What the graph does with the pull requests the toolbar filters leave out.
+// "fade" keeps them drawn, so a matched PR is still read in the stack it
+// belongs to — the behaviour the filters have always had, and the default.
+// "hide" lays out only what matched, which is a smaller graph to read when the
+// surrounding stacks are not what the filter is about.
+export const FILTERED_DISPLAY_KEY = "pr-graph-filtered-display";
+export const DEFAULT_FILTERED_DISPLAY: FilteredDisplay = "fade";
 
 // --- Workflows tab ---
 

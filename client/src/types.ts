@@ -316,6 +316,10 @@ export interface EdgeFlags {
 
 export type PRStatusFilter = "all" | "ready" | "draft";
 
+// What the graph does with the pull requests the toolbar filters leave out:
+// "fade" keeps them drawn at low opacity, "hide" takes them off the graph.
+export type FilteredDisplay = "fade" | "hide";
+
 export interface MergeStatus {
   hasConflict: boolean;
   isMergeable: boolean;

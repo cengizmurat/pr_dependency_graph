@@ -1,10 +1,11 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import * as d3 from "d3";
 import { useQueryClient } from "@tanstack/react-query";
-import type { GraphData, PRNode, Orientation, EdgeFlags } from "../types";
+import type { GraphData, PRNode, Orientation, EdgeFlags, FilteredDisplay } from "../types";
 import { mergeAndCascade, updatePRBranch } from "../github";
 import { collectDescendantPRs, isPR } from "../utils";
 import { collectFocusIds } from "../prFocus";
+import { restrictGraphToPRs } from "../graph";
 import { PR_WIDTH, SPACING, COLORS } from "../constants";
 import {
   buildTrees,
@@ -51,6 +52,11 @@ interface Props {
   // PR numbers the toolbar filters keep. Null when no filter is set. The graph
   // draws every PR either way — these are the ones it picks out.
   highlightPRs?: ReadonlySet<number> | null;
+  // What to do with the PRs the filters leave out: fade them back where they
+  // are (the default), or drop them from the graph so what is left is laid out
+  // on its own. Nothing here touches a focused stack — the graph around it is
+  // context and stays drawn either way.
+  filteredDisplay?: FilteredDisplay;
 }
 
 export default function GraphView({
@@ -60,6 +66,7 @@ export default function GraphView({
   focusPR = null,
   onFocusPR,
   highlightPRs = null,
+  filteredDisplay = "fade",
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const gRef = useRef<SVGGElement>(null);
@@ -68,8 +75,25 @@ export default function GraphView({
   const [merging, setMerging] = useState<number | null>(null);
   const [updatingPRs, setUpdatingPRs] = useState<Set<number>>(new Set());
   const [currentlyUpdating, setCurrentlyUpdating] = useState<number | null>(null);
+  // The graph that actually gets drawn. Normally the whole of it: the filters
+  // pick PRs out, they don't decide who is on the graph. With the setting on
+  // "hide" they do decide, and the PRs they leave out come off before the
+  // layout runs — so what matched is laid out on its own, in a graph no bigger
+  // than it needs to be.
+  //
+  // Merging and updating a branch read the whole graph, below, so a cascade
+  // still reaches the dependent PRs that are off screen.
+  const shownData = useMemo(
+    () =>
+      filteredDisplay === "hide" && highlightPRs
+        ? restrictGraphToPRs(data, highlightPRs)
+        : data,
+    [data, highlightPRs, filteredDisplay],
+  );
+
   // Node ids making up the focused stack, or null when nothing is focused (or
-  // the focused PR isn't part of this graph).
+  // the focused PR isn't part of this graph). Read from the whole graph, so a
+  // stack is the stack whatever the filters are hiding of it.
   const focusIds = useMemo(
     () => (focusPR === null ? null : collectFocusIds(focusPR, data.nodes)),
     [focusPR, data.nodes],
@@ -84,7 +108,7 @@ export default function GraphView({
     if (!focusIds && !highlightPRs) return null;
 
     const ids = new Set<string>();
-    for (const node of data.nodes) {
+    for (const node of shownData.nodes) {
       if (node.type !== "pr") continue;
       const inFocus = !focusIds || focusIds.has(node.id);
       const inFilter = !highlightPRs || highlightPRs.has(node.number);
@@ -96,13 +120,13 @@ export default function GraphView({
     // focused, though: there the branch below the stack is context, not part
     // of it.
     if (!focusIds) {
-      const isBranch = new Map(data.nodes.map((n) => [n.id, n.type === "branch"]));
-      for (const edge of data.edges) {
+      const isBranch = new Map(shownData.nodes.map((n) => [n.id, n.type === "branch"]));
+      for (const edge of shownData.edges) {
         if (isBranch.get(edge.source) && ids.has(edge.target)) ids.add(edge.source);
       }
     }
     return ids;
-  }, [data.nodes, data.edges, focusIds, highlightPRs]);
+  }, [shownData.nodes, shownData.edges, focusIds, highlightPRs]);
 
   const handleMerge = useCallback(
     async (prNumber: number, prTitle: string) => {
@@ -226,7 +250,7 @@ export default function GraphView({
 
   const { allNodes, allEdges, nodeFlags, totalWidth, totalHeight } =
     useMemo(() => {
-      const { roots: trees, edgeFlagsMap } = buildTrees(data);
+      const { roots: trees, edgeFlagsMap } = buildTrees(shownData);
       const gap = SPACING[orientation].sibling;
       let nextSecondary = gap;
       for (const tree of trees) {
@@ -267,7 +291,7 @@ export default function GraphView({
         totalWidth: nextSecondary,
         totalHeight: maxBottom + 80,
       };
-    }, [data, orientation]);
+    }, [shownData, orientation]);
 
   // The area the view frames: whatever is picked out — a focused stack, the
   // PRs a filter keeps, or both — enveloped as a whole. With nothing picked
@@ -280,9 +304,17 @@ export default function GraphView({
     // to the side of its PRs — including it would stretch the box (and pull
     // the zoom back) for no gain. The resting whole-graph view still counts
     // them, or the chips at the far edge would be cut off.
-    const picked = highlightIds
-      ? allNodes.filter((n) => highlightIds.has(n.data.id) && isPR(n.data))
-      : allNodes;
+    //
+    // A selection covering everything on screen — which is what filters set to
+    // hide leave behind — is nothing to pick out from, so it frames like the
+    // resting view, chips included. It is still zoomed as a selection: two
+    // cards left over shouldn't be blown up to fill the viewport.
+    const nothingDimmed =
+      !highlightIds || allNodes.every((n) => highlightIds.has(n.data.id));
+    const picked =
+      highlightIds && !nothingDimmed
+        ? allNodes.filter((n) => highlightIds.has(n.data.id) && isPR(n.data))
+        : allNodes;
     // Nothing picked out that the layout actually holds — a filter that keeps
     // nothing, or a highlighted PR the tree builder dropped — still leaves a
     // graph to show, framed whole. It is not a selection, so it is neither

@@ -169,6 +169,22 @@ Focusing a PR works the same way and composes with the filters: a PR is picked
 out when it satisfies both, so filtering inside a focused stack narrows that
 stack instead of reaching back out into the rest of the graph.
 
+### Unless You Ask Them To
+
+Settings carries a **Filtered-out PRs** row with two values. `Faded` is the
+behaviour above, and the default. `Hidden` takes the PRs a filter leaves out
+off the graph rather than dimming them: only what matched is laid out, so the
+graph is as small as the filter has made it — which is the point on a busy
+repository, where the stacks around a match are not what you came to look at.
+The choice is remembered in the browser, like the other Settings rows.
+
+Hiding drops a dependency along with either of its ends, so a PR whose parent
+was filtered out is drawn on its own rather than under a card that is no longer
+there. The base branch chips below the PRs that stayed are kept — a PR still
+has to say what it is opened against — and a filter that matches nothing gives
+the whole graph back instead of an empty page. Focusing is untouched by the
+setting: the graph around a focused stack is context, and it fades either way.
+
 ### Shortcut Links Resolve to Whoever Opens Them
 
 A shortcut can be linked to by name alone —
