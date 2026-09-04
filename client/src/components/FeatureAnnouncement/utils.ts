@@ -16,6 +16,13 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
+    version: 12,
+    title: "Filter pull requests by label",
+    description:
+      "A new label dropdown in the header narrows the graph to the pull requests carrying the labels you pick. Every label in play is listed with its colour and how many PRs wear it, and picking several keeps the PRs that carry any of them. The choice is kept in the page URL, so a labelled view can be bookmarked or shared.",
+    date: "2026-09-04",
+  },
+  {
     version: 11,
     title: "See which folders change most often",
     description:

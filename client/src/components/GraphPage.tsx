@@ -13,7 +13,7 @@ import {
   PR_REVIEW_STATE_COLOR,
   PR_REVIEW_STATE_LABEL,
 } from "../reviewState";
-import { EYE_ICON_PATH, LOOKBACK_DAYS_KEY } from "../constants";
+import { EYE_ICON_PATH, LOOKBACK_DAYS_KEY, TAG_ICON_PATH } from "../constants";
 import {
   getStoredLookbackDays,
   getStoredIncludeBots,
@@ -60,11 +60,12 @@ const EMPTY_PRS: GraphQLPullRequest[] = [];
 interface PRFilters {
   authors: string[];
   reviewers: string[];
+  labels: string[];
   status: PRStatusFilter;
   reviewStates: PRReviewState[];
 }
 
-type FilterName = "author" | "reviewer" | "status" | "reviewState";
+type FilterName = "author" | "reviewer" | "label" | "status" | "reviewState";
 
 function matchesAuthorFilter(pr: GraphQLPullRequest, authors: string[]): boolean {
   return authors.length === 0 || authors.includes(pr.authorLogin);
@@ -86,6 +87,19 @@ function matchesReviewerFilter(
   return (
     !wantedReviewers ||
     pr.reviewers.some((r) => wantedReviewers.has(r.login.toLowerCase()))
+  );
+}
+
+// Label filter: keep PRs carrying any of the selected labels, so picking two
+// labels widens the selection rather than asking for both at once — the same
+// "any of" reading as the author and reviewer menus. Names are compared
+// case-insensitively since the param can be edited by hand in the URL.
+function matchesLabelFilter(
+  pr: GraphQLPullRequest,
+  wantedLabels: ReadonlySet<string> | null,
+): boolean {
+  return (
+    !wantedLabels || pr.labels.some((l) => wantedLabels.has(l.name.toLowerCase()))
   );
 }
 
@@ -111,11 +125,16 @@ function filterPRs(
     f.reviewers.length > 0 && !skip?.has("reviewer")
       ? new Set(f.reviewers.map((l) => l.toLowerCase()))
       : null;
+  const wantedLabels =
+    f.labels.length > 0 && !skip?.has("label")
+      ? new Set(f.labels.map((n) => n.toLowerCase()))
+      : null;
   return prs.filter(
     (pr) =>
       (skip?.has("author") || matchesAuthorFilter(pr, f.authors)) &&
       (skip?.has("status") || matchesStatusFilter(pr, f.status)) &&
       matchesReviewerFilter(pr, wantedReviewers) &&
+      matchesLabelFilter(pr, wantedLabels) &&
       (skip?.has("reviewState") || matchesReviewStateFilter(pr, f.reviewStates)),
   );
 }
@@ -124,6 +143,7 @@ function filterPRs(
 // one option would zero out every other option in the same menu.
 const AUTHOR_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>(["author"]);
 const REVIEWER_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>(["reviewer"]);
+const LABEL_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>(["label"]);
 const STATUS_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>(["status"]);
 const REVIEW_STATE_FACET_SKIP: ReadonlySet<FilterName> = new Set<FilterName>([
   "reviewState",
@@ -234,10 +254,11 @@ export default function GraphPage() {
     enabled: !!token,
   });
 
-  // Author, reviewer and status filters live in the URL query string so they
-  // survive a refresh and a filtered view can be bookmarked or shared. Editing
-  // one by hand drops the `shortcut` marker once the filters no longer match
-  // the shortcut it names, so the value counts as manually set from then on.
+  // Author, reviewer, label and status filters live in the URL query string so
+  // they survive a refresh and a filtered view can be bookmarked or shared.
+  // Editing one by hand drops the `shortcut` marker once the filters no longer
+  // match the shortcut it names, so the value counts as manually set from then
+  // on.
   const authorFilter = useMemo(() => searchParams.getAll("author"), [searchParams]);
   const setAuthorFilter = useCallback(
     (next: string[]) => {
@@ -265,6 +286,22 @@ export default function GraphPage() {
           const params = new URLSearchParams(prev);
           params.delete("reviewer");
           for (const login of next) params.append("reviewer", login);
+          return pruneStaleShortcut(params, viewerLogin);
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams, viewerLogin],
+  );
+
+  const labelFilter = useMemo(() => searchParams.getAll("label"), [searchParams]);
+  const setLabelFilter = useCallback(
+    (next: string[]) => {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          params.delete("label");
+          for (const name of next) params.append("label", name);
           return pruneStaleShortcut(params, viewerLogin);
         },
         { replace: true },
@@ -396,10 +433,11 @@ export default function GraphPage() {
     () => ({
       authors: authorFilter,
       reviewers: reviewerFilter,
+      labels: labelFilter,
       status: statusFilter,
       reviewStates: reviewStateFilter,
     }),
-    [authorFilter, reviewerFilter, statusFilter, reviewStateFilter],
+    [authorFilter, reviewerFilter, labelFilter, statusFilter, reviewStateFilter],
   );
 
   // How many PRs each author would leave on screen — every other filter still
@@ -450,6 +488,32 @@ export default function GraphPage() {
     );
   }, [allPRs, filters, reviewerFilter]);
 
+  // Every label carried by at least one PR that clears the other filters, with
+  // how many of those PRs wear it. Taken from the PRs themselves rather than the
+  // repository's label list, so a label nobody has used never reaches the menu.
+  // Sorted by PR count so the labels actually in play are at the top.
+  const labelOptions = useMemo(() => {
+    const byName = new Map<string, LabelOption>();
+    for (const pr of filterPRs(allPRs, filters, LABEL_FACET_SKIP)) {
+      for (const label of pr.labels) {
+        const entry = byName.get(label.name);
+        if (entry) entry.count += 1;
+        else byName.set(label.name, { name: label.name, color: label.color, count: 1 });
+      }
+    }
+    // A selected label whose count fell to zero still needs a row, or there
+    // would be no way to switch it off from the menu.
+    for (const name of labelFilter) {
+      if (byName.has(name)) continue;
+      const color =
+        allPRs.flatMap((pr) => pr.labels).find((l) => l.name === name)?.color ?? "";
+      byName.set(name, { name, color, count: 0 });
+    }
+    return [...byName.values()].sort(
+      (a, b) => b.count - a.count || a.name.localeCompare(b.name),
+    );
+  }, [allPRs, filters, labelFilter]);
+
   // Draft/ready split of the PRs the other filters leave, so each status shows
   // what picking it would put on screen. "All PRs" is the whole pool, which is
   // also what the two halves add up to.
@@ -497,6 +561,7 @@ export default function GraphPage() {
   const hasActiveFilters =
     authorFilter.length > 0 ||
     reviewerFilter.length > 0 ||
+    labelFilter.length > 0 ||
     statusFilter !== "all" ||
     reviewStateFilter.length > 0;
 
@@ -616,7 +681,14 @@ export default function GraphPage() {
     setSearchParams(
       (prev) => {
         const params = new URLSearchParams(prev);
-        for (const key of ["author", "reviewer", "status", "reviewState", SHORTCUT_PARAM]) {
+        for (const key of [
+          "author",
+          "reviewer",
+          "label",
+          "status",
+          "reviewState",
+          SHORTCUT_PARAM,
+        ]) {
           params.delete(key);
         }
         return params;
@@ -683,6 +755,12 @@ export default function GraphPage() {
           reviewers={reviewerOptions}
           selected={reviewerFilter}
           onChange={setReviewerFilter}
+          isMobile={isMobile}
+        />
+        <LabelDropdown
+          labels={labelOptions}
+          selected={labelFilter}
+          onChange={setLabelFilter}
           isMobile={isMobile}
         />
         <StatusDropdown
@@ -1355,6 +1433,179 @@ function ReviewerDropdown({
                   <img src={r.avatarUrl} alt={r.login} style={dropdownStyles.avatar} />
                   <span>{r.login}</span>
                   <span style={dropdownStyles.count}>({r.count})</span>
+                  {isSelected && (
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--color-ready)" style={{ marginLeft: "auto", flexShrink: 0 }}>
+                      <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface LabelOption {
+  name: string;
+  // GitHub's six-digit hex, without the leading "#" — the same value the PR
+  // cards paint their label chips with.
+  color: string;
+  count: number;
+}
+
+// GitHub's "tag" octicon, the glyph it puts beside a label.
+function LabelIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}>
+      <path d={TAG_ICON_PATH} />
+    </svg>
+  );
+}
+
+// A label is recognised by its colour as much as its name, so each row carries
+// the label's own colour as a dot. Falls back to the tag glyph when there is no
+// colour to show: the "All labels" row, and a label named in the URL that none
+// of the loaded PRs carries.
+function LabelSwatch({ color }: { color?: string }) {
+  if (!color) return <LabelIcon />;
+  return (
+    <span
+      style={{
+        width: 10,
+        height: 10,
+        borderRadius: "50%",
+        background: `#${color}`,
+        border: "1px solid var(--color-border-subtle)",
+        boxSizing: "border-box",
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
+function LabelDropdown({
+  labels,
+  selected,
+  onChange,
+  isMobile,
+}: {
+  labels: LabelOption[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+  isMobile: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    // Capture phase: the d3-zoom graph canvas stops mousedown propagation, so a bubbling listener never sees clicks on it.
+    document.addEventListener("mousedown", handleClick, true);
+    return () => document.removeEventListener("mousedown", handleClick, true);
+  }, [open]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Escape") setOpen(false);
+  }, []);
+
+  const toggle = useCallback(
+    (name: string) => {
+      onChange(
+        selected.includes(name)
+          ? selected.filter((n) => n !== name)
+          : [...selected, name],
+      );
+    },
+    [selected, onChange],
+  );
+
+  const soleSelected =
+    selected.length === 1
+      ? labels.find((l) => l.name === selected[0])
+      : undefined;
+
+  // Label names are long enough that the trigger ellipsizes them, so the
+  // tooltip spells out what is picked rather than only what the menu is for.
+  const triggerTitle =
+    selected.length === 0
+      ? "Filter by label — a PR is kept when it carries any of the labels you pick"
+      : `Showing PRs labelled ${selected.join(", ")}`;
+
+  return (
+    <div
+      ref={ref}
+      style={{ ...dropdownStyles.wrapper, ...(isMobile ? dropdownStyles.wrapperMobile : {}) }}
+      onKeyDown={handleKeyDown}
+    >
+      <button
+        style={{ ...dropdownStyles.trigger, ...(isMobile ? dropdownStyles.triggerMobile : {}) }}
+        onClick={() => setOpen((o) => !o)}
+        title={triggerTitle}
+      >
+        <span
+          style={{
+            ...dropdownStyles.triggerLabel,
+            ...(isMobile ? {} : dropdownStyles.triggerLabelCapped),
+          }}
+        >
+          <LabelSwatch color={soleSelected?.color} />
+          {selected.length === 0
+            ? "All labels"
+            : selected.length === 1
+              ? selected[0]
+              : `${selected.length} labels`}
+        </span>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style={{ marginLeft: 2, flexShrink: 0 }}>
+          <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          style={{
+            ...dropdownStyles.menu,
+            ...(isMobile ? dropdownStyles.menuMobile : dropdownStyles.menuCapped),
+          }}
+        >
+          <button
+            className="contributor-dropdown-item"
+            style={{
+              ...dropdownStyles.item,
+              fontWeight: selected.length === 0 ? 600 : 400,
+            }}
+            onClick={() => onChange([])}
+          >
+            <LabelIcon />
+            <span>All labels</span>
+          </button>
+          <div style={dropdownStyles.divider} />
+          <div style={dropdownStyles.list}>
+            {labels.length === 0 && (
+              <div style={{ ...dropdownStyles.item, color: "var(--color-text-secondary)", cursor: "default" }}>
+                No labels on these PRs
+              </div>
+            )}
+            {labels.map((l) => {
+              const isSelected = selected.includes(l.name);
+              return (
+                <button
+                  key={l.name}
+                  className="contributor-dropdown-item"
+                  style={{
+                    ...dropdownStyles.item,
+                    fontWeight: isSelected ? 600 : 400,
+                  }}
+                  onClick={() => toggle(l.name)}
+                  title={`${l.count} PR${l.count === 1 ? " carries" : "s carry"} this label`}
+                >
+                  <LabelSwatch color={l.color} />
+                  <span style={dropdownStyles.itemName}>{l.name}</span>
+                  <span style={dropdownStyles.count}>({l.count})</span>
                   {isSelected && (
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--color-ready)" style={{ marginLeft: "auto", flexShrink: 0 }}>
                       <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
