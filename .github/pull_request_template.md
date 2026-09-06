@@ -11,8 +11,8 @@
 <!--
   A graph of what this change makes move —
   mark what this PR touches (`:::changed` on a node; a transition that changed between two nodes
-  that did not is marked differently — the guide says how), and paste it here inside a mermaid
-  code fence. GitHub renders it inline.
+  that did not is marked differently — .github/lifecycle-graphs.md says how), and paste it here
+  inside a mermaid code fence. GitHub renders it inline.
 
   Include one when the PR changes how something travels through the system rather than only what
   it computes. The cases below are examples to give you ideas, not a full list — anything else with
