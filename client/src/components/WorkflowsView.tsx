@@ -1,14 +1,23 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { Select } from "antd";
 import {
+  fetchBranches,
   fetchWorkflows,
   fetchWorkflowRun,
   fetchWorkflowRunJobs,
   fetchWorkflowRuns,
+  searchBranches,
 } from "../api";
 import type { WorkflowInfo, WorkflowRunInfo } from "../types";
-import { WORKFLOWS_PAGE_SIZE, WORKFLOW_RUNS_PAGE_SIZE } from "../constants";
+import {
+  BRANCH_SEARCH_DEBOUNCE_MS,
+  BRANCH_SEARCH_LIMIT,
+  WORKFLOWS_PAGE_SIZE,
+  WORKFLOW_RUNS_PAGE_SIZE,
+} from "../constants";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { timeAgo } from "../utils";
 import RunTimeline, { formatDuration } from "./RunTimeline";
 import RuntimeTrendChart, { BackArrow } from "./RuntimeTrendChart";
@@ -57,6 +66,10 @@ export default function WorkflowsView({
   const selectedWorkflowId = isNaN(wfParam) ? null : wfParam;
   const runParam = parseInt(searchParams.get("run") ?? "", 10);
   const selectedRunId = isNaN(runParam) ? null : runParam;
+  // Its own parameter rather than the folder-churn tab's `branch`: the two
+  // views share one query string, and a branch picked for churn is not a
+  // filter the viewer asked this tab for.
+  const branchFilter = searchParams.get("wfBranch") || null;
 
   const selectWorkflow = useCallback(
     (id: number) => {
@@ -97,6 +110,23 @@ export default function WorkflowsView({
     });
   }, [setSearchParams]);
 
+  // Changing the filter drops the open run: it belongs to the branch that was
+  // listed before, so keeping it open would show a run the list no longer has.
+  // The expanded workflow stays, so the viewer lands on its trend for the new
+  // branch.
+  const selectBranch = useCallback(
+    (name: string | null) => {
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev);
+        if (name) params.set("wfBranch", name);
+        else params.delete("wfBranch");
+        params.delete("run");
+        return params;
+      });
+    },
+    [setSearchParams],
+  );
+
   const workflowsQuery = useInfiniteQuery({
     queryKey: ["workflows", owner, repo],
     queryFn: ({ pageParam }) =>
@@ -107,8 +137,38 @@ export default function WorkflowsView({
     staleTime: 5 * 60 * 1000,
   });
 
+  // Same key as the folder-churn tab's branch list, so whichever tab is opened
+  // first pays for it and the other is served from cache. It fills the closed
+  // dropdown; searching goes to GitHub, below.
+  const branchesQuery = useQuery({
+    queryKey: ["branches", owner, repo],
+    queryFn: () => fetchBranches(token, owner, repo),
+    enabled: !!token,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const [branchSearch, setBranchSearch] = useState("");
+  const settledSearch = useDebouncedValue(branchSearch.trim(), BRANCH_SEARCH_DEBOUNCE_MS);
+
+  // The search goes to GitHub so a branch past the end of the fetched list is
+  // still findable. Only the settled text is a query key, so a burst of
+  // keystrokes costs one request; the previous matches stay on screen while
+  // the next ones load, so the dropdown never blinks empty mid-word.
+  const branchSearchQuery = useQuery({
+    queryKey: ["branchSearch", owner, repo, settledSearch],
+    queryFn: () => searchBranches(token, owner, repo, settledSearch, BRANCH_SEARCH_LIMIT),
+    enabled: !!token && settledSearch !== "",
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const pendingSearch = branchSearch.trim();
+  const searching =
+    pendingSearch !== "" &&
+    (pendingSearch !== settledSearch || branchSearchQuery.isFetching);
+
   const runsQuery = useInfiniteQuery({
-    queryKey: ["workflowRuns", owner, repo, selectedWorkflowId],
+    queryKey: ["workflowRuns", owner, repo, selectedWorkflowId, branchFilter],
     queryFn: ({ pageParam }) =>
       fetchWorkflowRuns(
         token,
@@ -117,6 +177,7 @@ export default function WorkflowsView({
         selectedWorkflowId!,
         pageParam,
         WORKFLOW_RUNS_PAGE_SIZE,
+        branchFilter,
       ),
     initialPageParam: 1,
     getNextPageParam: (lastPage, _pages, lastPageParam) =>
@@ -138,6 +199,32 @@ export default function WorkflowsView({
     [runsQuery.data],
   );
 
+  // What GitHub returned for the current search. Held apart from the options so
+  // the local filter below can let these through on their own account.
+  const matched = useMemo(
+    () => new Set(settledSearch === "" ? [] : (branchSearchQuery.data ?? [])),
+    [branchSearchQuery.data, settledSearch],
+  );
+
+  const branchOptions = useMemo(() => {
+    const names: string[] = [];
+    const seen = new Set<string>();
+    // Matches first, so a branch found by searching heads the dropdown; with no
+    // search they are empty and the fetched list keeps its own order.
+    for (const name of [...matched, ...(branchesQuery.data?.names ?? [])]) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      names.push(name);
+    }
+    // A filter can name a branch neither list holds: a merged pull request
+    // leaves runs behind after its branch is deleted, and a repository with
+    // many branches hands back a truncated list. Keeping the current filter as
+    // an option means such a link still reads as the branch it filters on
+    // instead of an empty box.
+    if (branchFilter && !seen.has(branchFilter)) names.unshift(branchFilter);
+    return names.map((name) => ({ value: name, label: name }));
+  }, [branchesQuery.data, matched, branchFilter]);
+
   const selectedWorkflow =
     workflows?.find((w) => w.id === selectedWorkflowId) ?? null;
   const seedRun = runs?.find((r) => r.id === selectedRunId) ?? undefined;
@@ -145,7 +232,69 @@ export default function WorkflowsView({
   return (
     <div style={{ ...styles.container, ...(isMobile ? styles.containerMobile : {}) }}>
       <aside style={{ ...styles.sidebar, ...(isMobile ? styles.sidebarMobile : {}) }}>
-        <div style={styles.sidebarHeader}>Workflows</div>
+        <div style={styles.sidebarTop}>
+          <div style={styles.sidebarHeader}>Workflows</div>
+          <div style={styles.branchFilter}>
+            <label style={styles.branchFilterLabel} htmlFor="workflow-branch-filter">
+              Branch
+            </label>
+            <Select
+              id="workflow-branch-filter"
+              size="small"
+              style={styles.branchFilterSelect}
+              showSearch
+              allowClear
+              value={branchFilter ?? undefined}
+              loading={branchesQuery.isLoading || searching}
+              placeholder="All branches"
+              options={branchOptions}
+              searchValue={branchSearch}
+              onSearch={setBranchSearch}
+              onChange={(value) => {
+                setBranchSearch("");
+                selectBranch(value ?? null);
+              }}
+              // Closing drops the typed text, so reopening starts from the
+              // whole list rather than the last search.
+              onOpenChange={(open) => {
+                if (!open) setBranchSearch("");
+              }}
+              filterOption={(input, option) => {
+                const needle = input.trim().toLowerCase();
+                if (needle === "") return true;
+                const name = option?.value ?? "";
+                // Whatever GitHub matched belongs in the list on its own
+                // account; the rest of the fetched list is filtered here, on
+                // any part of the name, so a viewer who knows only the middle
+                // of a long branch name still finds it while typing.
+                return matched.has(name) || name.toLowerCase().includes(needle);
+              }}
+              notFoundContent={
+                branchesQuery.isLoading
+                  ? "Loading branches..."
+                  : searching
+                    ? "Searching branches..."
+                    : "No branch matches."
+              }
+            />
+          </div>
+          {branchesQuery.error && (
+            <div style={styles.branchFilterError}>
+              Could not load branches: {(branchesQuery.error as Error).message}
+            </div>
+          )}
+          {branchSearchQuery.error && (
+            <div style={styles.branchFilterError}>
+              Could not search branches: {(branchSearchQuery.error as Error).message}
+            </div>
+          )}
+          {branchesQuery.data?.truncated && (
+            <div style={styles.branchFilterNote}>
+              This repository has more branches than the list could fetch — type to
+              search all of them.
+            </div>
+          )}
+        </div>
         {workflowsQuery.isLoading && (
           <div style={styles.sidebarMessage}>Loading workflows...</div>
         )}
@@ -183,7 +332,11 @@ export default function WorkflowsView({
                   </div>
                 )}
                 {runs && runs.length === 0 && (
-                  <div style={styles.sidebarMessage}>No runs for this workflow yet.</div>
+                  <div style={styles.sidebarMessage}>
+                    {branchFilter
+                      ? `No run of this workflow on ${branchFilter}.`
+                      : "No runs for this workflow yet."}
+                  </div>
                 )}
                 {runs?.map((run) => (
                   <RunListItem
@@ -234,13 +387,14 @@ export default function WorkflowsView({
           />
         ) : selectedWorkflowId !== null ? (
           <RuntimeTrendChart
-            // Keyed by workflow so nothing from the previous workflow's chart
+            // Keyed by workflow and branch so nothing from the previous chart
             // lingers while the new one measures.
-            key={selectedWorkflowId}
+            key={`${selectedWorkflowId}:${branchFilter ?? ""}`}
             token={token}
             owner={owner}
             repo={repo}
             workflowName={selectedWorkflow?.name}
+            branch={branchFilter}
             runs={runs}
             runsLoading={runsQuery.isLoading}
             hasOlderRuns={!!runsQuery.hasNextPage}
@@ -251,7 +405,11 @@ export default function WorkflowsView({
         ) : (
           <div style={styles.emptyState}>
             <WorkflowIcon size={28} />
-            <span>Pick a workflow to browse its recent runs.</span>
+            <span>
+              {branchFilter
+                ? `Pick a workflow to browse its recent runs on ${branchFilter}.`
+                : "Pick a workflow to browse its recent runs."}
+            </span>
           </div>
         )}
       </main>

@@ -57,6 +57,12 @@ export const DEFAULT_FILTERED_DISPLAY: FilteredDisplay = "fade";
 export const WORKFLOWS_PAGE_SIZE = 30;
 export const WORKFLOW_RUNS_PAGE_SIZE = 20;
 
+// Typing in the branch filter searches GitHub, so that a branch past the end
+// of the fetched list is still findable. The wait folds a burst of keystrokes
+// into one request; the cap keeps the dropdown to a readable length.
+export const BRANCH_SEARCH_DEBOUNCE_MS = 300;
+export const BRANCH_SEARCH_LIMIT = 30;
+
 // --- PRCard reviewer display ---
 
 export const MAX_REVIEWER_AVATARS = 4;

@@ -899,13 +899,18 @@ export async function fetchWorkflowRuns(
   workflowId: number,
   page: number,
   perPage: number,
+  // Keep only the runs whose head branch is this one; null lists every branch.
+  // GitHub applies it server-side, so the total count and the paging walk the
+  // matching runs alone rather than a filtered slice of a wider list.
+  branch: string | null = null,
 ): Promise<WorkflowRunsPage> {
+  const branchParam = branch ? `&branch=${encodeURIComponent(branch)}` : "";
   const data = await fetchRestJson<{
     total_count?: number;
     workflow_runs?: RawWorkflowRun[] | null;
   }>(
     token,
-    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/workflows/${workflowId}/runs?per_page=${perPage}&page=${page}`,
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/workflows/${workflowId}/runs?per_page=${perPage}&page=${page}${branchParam}`,
   );
 
   const batch = data.workflow_runs ?? [];
@@ -1090,6 +1095,38 @@ export async function fetchBranches(
   if (defaultBranch && !names.includes(defaultBranch)) names.unshift(defaultBranch);
 
   return { names, defaultBranch, truncated };
+}
+
+// A typed search runs against GitHub rather than the list above: a repository
+// with more branches than BRANCH_PAGE_LIMIT pages hold would otherwise hide
+// every branch past the cut from the search box. GitHub matches `query`
+// against the ref name, so what comes back is not always a plain substring of
+// what was typed — the caller keeps whatever it returns rather than filtering
+// it again.
+const BRANCH_SEARCH_QUERY = `
+query($owner: String!, $name: String!, $query: String!, $first: Int!) {
+  repository(owner: $owner, name: $name) {
+    refs(refPrefix: "refs/heads/", query: $query, first: $first, orderBy: { field: ALPHABETICAL, direction: ASC }) {
+      nodes { name }
+    }
+  }
+}`;
+
+export async function searchBranches(
+  token: string,
+  owner: string,
+  repo: string,
+  query: string,
+  first: number,
+): Promise<string[]> {
+  const data = await graphql<{
+    repository: { refs: { nodes: { name: string }[] } } | null;
+  }>(token, BRANCH_SEARCH_QUERY, { owner, name: repo, query, first });
+
+  const repository = data.repository;
+  if (!repository) throw new Error(`Repository ${owner}/${repo} not found.`);
+
+  return repository.refs.nodes.map((node) => node.name);
 }
 
 // Commit metadata for a branch, oldest-relevant filtering done server-side by
