@@ -1,6 +1,6 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Select } from "antd";
 import {
   fetchBranches,
@@ -8,9 +8,16 @@ import {
   fetchWorkflowRun,
   fetchWorkflowRunJobs,
   fetchWorkflowRuns,
+  searchBranches,
 } from "../api";
 import type { WorkflowInfo, WorkflowRunInfo } from "../types";
-import { WORKFLOWS_PAGE_SIZE, WORKFLOW_RUNS_PAGE_SIZE } from "../constants";
+import {
+  BRANCH_SEARCH_DEBOUNCE_MS,
+  BRANCH_SEARCH_LIMIT,
+  WORKFLOWS_PAGE_SIZE,
+  WORKFLOW_RUNS_PAGE_SIZE,
+} from "../constants";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { timeAgo } from "../utils";
 import RunTimeline, { formatDuration } from "./RunTimeline";
 import RuntimeTrendChart, { BackArrow } from "./RuntimeTrendChart";
@@ -131,13 +138,34 @@ export default function WorkflowsView({
   });
 
   // Same key as the folder-churn tab's branch list, so whichever tab is opened
-  // first pays for it and the other is served from cache.
+  // first pays for it and the other is served from cache. It fills the closed
+  // dropdown; searching goes to GitHub, below.
   const branchesQuery = useQuery({
     queryKey: ["branches", owner, repo],
     queryFn: () => fetchBranches(token, owner, repo),
     enabled: !!token,
     staleTime: 5 * 60 * 1000,
   });
+
+  const [branchSearch, setBranchSearch] = useState("");
+  const settledSearch = useDebouncedValue(branchSearch.trim(), BRANCH_SEARCH_DEBOUNCE_MS);
+
+  // The search goes to GitHub so a branch past the end of the fetched list is
+  // still findable. Only the settled text is a query key, so a burst of
+  // keystrokes costs one request; the previous matches stay on screen while
+  // the next ones load, so the dropdown never blinks empty mid-word.
+  const branchSearchQuery = useQuery({
+    queryKey: ["branchSearch", owner, repo, settledSearch],
+    queryFn: () => searchBranches(token, owner, repo, settledSearch, BRANCH_SEARCH_LIMIT),
+    enabled: !!token && settledSearch !== "",
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const pendingSearch = branchSearch.trim();
+  const searching =
+    pendingSearch !== "" &&
+    (pendingSearch !== settledSearch || branchSearchQuery.isFetching);
 
   const runsQuery = useInfiniteQuery({
     queryKey: ["workflowRuns", owner, repo, selectedWorkflowId, branchFilter],
@@ -171,17 +199,31 @@ export default function WorkflowsView({
     [runsQuery.data],
   );
 
+  // What GitHub returned for the current search. Held apart from the options so
+  // the local filter below can let these through on their own account.
+  const matched = useMemo(
+    () => new Set(settledSearch === "" ? [] : (branchSearchQuery.data ?? [])),
+    [branchSearchQuery.data, settledSearch],
+  );
+
   const branchOptions = useMemo(() => {
-    const names = branchesQuery.data?.names ?? [];
-    // A filter can name a branch the list does not hold: a merged pull request
+    const names: string[] = [];
+    const seen = new Set<string>();
+    // Matches first, so a branch found by searching heads the dropdown; with no
+    // search they are empty and the fetched list keeps its own order.
+    for (const name of [...matched, ...(branchesQuery.data?.names ?? [])]) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      names.push(name);
+    }
+    // A filter can name a branch neither list holds: a merged pull request
     // leaves runs behind after its branch is deleted, and a repository with
     // many branches hands back a truncated list. Keeping the current filter as
     // an option means such a link still reads as the branch it filters on
     // instead of an empty box.
-    const withFilter =
-      branchFilter && !names.includes(branchFilter) ? [branchFilter, ...names] : names;
-    return withFilter.map((name) => ({ value: name, label: name }));
-  }, [branchesQuery.data, branchFilter]);
+    if (branchFilter && !seen.has(branchFilter)) names.unshift(branchFilter);
+    return names.map((name) => ({ value: name, label: name }));
+  }, [branchesQuery.data, matched, branchFilter]);
 
   const selectedWorkflow =
     workflows?.find((w) => w.id === selectedWorkflowId) ?? null;
@@ -203,18 +245,36 @@ export default function WorkflowsView({
               showSearch
               allowClear
               value={branchFilter ?? undefined}
-              loading={branchesQuery.isLoading}
+              loading={branchesQuery.isLoading || searching}
               placeholder="All branches"
               options={branchOptions}
-              onChange={(value) => selectBranch(value ?? null)}
-              // Typed text matches anywhere in the name, so a viewer who knows
-              // only the middle of a long branch name still finds it.
+              searchValue={branchSearch}
+              onSearch={setBranchSearch}
+              onChange={(value) => {
+                setBranchSearch("");
+                selectBranch(value ?? null);
+              }}
+              // Closing drops the typed text, so reopening starts from the
+              // whole list rather than the last search.
+              onOpenChange={(open) => {
+                if (!open) setBranchSearch("");
+              }}
               filterOption={(input, option) => {
                 const needle = input.trim().toLowerCase();
-                return needle === "" || (option?.value ?? "").toLowerCase().includes(needle);
+                if (needle === "") return true;
+                const name = option?.value ?? "";
+                // Whatever GitHub matched belongs in the list on its own
+                // account; the rest of the fetched list is filtered here, on
+                // any part of the name, so a viewer who knows only the middle
+                // of a long branch name still finds it while typing.
+                return matched.has(name) || name.toLowerCase().includes(needle);
               }}
               notFoundContent={
-                branchesQuery.isLoading ? "Loading branches..." : "No branch matches."
+                branchesQuery.isLoading
+                  ? "Loading branches..."
+                  : searching
+                    ? "Searching branches..."
+                    : "No branch matches."
               }
             />
           </div>
@@ -223,9 +283,15 @@ export default function WorkflowsView({
               Could not load branches: {(branchesQuery.error as Error).message}
             </div>
           )}
+          {branchSearchQuery.error && (
+            <div style={styles.branchFilterError}>
+              Could not search branches: {(branchSearchQuery.error as Error).message}
+            </div>
+          )}
           {branchesQuery.data?.truncated && (
             <div style={styles.branchFilterNote}>
-              This repository has more branches than the list could fetch.
+              This repository has more branches than the list could fetch — type to
+              search all of them.
             </div>
           )}
         </div>

@@ -11,6 +11,7 @@ export {
   fetchWorkflowRun,
   fetchWorkflowRunJobs,
   fetchBranches,
+  searchBranches,
   fetchCommitHistoryPage,
   fetchCommitFiles,
   fetchRepoTreeDirs,
