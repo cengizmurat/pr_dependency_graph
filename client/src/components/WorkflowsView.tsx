@@ -1,7 +1,9 @@
 import { useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { Select } from "antd";
 import {
+  fetchBranches,
   fetchWorkflows,
   fetchWorkflowRun,
   fetchWorkflowRunJobs,
@@ -57,6 +59,10 @@ export default function WorkflowsView({
   const selectedWorkflowId = isNaN(wfParam) ? null : wfParam;
   const runParam = parseInt(searchParams.get("run") ?? "", 10);
   const selectedRunId = isNaN(runParam) ? null : runParam;
+  // Its own parameter rather than the folder-churn tab's `branch`: the two
+  // views share one query string, and a branch picked for churn is not a
+  // filter the viewer asked this tab for.
+  const branchFilter = searchParams.get("wfBranch") || null;
 
   const selectWorkflow = useCallback(
     (id: number) => {
@@ -97,6 +103,23 @@ export default function WorkflowsView({
     });
   }, [setSearchParams]);
 
+  // Changing the filter drops the open run: it belongs to the branch that was
+  // listed before, so keeping it open would show a run the list no longer has.
+  // The expanded workflow stays, so the viewer lands on its trend for the new
+  // branch.
+  const selectBranch = useCallback(
+    (name: string | null) => {
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev);
+        if (name) params.set("wfBranch", name);
+        else params.delete("wfBranch");
+        params.delete("run");
+        return params;
+      });
+    },
+    [setSearchParams],
+  );
+
   const workflowsQuery = useInfiniteQuery({
     queryKey: ["workflows", owner, repo],
     queryFn: ({ pageParam }) =>
@@ -107,8 +130,17 @@ export default function WorkflowsView({
     staleTime: 5 * 60 * 1000,
   });
 
+  // Same key as the folder-churn tab's branch list, so whichever tab is opened
+  // first pays for it and the other is served from cache.
+  const branchesQuery = useQuery({
+    queryKey: ["branches", owner, repo],
+    queryFn: () => fetchBranches(token, owner, repo),
+    enabled: !!token,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const runsQuery = useInfiniteQuery({
-    queryKey: ["workflowRuns", owner, repo, selectedWorkflowId],
+    queryKey: ["workflowRuns", owner, repo, selectedWorkflowId, branchFilter],
     queryFn: ({ pageParam }) =>
       fetchWorkflowRuns(
         token,
@@ -117,6 +149,7 @@ export default function WorkflowsView({
         selectedWorkflowId!,
         pageParam,
         WORKFLOW_RUNS_PAGE_SIZE,
+        branchFilter,
       ),
     initialPageParam: 1,
     getNextPageParam: (lastPage, _pages, lastPageParam) =>
@@ -138,6 +171,18 @@ export default function WorkflowsView({
     [runsQuery.data],
   );
 
+  const branchOptions = useMemo(() => {
+    const names = branchesQuery.data?.names ?? [];
+    // A filter can name a branch the list does not hold: a merged pull request
+    // leaves runs behind after its branch is deleted, and a repository with
+    // many branches hands back a truncated list. Keeping the current filter as
+    // an option means such a link still reads as the branch it filters on
+    // instead of an empty box.
+    const withFilter =
+      branchFilter && !names.includes(branchFilter) ? [branchFilter, ...names] : names;
+    return withFilter.map((name) => ({ value: name, label: name }));
+  }, [branchesQuery.data, branchFilter]);
+
   const selectedWorkflow =
     workflows?.find((w) => w.id === selectedWorkflowId) ?? null;
   const seedRun = runs?.find((r) => r.id === selectedRunId) ?? undefined;
@@ -145,7 +190,45 @@ export default function WorkflowsView({
   return (
     <div style={{ ...styles.container, ...(isMobile ? styles.containerMobile : {}) }}>
       <aside style={{ ...styles.sidebar, ...(isMobile ? styles.sidebarMobile : {}) }}>
-        <div style={styles.sidebarHeader}>Workflows</div>
+        <div style={styles.sidebarTop}>
+          <div style={styles.sidebarHeader}>Workflows</div>
+          <div style={styles.branchFilter}>
+            <label style={styles.branchFilterLabel} htmlFor="workflow-branch-filter">
+              Branch
+            </label>
+            <Select
+              id="workflow-branch-filter"
+              size="small"
+              style={styles.branchFilterSelect}
+              showSearch
+              allowClear
+              value={branchFilter ?? undefined}
+              loading={branchesQuery.isLoading}
+              placeholder="All branches"
+              options={branchOptions}
+              onChange={(value) => selectBranch(value ?? null)}
+              // Typed text matches anywhere in the name, so a viewer who knows
+              // only the middle of a long branch name still finds it.
+              filterOption={(input, option) => {
+                const needle = input.trim().toLowerCase();
+                return needle === "" || (option?.value ?? "").toLowerCase().includes(needle);
+              }}
+              notFoundContent={
+                branchesQuery.isLoading ? "Loading branches..." : "No branch matches."
+              }
+            />
+          </div>
+          {branchesQuery.error && (
+            <div style={styles.branchFilterError}>
+              Could not load branches: {(branchesQuery.error as Error).message}
+            </div>
+          )}
+          {branchesQuery.data?.truncated && (
+            <div style={styles.branchFilterNote}>
+              This repository has more branches than the list could fetch.
+            </div>
+          )}
+        </div>
         {workflowsQuery.isLoading && (
           <div style={styles.sidebarMessage}>Loading workflows...</div>
         )}
@@ -183,7 +266,11 @@ export default function WorkflowsView({
                   </div>
                 )}
                 {runs && runs.length === 0 && (
-                  <div style={styles.sidebarMessage}>No runs for this workflow yet.</div>
+                  <div style={styles.sidebarMessage}>
+                    {branchFilter
+                      ? `No run of this workflow on ${branchFilter}.`
+                      : "No runs for this workflow yet."}
+                  </div>
                 )}
                 {runs?.map((run) => (
                   <RunListItem
@@ -234,13 +321,14 @@ export default function WorkflowsView({
           />
         ) : selectedWorkflowId !== null ? (
           <RuntimeTrendChart
-            // Keyed by workflow so nothing from the previous workflow's chart
+            // Keyed by workflow and branch so nothing from the previous chart
             // lingers while the new one measures.
-            key={selectedWorkflowId}
+            key={`${selectedWorkflowId}:${branchFilter ?? ""}`}
             token={token}
             owner={owner}
             repo={repo}
             workflowName={selectedWorkflow?.name}
+            branch={branchFilter}
             runs={runs}
             runsLoading={runsQuery.isLoading}
             hasOlderRuns={!!runsQuery.hasNextPage}
@@ -251,7 +339,11 @@ export default function WorkflowsView({
         ) : (
           <div style={styles.emptyState}>
             <WorkflowIcon size={28} />
-            <span>Pick a workflow to browse its recent runs.</span>
+            <span>
+              {branchFilter
+                ? `Pick a workflow to browse its recent runs on ${branchFilter}.`
+                : "Pick a workflow to browse its recent runs."}
+            </span>
           </div>
         )}
       </main>

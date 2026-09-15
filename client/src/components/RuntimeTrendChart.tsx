@@ -182,6 +182,7 @@ export default function RuntimeTrendChart({
   owner,
   repo,
   workflowName,
+  branch,
   runs,
   runsLoading,
   hasOlderRuns,
@@ -193,6 +194,8 @@ export default function RuntimeTrendChart({
   owner: string;
   repo: string;
   workflowName: string | undefined;
+  // The branch the runs are filtered to, or null when every branch is charted.
+  branch: string | null;
   runs: WorkflowRunInfo[] | undefined;
   runsLoading: boolean;
   hasOlderRuns: boolean;
@@ -310,7 +313,9 @@ export default function RuntimeTrendChart({
   } else if (charted.length === 0) {
     body = (
       <p style={styles.cardMessage}>
-        No finished run yet — a run time appears here once a run completes.
+        {branch
+          ? `No finished run on ${branch} yet — a run time appears here once a run completes.`
+          : "No finished run yet — a run time appears here once a run completes."}
       </p>
     );
   } else if (points.length === 0) {
@@ -326,7 +331,7 @@ export default function RuntimeTrendChart({
         height={HEIGHT}
         style={{ display: "block" }}
         role="img"
-        aria-label={`Run time of the last ${points.length} runs of ${workflowName ?? "this workflow"}`}
+        aria-label={`Run time of the last ${points.length} runs of ${workflowName ?? "this workflow"}${branch ? ` on ${branch}` : ""}`}
       >
         {geometry.ticks.map((tick) => (
           <g key={tick}>
@@ -409,6 +414,11 @@ export default function RuntimeTrendChart({
       <div style={styles.trendHeader}>
         <h2 style={styles.trendTitle}>
           {workflowName ? `${workflowName} — run time over time` : "Run time over time"}
+          {branch && (
+            <span style={styles.trendTitleBranch} title={`Runs on ${branch} only`}>
+              {branch}
+            </span>
+          )}
         </h2>
         <p style={styles.trendSubtitle}>
           Each dot is one finished run, measured as the time its jobs were

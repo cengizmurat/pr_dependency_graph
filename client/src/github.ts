@@ -899,13 +899,18 @@ export async function fetchWorkflowRuns(
   workflowId: number,
   page: number,
   perPage: number,
+  // Keep only the runs whose head branch is this one; null lists every branch.
+  // GitHub applies it server-side, so the total count and the paging walk the
+  // matching runs alone rather than a filtered slice of a wider list.
+  branch: string | null = null,
 ): Promise<WorkflowRunsPage> {
+  const branchParam = branch ? `&branch=${encodeURIComponent(branch)}` : "";
   const data = await fetchRestJson<{
     total_count?: number;
     workflow_runs?: RawWorkflowRun[] | null;
   }>(
     token,
-    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/workflows/${workflowId}/runs?per_page=${perPage}&page=${page}`,
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/workflows/${workflowId}/runs?per_page=${perPage}&page=${page}${branchParam}`,
   );
 
   const batch = data.workflow_runs ?? [];

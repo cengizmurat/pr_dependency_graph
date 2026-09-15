@@ -13,13 +13,27 @@ export const styles: Record<string, React.CSSProperties> = {
     overflowY: "auto" as const,
     borderRight: "1px solid var(--color-border-subtle)",
     background: "var(--color-page-bg)",
-    padding: "8px 0",
+    // No padding at the top: the sticky header below owns that band, so a run
+    // scrolling underneath has nowhere to peek through.
+    padding: "0 0 8px",
   },
   sidebarMobile: {
     width: "100%",
     maxHeight: "40%",
     borderRight: "none",
     borderBottom: "1px solid var(--color-border-subtle)",
+  },
+  // Title and branch filter ride along the top of the scrolling list, so the
+  // filter stays reachable on a phone, where the sidebar is a short scroll box.
+  sidebarTop: {
+    position: "sticky" as const,
+    top: 0,
+    zIndex: 2,
+    background: "var(--color-page-bg)",
+    borderBottom: "1px solid var(--color-border-subtle)",
+    // Padding rather than a margin: a margin is transparent, so the list would
+    // show through the strip it leaves behind.
+    padding: "8px 0",
   },
   sidebarHeader: {
     padding: "6px 16px 10px",
@@ -28,6 +42,36 @@ export const styles: Record<string, React.CSSProperties> = {
     textTransform: "uppercase" as const,
     letterSpacing: 0.4,
     color: "var(--color-text-secondary)",
+  },
+  branchFilter: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "0 16px",
+  },
+  branchFilterLabel: {
+    fontSize: 11,
+    fontWeight: 600,
+    textTransform: "uppercase" as const,
+    letterSpacing: 0.4,
+    color: "var(--color-text-secondary)",
+    flexShrink: 0,
+  },
+  branchFilterSelect: {
+    flex: 1,
+    minWidth: 0,
+  },
+  branchFilterNote: {
+    padding: "6px 16px 0",
+    fontSize: 11.5,
+    lineHeight: 1.4,
+    color: "var(--color-text-secondary)",
+  },
+  branchFilterError: {
+    padding: "6px 16px 0",
+    fontSize: 11.5,
+    lineHeight: 1.4,
+    color: "var(--color-error)",
   },
   sidebarMessage: {
     padding: "8px 16px",
@@ -281,9 +325,25 @@ export const styles: Record<string, React.CSSProperties> = {
     marginBottom: 8,
   },
   trendTitle: {
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap" as const,
+    gap: 8,
     fontSize: 15,
     fontWeight: 600,
     margin: 0,
+  },
+  trendTitleBranch: {
+    background: "var(--color-branch-bg)",
+    color: "var(--color-branch)",
+    borderRadius: 10,
+    padding: "1px 8px",
+    fontSize: 12,
+    fontWeight: 500,
+    maxWidth: 240,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap" as const,
   },
   trendSubtitle: {
     fontSize: 12.5,
