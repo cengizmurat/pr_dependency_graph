@@ -10,7 +10,7 @@ import {
   fetchWorkflowRuns,
   searchBranches,
 } from "../api";
-import type { WorkflowInfo, WorkflowRunInfo } from "../types";
+import type { WorkflowRunInfo } from "../types";
 import {
   BRANCH_SEARCH_DEBOUNCE_MS,
   BRANCH_SEARCH_LIMIT,
@@ -18,7 +18,9 @@ import {
   WORKFLOW_RUNS_PAGE_SIZE,
 } from "../constants";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useThemeColor } from "../hooks/useThemeColor";
 import { timeAgo } from "../utils";
+import { HookSidebar } from "@/components/ui/hook-sidebar";
 import RunTimeline, { formatDuration } from "./RunTimeline";
 import RuntimeTrendChart, { BackArrow } from "./RuntimeTrendChart";
 import { styles } from "./WorkflowsView.styles";
@@ -61,6 +63,8 @@ export default function WorkflowsView({
   isMobile: boolean;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
+  // The rail that hooks into the selected workflow is drawn in the accent.
+  const accent = useThemeColor("--color-link", "#0969da");
 
   const wfParam = parseInt(searchParams.get("wf") ?? "", 10);
   const selectedWorkflowId = isNaN(wfParam) ? null : wfParam;
@@ -311,55 +315,64 @@ export default function WorkflowsView({
             This repository has no GitHub Actions workflows.
           </div>
         )}
-        {workflows?.map((wf) => (
-          <WorkflowListItem
-            key={wf.id}
-            workflow={wf}
-            expanded={wf.id === selectedWorkflowId}
-            onToggle={() => selectWorkflow(wf.id)}
-          >
-            {wf.id === selectedWorkflowId && (
-              <div style={styles.runsList}>
-                {runsQuery.isLoading && (
-                  <div style={styles.sidebarMessage}>Loading runs...</div>
-                )}
-                {runsQuery.error && (
-                  <div style={styles.sidebarError}>
-                    <span>{(runsQuery.error as Error).message}</span>
-                    <button style={styles.retryBtn} onClick={() => runsQuery.refetch()}>
-                      Retry
+        {workflows && workflows.length > 0 && (
+          // The workflow names, with a dashed rail that hooks into the one
+          // that is open; its runs unfold straight under it, inside the hook.
+          <HookSidebar
+            aria-label="Workflows"
+            items={workflows.map((wf) => ({
+              label: wf.name,
+              title: wf.path,
+              badge: wf.state !== "active" ? "disabled" : undefined,
+            }))}
+            value={workflows.findIndex((wf) => wf.id === selectedWorkflowId)}
+            onChange={(index) => selectWorkflow(workflows[index].id)}
+            color={accent}
+            style={styles.workflowList}
+            renderBelow={(index) =>
+              workflows[index].id === selectedWorkflowId ? (
+                <div style={styles.runsList}>
+                  {runsQuery.isLoading && (
+                    <div style={styles.sidebarMessage}>Loading runs...</div>
+                  )}
+                  {runsQuery.error && (
+                    <div style={styles.sidebarError}>
+                      <span>{(runsQuery.error as Error).message}</span>
+                      <button style={styles.retryBtn} onClick={() => runsQuery.refetch()}>
+                        Retry
+                      </button>
+                    </div>
+                  )}
+                  {runs && runs.length === 0 && (
+                    <div style={styles.sidebarMessage}>
+                      {branchFilter
+                        ? `No run of this workflow on ${branchFilter}.`
+                        : "No runs for this workflow yet."}
+                    </div>
+                  )}
+                  {runs?.map((run) => (
+                    <RunListItem
+                      key={run.id}
+                      run={run}
+                      selected={run.id === selectedRunId}
+                      onSelect={() => selectRun(run.id)}
+                    />
+                  ))}
+                  {runsQuery.hasNextPage && (
+                    <button
+                      className="workflow-run-item"
+                      style={styles.loadMoreRunsBtn}
+                      onClick={() => runsQuery.fetchNextPage()}
+                      disabled={runsQuery.isFetchingNextPage}
+                    >
+                      {runsQuery.isFetchingNextPage ? "Loading…" : "Load more runs"}
                     </button>
-                  </div>
-                )}
-                {runs && runs.length === 0 && (
-                  <div style={styles.sidebarMessage}>
-                    {branchFilter
-                      ? `No run of this workflow on ${branchFilter}.`
-                      : "No runs for this workflow yet."}
-                  </div>
-                )}
-                {runs?.map((run) => (
-                  <RunListItem
-                    key={run.id}
-                    run={run}
-                    selected={run.id === selectedRunId}
-                    onSelect={() => selectRun(run.id)}
-                  />
-                ))}
-                {runsQuery.hasNextPage && (
-                  <button
-                    className="workflow-run-item"
-                    style={styles.loadMoreRunsBtn}
-                    onClick={() => runsQuery.fetchNextPage()}
-                    disabled={runsQuery.isFetchingNextPage}
-                  >
-                    {runsQuery.isFetchingNextPage ? "Loading…" : "Load more runs"}
-                  </button>
-                )}
-              </div>
-            )}
-          </WorkflowListItem>
-        ))}
+                  )}
+                </div>
+              ) : null
+            }
+          />
+        )}
         {workflowsQuery.hasNextPage && (
           <button
             className="workflow-list-item"
@@ -413,38 +426,6 @@ export default function WorkflowsView({
           </div>
         )}
       </main>
-    </div>
-  );
-}
-
-function WorkflowListItem({
-  workflow,
-  expanded,
-  onToggle,
-  children,
-}: {
-  workflow: WorkflowInfo;
-  expanded: boolean;
-  onToggle: () => void;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div>
-      <button
-        className="workflow-list-item"
-        style={styles.workflowItem}
-        onClick={onToggle}
-        title={workflow.path}
-        aria-expanded={expanded}
-      >
-        <Chevron open={expanded} />
-        <WorkflowIcon size={15} />
-        <span style={styles.workflowName}>{workflow.name}</span>
-        {workflow.state !== "active" && (
-          <span style={styles.workflowDisabledBadge}>disabled</span>
-        )}
-      </button>
-      {children}
     </div>
   );
 }
@@ -589,30 +570,6 @@ function RunDetail({
         )}
       </div>
     </div>
-  );
-}
-
-function Chevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      width="10"
-      height="10"
-      viewBox="0 0 10 10"
-      fill="none"
-      style={{
-        flexShrink: 0,
-        transition: "transform 0.12s",
-        transform: open ? "rotate(90deg)" : "none",
-      }}
-    >
-      <path
-        d="M3.5 2L6.5 5L3.5 8"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 

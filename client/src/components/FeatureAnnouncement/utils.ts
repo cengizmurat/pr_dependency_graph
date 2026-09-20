@@ -16,6 +16,13 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
+    version: 14,
+    title: "A fresh look for the app",
+    description:
+      "The tab bar, the PR counter in the header and a new What's new bell (top right) are built with animated components from Rare UI, an open-source component library. The loading screens, the workflows list and the Folder churn tab picked up matching pieces. Every animation respects your reduced-motion setting, and the bell reopens past announcements at any time.",
+    date: "2026-09-20",
+  },
+  {
     version: 13,
     title: "Take the filtered-out PRs off the graph",
     description:

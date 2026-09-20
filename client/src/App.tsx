@@ -8,19 +8,7 @@ import { SpeedInsights } from "@vercel/speed-insights/react";
 import LandingPage from "./components/LandingPage";
 import GraphPage from "./components/GraphPage";
 import AuthCallback from "./components/AuthCallback";
-
-function useIsDarkMode() {
-  const [dark, setDark] = useState(
-    () => window.matchMedia("(prefers-color-scheme: dark)").matches,
-  );
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = (e: MediaQueryListEvent) => setDark(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-  return dark;
-}
+import { usePrefersDark } from "./hooks/useThemeColor";
 
 const ANTD_LOCALE_MAP: Record<string, () => Promise<{ default: Locale }>> = {
   en:    () => import("antd/locale/en_US"),
@@ -75,7 +63,7 @@ function useAntdLocale() {
 }
 
 export default function App() {
-  const isDark = useIsDarkMode();
+  const isDark = usePrefersDark();
   const antdLocale = useAntdLocale();
 
   return (

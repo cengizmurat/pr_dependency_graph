@@ -12,10 +12,13 @@ export const styles: Record<string, React.CSSProperties> = {
       '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
     color: "var(--color-text)",
   },
+  // The toolbar wraps under the title row when the window is too narrow for
+  // both, rather than squeezing the date picker until its dates are unreadable.
   header: {
     display: "flex",
+    flexWrap: "wrap" as const,
     alignItems: "center",
-    gap: 16,
+    gap: "8px 16px",
     padding: "12px 20px",
     borderBottom: "1px solid var(--color-border-subtle)",
     background: "var(--color-header-bg)",
@@ -36,9 +39,6 @@ export const styles: Record<string, React.CSSProperties> = {
     alignItems: "stretch",
     gap: 8,
     width: "100%",
-  },
-  iconRowDesktop: {
-    display: "contents",
   },
   iconRowMobile: {
     display: "flex",
@@ -74,6 +74,7 @@ export const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     color: "var(--color-text-secondary)",
     marginLeft: "auto",
+    whiteSpace: "nowrap" as const,
   },
   settingsBtn: {
     display: "flex",
@@ -149,12 +150,6 @@ export const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     marginTop: 80,
     gap: 12,
-  },
-  status: {
-    textAlign: "center" as const,
-    margin: 0,
-    color: "var(--color-text-secondary)",
-    fontSize: 15,
   },
   errorContainer: {
     display: "flex",

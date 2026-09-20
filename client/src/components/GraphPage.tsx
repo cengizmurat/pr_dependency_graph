@@ -37,8 +37,12 @@ import { hydrateShortcut, pruneStaleShortcut, SHORTCUT_PARAM } from "../filterSh
 import type { DateRange } from "../utils";
 import { useGithubToken } from "../hooks/useGithubToken";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { useThemeColor } from "../hooks/useThemeColor";
+import { AnimatedCounter } from "@/components/ui/animated-counter";
+import MatrixOrb from "@/components/ui/matrix-orb";
 import GraphView from "./GraphView";
 import FeatureAnnouncementPopup from "./FeatureAnnouncement";
+import WhatsNewBell from "./FeatureAnnouncement/WhatsNew";
 import PageTabs from "./PageTabs";
 import type { PageTab } from "./PageTabs";
 import WorkflowsView from "./WorkflowsView";
@@ -236,6 +240,8 @@ export default function GraphPage() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
+  // The loading orb draws on a canvas, which cannot resolve a var().
+  const accent = useThemeColor("--color-link", "#0969da");
 
   // The page has three views selected by a tab bar: the PR dependency graph
   // (default), the GitHub Actions workflows browser and the folder churn
@@ -719,6 +725,160 @@ export default function GraphPage() {
 
   const error = prError ?? null;
 
+  // The bell, the settings menu and the GitHub link. On a phone they close
+  // the stacked header; on a desktop they sit at the right end of the tab
+  // bar, which has the room, so the header's toolbar can wrap on its own.
+  const actions = (
+    <>
+      <WhatsNewBell />
+      {activeTab === "prs" && (
+      <Dropdown
+        trigger={["click"]}
+        menu={{
+          items: [
+            {
+              key: "orientation",
+              label: (
+                <div style={styles.menuItemRow}>
+                  <span>Orientation</span>
+                  <button
+                    style={styles.menuToggleBtn}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOrientation((o) => (o === "horizontal" ? "vertical" : "horizontal"));
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      {orientation === "horizontal" ? (
+                        <path d="M1 7h10M8 4l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      ) : (
+                        <path d="M7 1v10M4 8l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      )}
+                    </svg>
+                    {orientation === "horizontal" ? "Horizontal" : "Vertical"}
+                  </button>
+                </div>
+              ),
+            },
+            {
+              key: "bots",
+              label: (
+                <div style={styles.menuItemRow}>
+                  <span>Bot reviews</span>
+                  <button
+                    style={styles.menuToggleBtn}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleIncludeBots();
+                    }}
+                    title={
+                      includeBots
+                        ? "Bot reviews count toward reviewers, comments and PR state"
+                        : "Bot reviews are left out of reviewers, comments and PR state"
+                    }
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      {includeBots ? (
+                        <path d="M1 7l4 4 8-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      ) : (
+                        <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      )}
+                    </svg>
+                    {includeBots ? "Included" : "Hidden"}
+                  </button>
+                </div>
+              ),
+            },
+            {
+              key: "filtered",
+              label: (
+                <div style={styles.menuItemRow}>
+                  <span>Filtered-out PRs</span>
+                  <button
+                    style={styles.menuToggleBtn}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFilteredDisplay();
+                    }}
+                    title={
+                      filteredDisplay === "fade"
+                        ? "PRs the filters leave out stay on the graph, faded back"
+                        : "PRs the filters leave out come off the graph, leaving a smaller one"
+                    }
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <rect x="1" y="3.5" width="4.5" height="7" rx="1" fill="currentColor" />
+                      {filteredDisplay === "fade" ? (
+                        <rect
+                          x="8.5"
+                          y="3.5"
+                          width="4.5"
+                          height="7"
+                          rx="1"
+                          fill="currentColor"
+                          opacity="0.3"
+                        />
+                      ) : (
+                        <path
+                          d="M8 4l4.5 6M12.5 4l-4.5 6"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                        />
+                      )}
+                    </svg>
+                    {filteredDisplay === "fade" ? "Faded" : "Hidden"}
+                  </button>
+                </div>
+              ),
+            },
+            {
+              key: "lookback",
+              label: (
+                <div
+                  style={styles.menuItemRow}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span>Default range</span>
+                  <label style={styles.lookbackLabel}>
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={lookbackInput}
+                      onChange={(e) => setLookbackInput(e.target.value)}
+                      style={styles.lookbackInput}
+                    />
+                    days
+                  </label>
+                </div>
+              ),
+            },
+          ],
+        }}
+      >
+        <button style={styles.settingsBtn} title="Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+      </Dropdown>
+      )}
+      <a
+        href="https://github.com/cengizmurat/pr_dependency_graph"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={styles.githubLink}
+        title="View on GitHub"
+      >
+        <svg height="20" width="20" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+        </svg>
+      </a>
+    </>
+  );
+
   // Signing in happens on the home page, so a visitor who opens a link to a
   // repository without credentials is sent there — carrying where they meant to
   // go, so the sign-in can put them back on it. Without that the query string
@@ -743,11 +903,20 @@ export default function GraphPage() {
           <span style={styles.viewer}>@{data.viewerLogin}</span>
         )}
         <span style={styles.badge}>
-          {activeTab === "prs" && data
-            ? matchedPRs
-              ? `${matchedPRs.size} of ${allPRs.length}${isFetchingMore ? "+" : ""} open PRs`
-              : `${allPRs.length}${isFetchingMore ? "+" : ""} open PRs`
-            : ""}
+          {activeTab === "prs" && data ? (
+            <>
+              {matchedPRs && (
+                <>
+                  <AnimatedCounter value={matchedPRs.size} duration={0.5} />
+                  {" of "}
+                </>
+              )}
+              <AnimatedCounter value={allPRs.length} duration={0.5} />
+              {isFetchingMore && "+"} open PRs
+            </>
+          ) : (
+            ""
+          )}
         </span>
         <div style={isMobile ? styles.controlsMobile : styles.controlsDesktop}>
         {activeTab === "prs" && (
@@ -762,7 +931,7 @@ export default function GraphPage() {
           }}
           allowClear={false}
           size="small"
-          style={{ fontSize: 12, ...(isMobile ? { width: "100%" } : {}) }}
+          style={{ fontSize: 12, flexShrink: 0, ...(isMobile ? { width: "100%" } : {}) }}
         />
         <ContributorDropdown
           contributors={contributors ?? []}
@@ -797,157 +966,15 @@ export default function GraphPage() {
         />
           </>
         )}
-        <div style={isMobile ? styles.iconRowMobile : styles.iconRowDesktop}>
-        {activeTab === "prs" && (
-        <Dropdown
-          trigger={["click"]}
-          menu={{
-            items: [
-              {
-                key: "orientation",
-                label: (
-                  <div style={styles.menuItemRow}>
-                    <span>Orientation</span>
-                    <button
-                      style={styles.menuToggleBtn}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setOrientation((o) => (o === "horizontal" ? "vertical" : "horizontal"));
-                      }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        {orientation === "horizontal" ? (
-                          <path d="M1 7h10M8 4l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        ) : (
-                          <path d="M7 1v10M4 8l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        )}
-                      </svg>
-                      {orientation === "horizontal" ? "Horizontal" : "Vertical"}
-                    </button>
-                  </div>
-                ),
-              },
-              {
-                key: "bots",
-                label: (
-                  <div style={styles.menuItemRow}>
-                    <span>Bot reviews</span>
-                    <button
-                      style={styles.menuToggleBtn}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleIncludeBots();
-                      }}
-                      title={
-                        includeBots
-                          ? "Bot reviews count toward reviewers, comments and PR state"
-                          : "Bot reviews are left out of reviewers, comments and PR state"
-                      }
-                    >
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        {includeBots ? (
-                          <path d="M1 7l4 4 8-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        ) : (
-                          <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        )}
-                      </svg>
-                      {includeBots ? "Included" : "Hidden"}
-                    </button>
-                  </div>
-                ),
-              },
-              {
-                key: "filtered",
-                label: (
-                  <div style={styles.menuItemRow}>
-                    <span>Filtered-out PRs</span>
-                    <button
-                      style={styles.menuToggleBtn}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleFilteredDisplay();
-                      }}
-                      title={
-                        filteredDisplay === "fade"
-                          ? "PRs the filters leave out stay on the graph, faded back"
-                          : "PRs the filters leave out come off the graph, leaving a smaller one"
-                      }
-                    >
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        <rect x="1" y="3.5" width="4.5" height="7" rx="1" fill="currentColor" />
-                        {filteredDisplay === "fade" ? (
-                          <rect
-                            x="8.5"
-                            y="3.5"
-                            width="4.5"
-                            height="7"
-                            rx="1"
-                            fill="currentColor"
-                            opacity="0.3"
-                          />
-                        ) : (
-                          <path
-                            d="M8 4l4.5 6M12.5 4l-4.5 6"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            strokeLinecap="round"
-                          />
-                        )}
-                      </svg>
-                      {filteredDisplay === "fade" ? "Faded" : "Hidden"}
-                    </button>
-                  </div>
-                ),
-              },
-              {
-                key: "lookback",
-                label: (
-                  <div
-                    style={styles.menuItemRow}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <span>Default range</span>
-                    <label style={styles.lookbackLabel}>
-                      <input
-                        type="number"
-                        min={1}
-                        max={365}
-                        value={lookbackInput}
-                        onChange={(e) => setLookbackInput(e.target.value)}
-                        style={styles.lookbackInput}
-                      />
-                      days
-                    </label>
-                  </div>
-                ),
-              },
-            ],
-          }}
-        >
-          <button style={styles.settingsBtn} title="Settings">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-          </button>
-        </Dropdown>
-        )}
-        <a
-          href="https://github.com/cengizmurat/pr_dependency_graph"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={styles.githubLink}
-          title="View on GitHub"
-        >
-          <svg height="20" width="20" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
-          </svg>
-        </a>
-        </div>
+        {isMobile && <div style={styles.iconRowMobile}>{actions}</div>}
         </div>
       </header>
 
-      <PageTabs active={activeTab} onChange={setActiveTab} />
+      <PageTabs
+        active={activeTab}
+        onChange={setActiveTab}
+        actions={isMobile ? undefined : actions}
+      />
 
       <div style={styles.content}>
         {activeTab === "workflows" && owner && repo && (
@@ -960,8 +987,12 @@ export default function GraphPage() {
           <>
         {isLoading && (
           <div style={styles.statusContainer}>
-            <Spinner />
-            <p style={styles.status}>Loading pull requests...</p>
+            <MatrixOrb
+              state="thinking"
+              size={112}
+              color={accent}
+              labels={{ thinking: "Loading pull requests…" }}
+            />
           </div>
         )}
         {!isLoading && !error && data && matchedPRs?.size === 0 && (

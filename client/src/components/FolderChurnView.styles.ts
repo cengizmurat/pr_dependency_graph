@@ -368,6 +368,26 @@ export const styles: Record<string, React.CSSProperties> = {
     border: "1px solid var(--color-border)",
     background: "var(--churn-tile-bg)",
   },
+  // The folder sits beside the text; the extra room above it is where its
+  // cards go when they fan out, so they don't climb over the action bar.
+  panelWithFolder: {
+    display: "flex",
+    alignItems: "center",
+    gap: 24,
+    overflow: "hidden",
+  },
+  panelWithFolderMobile: {
+    flexDirection: "column" as const,
+    alignItems: "stretch",
+  },
+  folderArt: {
+    width: 230,
+    height: 216,
+    flexShrink: 0,
+  },
+  panelBody: {
+    minWidth: 0,
+  },
   panelTitle: {
     margin: 0,
     fontSize: 14,
