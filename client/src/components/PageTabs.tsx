@@ -22,13 +22,16 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 16,
   },
   // The phone layout: a bar along the bottom of the screen, one item per
-  // view, the way native apps place their main navigation.
+  // view, the way native apps place their main navigation. Its position and
+  // height come from the .bottom-nav class (see index.css): it is fixed to
+  // the visible bottom of the screen, whatever the page's height is.
   bottomBar: {
     display: "flex",
-    alignItems: "stretch",
+    alignItems: "center",
     justifyContent: "space-around",
-    flexShrink: 0,
-    padding: "6px 8px calc(8px + env(safe-area-inset-bottom, 0px))",
+    boxSizing: "border-box" as const,
+    paddingLeft: 8,
+    paddingRight: 8,
     borderTop: "1px solid var(--color-border-subtle)",
     background: "var(--color-header-bg)",
   },
@@ -39,7 +42,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
     flex: "1 1 0",
     minWidth: 0,
-    padding: "4px 0",
+    padding: "2px 0",
     border: "none",
     background: "transparent",
     color: "var(--color-text-secondary)",
@@ -147,7 +150,7 @@ export default function PageTabs({
 
   if (isMobile) {
     return (
-      <nav style={styles.bottomBar} aria-label="Repository views">
+      <nav className="bottom-nav" style={styles.bottomBar} aria-label="Repository views">
         {TABS.map((tab) => {
           const isActive = tab.id === active;
           return (

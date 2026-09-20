@@ -185,13 +185,41 @@
 }
 
 /* The app shell fills the viewport that is actually visible, not the largest
-   one: on a phone, 100vh includes the strip under the browser's address bar,
-   which pushed the bottom navigation off the screen with no way to scroll to
-   it. dvh follows the bar as it shows and hides; vh stays as the fallback for
-   browsers that predate it. */
+   one: on a phone, 100vh includes the strip under the browser's address bar.
+   The height the browser reports (--app-height, set from innerHeight by
+   useAppHeight) wins; until it is set, dvh follows the address bar as it
+   shows and hides, and vh is the fallback for browsers without dvh. */
 .app-shell {
-  height: 100vh;
-  height: 100dvh;
+  height: var(--app-height, 100vh);
+}
+
+@supports (height: 100dvh) {
+  .app-shell {
+    height: var(--app-height, 100dvh);
+  }
+}
+
+/* On a phone the navigation is fixed to the bottom of the screen rather than
+   laid out at the end of the shell: a fixed element follows the address bar
+   whatever the shell's height came out as, so the bar is on screen even where
+   the viewport units above are wrong. The shell keeps room for it underneath,
+   so nothing in the content sits behind it. */
+:root {
+  --bottom-nav-height: calc(60px + env(safe-area-inset-bottom, 0px));
+}
+
+.app-shell--phone {
+  padding-bottom: var(--bottom-nav-height);
+}
+
+.bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 90;
+  height: var(--bottom-nav-height);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 body {

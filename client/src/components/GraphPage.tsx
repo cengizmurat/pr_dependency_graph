@@ -967,7 +967,10 @@ export default function GraphPage() {
   }
 
   return (
-    <div className="app-shell" style={styles.page}>
+    <div
+      className={isMobile ? "app-shell app-shell--phone" : "app-shell"}
+      style={styles.page}
+    >
       {isMobile ? (
         <header style={{ ...styles.header, ...styles.headerMobile }}>
           <div style={styles.titleRowMobile}>
