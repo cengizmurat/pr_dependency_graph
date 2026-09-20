@@ -17,6 +17,23 @@ export const styles: Record<string, React.CSSProperties> = {
     border: "1px solid var(--color-border)",
     background: "var(--churn-tile-bg)",
   },
+  // The phone's folded state: the chip that unfolds the card above, and a
+  // one-line summary of what is set so the card need not be opened to know.
+  paramsRowMobile: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+    minWidth: 0,
+  },
+  paramsSummary: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap" as const,
+    fontSize: 12,
+    color: "var(--color-text-secondary)",
+  },
   control: {
     display: "flex",
     flexDirection: "column" as const,

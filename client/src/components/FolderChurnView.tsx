@@ -37,6 +37,7 @@ import { AnimatedCounter } from "@/components/ui/animated-counter";
 import FolderComponent from "@/components/ui/folder-component";
 import ChurnBarChart from "./ChurnBarChart";
 import ChurnTrendChart from "./ChurnTrendChart";
+import FoldToggle from "./FoldToggle";
 import type { ChurnSeries } from "./ChurnTrendChart";
 import { styles } from "./FolderChurnView.styles";
 
@@ -136,6 +137,9 @@ export default function FolderChurnView({
   const [searchParams, setSearchParams] = useSearchParams();
   const isMobile = useIsMobile();
   const prefersDark = usePrefersDark();
+  // On a phone the parameter card is folded away until asked for; the chip
+  // that unfolds it carries a one-line summary of what is set.
+  const [paramsOpen, setParamsOpen] = useState(false);
 
   // Folder, branch, interval, measure and bucket size live in the URL so a
   // view can be bookmarked and shared, the way the other tabs keep their
@@ -481,9 +485,44 @@ export default function FolderChurnView({
     !churn.isCounting &&
     pathExists;
 
+  const intervalLabel =
+    preset === "custom"
+      ? fromDay === null
+        ? "Custom range"
+        : `${dayjsFromDay(fromDay).format("MMM D")} to ${dayjsFromDay(toDay).format("MMM D")}`
+      : (CHURN_INTERVAL_PRESETS.find((p) => p.id === preset)?.label ?? "");
+  const paramsSummary = [
+    prefix === "" ? "root" : `${prefix}/`,
+    branch ?? "…",
+    intervalLabel,
+    MEASURE_OPTIONS.find((o) => o.value === measure)?.label ?? measure,
+  ].join(" · ");
+
   return (
     <div style={styles.container}>
-      <div style={styles.controls}>
+      {isMobile && (
+        <div style={styles.paramsRowMobile}>
+          <FoldToggle
+            open={paramsOpen}
+            onToggle={() => setParamsOpen((open) => !open)}
+            label="Parameters"
+            controls="churn-parameters"
+            icon={
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+                <path d="M1.5 4h13M1.5 8h13M1.5 12h13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                <circle cx="5.5" cy="4" r="2" fill="currentColor" />
+                <circle cx="10.5" cy="8" r="2" fill="currentColor" />
+                <circle cx="6.5" cy="12" r="2" fill="currentColor" />
+              </svg>
+            }
+          />
+          <span style={styles.paramsSummary} title={paramsSummary}>
+            {paramsSummary}
+          </span>
+        </div>
+      )}
+      {(!isMobile || paramsOpen) && (
+      <div id="churn-parameters" style={styles.controls}>
         <div style={{ ...styles.control, ...styles.controlGrow }}>
           <label style={styles.controlLabel} htmlFor="churn-folder">
             Folder
@@ -586,6 +625,7 @@ export default function FolderChurnView({
           </div>
         </div>
       </div>
+      )}
 
       <p style={styles.note}>
         A folder counts <strong>once per commit</strong>, however deep the change
