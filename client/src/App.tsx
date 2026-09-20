@@ -9,6 +9,7 @@ import LandingPage from "./components/LandingPage";
 import GraphPage from "./components/GraphPage";
 import AuthCallback from "./components/AuthCallback";
 import { usePrefersDark } from "./hooks/useThemeColor";
+import { useAppHeight } from "./hooks/useAppHeight";
 
 const ANTD_LOCALE_MAP: Record<string, () => Promise<{ default: Locale }>> = {
   en:    () => import("antd/locale/en_US"),
@@ -65,6 +66,7 @@ function useAntdLocale() {
 export default function App() {
   const isDark = usePrefersDark();
   const antdLocale = useAntdLocale();
+  useAppHeight();
 
   return (
     <ConfigProvider
