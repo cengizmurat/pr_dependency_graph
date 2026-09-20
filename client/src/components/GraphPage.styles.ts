@@ -23,28 +23,85 @@ export const styles: Record<string, React.CSSProperties> = {
     borderBottom: "1px solid var(--color-border-subtle)",
     background: "var(--color-header-bg)",
   },
+  // A phone gets a short header: the title row, then one row holding the
+  // folded filter chip and the PR count. The filters themselves only take
+  // room while they are unfolded.
   headerMobile: {
-    gap: 8,
-    padding: "8px 12px",
-    flexWrap: "wrap" as const,
-  },
-  // On desktop the controls flow inline with the rest of the header. On mobile
-  // they stack into a full-width column below the title so nothing overflows.
-  controlsDesktop: {
-    display: "contents",
-  },
-  controlsMobile: {
-    display: "flex",
     flexDirection: "column" as const,
     alignItems: "stretch",
     gap: 8,
-    width: "100%",
+    padding: "8px 12px",
+  },
+  titleRowMobile: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 0,
   },
   iconRowMobile: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 16,
+    gap: 14,
+    marginLeft: "auto",
+    flexShrink: 0,
+  },
+  filterRowMobile: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    minWidth: 0,
+  },
+  filtersToggle: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 0,
+    padding: "6px 12px",
+    fontSize: 13,
+    fontWeight: 500,
+    borderRadius: 999,
+    border: "1px solid var(--color-border-subtle)",
+    background: "transparent",
+    color: "var(--color-text-secondary)",
+    cursor: "pointer",
+    transition: "background 0.15s, color 0.15s, border-color 0.15s",
+  },
+  filtersToggleOpen: {
+    color: "var(--color-text)",
+    borderColor: "var(--color-link)",
+    background: "var(--color-border-subtle)",
+  },
+  filtersCount: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 18,
+    height: 18,
+    padding: "0 5px",
+    borderRadius: 9,
+    fontSize: 11,
+    fontWeight: 600,
+    background: "var(--color-link)",
+    color: "var(--color-on-link)",
+  },
+  summaryMobile: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    minWidth: 0,
+    overflow: "hidden",
+    whiteSpace: "nowrap" as const,
+  },
+  // The unfolded filters: the date range on its own line, the menus as a row
+  // of chips that wraps. Positioned so a menu opens across the whole panel
+  // rather than under one chip at the edge of the screen.
+  filterPanelMobile: {
+    position: "relative" as const,
+    display: "flex",
+    flexWrap: "wrap" as const,
+    alignItems: "center",
+    gap: 8,
   },
   backLink: {
     color: "var(--color-link)",
@@ -299,16 +356,16 @@ export const dropdownStyles: Record<string, React.CSSProperties> = {
   wrapper: {
     position: "relative",
   },
-  // Full-width triggers/menus on mobile so taps are easy and menus can't spill
-  // off the edge of a narrow screen.
+  // On a phone the trigger is a chip in a wrapping row, and its menu anchors
+  // to the filter panel around the chips instead of to the chip, so it opens
+  // across the full width rather than spilling off the edge of the screen.
   wrapperMobile: {
-    width: "100%",
+    position: "static" as const,
   },
   triggerMobile: {
-    width: "100%",
-    justifyContent: "space-between",
-    padding: "8px 12px",
+    padding: "7px 12px",
     fontSize: 13,
+    borderRadius: 999,
   },
   triggerLabel: {
     display: "flex",
@@ -320,7 +377,8 @@ export const dropdownStyles: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap" as const,
   },
   menuMobile: {
-    width: "100%",
+    left: 0,
+    right: 0,
     minWidth: 0,
   },
   trigger: {

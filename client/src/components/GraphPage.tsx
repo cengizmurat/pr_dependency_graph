@@ -3,6 +3,7 @@ import { useParams, Link, Navigate, useLocation, useSearchParams } from "react-r
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DatePicker, Dropdown } from "antd";
 import dayjs from "dayjs";
+import { motion, useReducedMotion } from "motion/react";
 import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, fetchPullRequestSummary, fetchBehindByCounts, buildDependencyGraph } from "../api";
 import type {
   GraphQLPullRequest,
@@ -20,7 +21,7 @@ import {
   PR_REVIEW_STATE_COLOR,
   PR_REVIEW_STATE_LABEL,
 } from "../reviewState";
-import { EYE_ICON_PATH, LOOKBACK_DAYS_KEY, TAG_ICON_PATH } from "../constants";
+import { EYE_ICON_PATH, FILTER_ICON_PATH, LOOKBACK_DAYS_KEY, TAG_ICON_PATH } from "../constants";
 import {
   getStoredLookbackDays,
   getStoredIncludeBots,
@@ -241,6 +242,9 @@ export default function GraphPage() {
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
   // The loading orb draws on a canvas, which cannot resolve a var().
   const accent = useThemeColor("--color-link", "#0969da");
+  const reducedMotion = useReducedMotion() ?? false;
+  // On a phone the filters are folded away until asked for.
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // The page has three views selected by a tab bar: the PR dependency graph
   // (default), the GitHub Actions workflows browser and the folder churn
@@ -590,6 +594,15 @@ export default function GraphPage() {
     statusFilter !== "all" ||
     reviewStateFilter.length > 0;
 
+  // What the folded filter chip on a phone reports: every value picked in a
+  // menu counts, so two authors and a label read as 3.
+  const activeFilterCount =
+    authorFilter.length +
+    reviewerFilter.length +
+    labelFilter.length +
+    (statusFilter === "all" ? 0 : 1) +
+    reviewStateFilter.length;
+
   const matchedPRs = useMemo(() => {
     if (!hasActiveFilters) return null;
     return new Set(filterPRs(allPRs, filters).map((pr) => pr.number));
@@ -877,6 +890,71 @@ export default function GraphPage() {
     </>
   );
 
+  // The date range and the five filter menus, laid out by whichever header
+  // holds them: inline on a desktop, in a wrapping row of chips on a phone.
+  const filterControls = (
+    <>
+          <RangePicker
+            showTime={!isMobile}
+            value={dateRange}
+            onChange={(dates) => {
+              if (dates && dates[0] && dates[1]) {
+                setDateRange([dates[0], dates[1]]);
+              }
+            }}
+            allowClear={false}
+            size="small"
+            style={{ fontSize: 12, flexShrink: 0, ...(isMobile ? { width: "100%" } : {}) }}
+          />
+          <ContributorDropdown
+            contributors={contributors ?? []}
+            prCountByAuthor={prCountByAuthor}
+            selected={authorFilter}
+            onChange={setAuthorFilter}
+            isMobile={isMobile}
+          />
+          <ReviewerDropdown
+            reviewers={reviewerOptions}
+            selected={reviewerFilter}
+            onChange={setReviewerFilter}
+            isMobile={isMobile}
+          />
+          <LabelDropdown
+            labels={labelOptions}
+            selected={labelFilter}
+            onChange={setLabelFilter}
+            isMobile={isMobile}
+          />
+          <StatusDropdown
+            selected={statusFilter}
+            onChange={setStatusFilter}
+            isMobile={isMobile}
+            prCountByStatus={prCountByStatus}
+          />
+          <ReviewStateDropdown
+            selected={reviewStateFilter}
+            onChange={setReviewStateFilter}
+            isMobile={isMobile}
+            prCountByState={prCountByReviewState}
+          />
+    </>
+  );
+
+  // How many PRs the graph is picking out, of how many it holds.
+  const countLabel =
+    activeTab === "prs" && data ? (
+      <>
+        {matchedPRs && (
+          <>
+            <AnimatedCounter value={matchedPRs.size} duration={0.5} />
+            {" of "}
+          </>
+        )}
+        <AnimatedCounter value={allPRs.length} duration={0.5} />
+        {isFetchingMore && "+"} open PRs
+      </>
+    ) : null;
+
   // Signing in happens on the home page, so a visitor who opens a link to a
   // repository without credentials is sent there — carrying where they meant to
   // go, so the sign-in can put them back on it. Without that the query string
@@ -890,89 +968,93 @@ export default function GraphPage() {
 
   return (
     <div style={styles.page}>
-      <header style={{ ...styles.header, ...(isMobile ? styles.headerMobile : {}) }}>
-        <Link to="/" style={styles.backLink}>
-          &larr; Back
-        </Link>
-        <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>
-          {owner}/{repo}
-        </h1>
-        {data?.viewerLogin && (
-          <span style={styles.viewer}>@{data.viewerLogin}</span>
-        )}
-        <span style={styles.badge}>
-          {activeTab === "prs" && data ? (
+      {isMobile ? (
+        <header style={{ ...styles.header, ...styles.headerMobile }}>
+          <div style={styles.titleRowMobile}>
+            <Link to="/" style={styles.backLink}>
+              &larr; Back
+            </Link>
+            <h1 style={{ ...styles.title, ...styles.titleMobile }}>
+              {owner}/{repo}
+            </h1>
+            <div style={styles.iconRowMobile}>{actions}</div>
+          </div>
+          {activeTab === "prs" && (
             <>
-              {matchedPRs && (
-                <>
-                  <AnimatedCounter value={matchedPRs.size} duration={0.5} />
-                  {" of "}
-                </>
+              {/* The filters fold away behind one chip so the header stays
+                  two rows tall; the chip says how many are in effect. */}
+              <div style={styles.filterRowMobile}>
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen((open) => !open)}
+                  aria-expanded={filtersOpen}
+                  aria-controls="pr-filters"
+                  style={{
+                    ...styles.filtersToggle,
+                    ...(filtersOpen ? styles.filtersToggleOpen : {}),
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                    <path d={FILTER_ICON_PATH} />
+                  </svg>
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <span style={styles.filtersCount}>{activeFilterCount}</span>
+                  )}
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 10 10"
+                    fill="none"
+                    aria-hidden
+                    style={{
+                      transition: "transform 0.15s",
+                      transform: filtersOpen ? "rotate(180deg)" : "none",
+                    }}
+                  >
+                    <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <span style={styles.summaryMobile}>
+                  {data?.viewerLogin && (
+                    <span style={styles.viewer}>@{data.viewerLogin}</span>
+                  )}
+                  <span style={styles.badge}>{countLabel}</span>
+                </span>
+              </div>
+              {filtersOpen && (
+                <motion.div
+                  id="pr-filters"
+                  style={styles.filterPanelMobile}
+                  initial={reducedMotion ? false : { opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  {filterControls}
+                </motion.div>
               )}
-              <AnimatedCounter value={allPRs.length} duration={0.5} />
-              {isFetchingMore && "+"} open PRs
             </>
-          ) : (
-            ""
           )}
-        </span>
-        <div style={isMobile ? styles.controlsMobile : styles.controlsDesktop}>
-        {activeTab === "prs" && (
-          <>
-        <RangePicker
-          showTime={!isMobile}
-          value={dateRange}
-          onChange={(dates) => {
-            if (dates && dates[0] && dates[1]) {
-              setDateRange([dates[0], dates[1]]);
-            }
-          }}
-          allowClear={false}
-          size="small"
-          style={{ fontSize: 12, flexShrink: 0, ...(isMobile ? { width: "100%" } : {}) }}
-        />
-        <ContributorDropdown
-          contributors={contributors ?? []}
-          prCountByAuthor={prCountByAuthor}
-          selected={authorFilter}
-          onChange={setAuthorFilter}
-          isMobile={isMobile}
-        />
-        <ReviewerDropdown
-          reviewers={reviewerOptions}
-          selected={reviewerFilter}
-          onChange={setReviewerFilter}
-          isMobile={isMobile}
-        />
-        <LabelDropdown
-          labels={labelOptions}
-          selected={labelFilter}
-          onChange={setLabelFilter}
-          isMobile={isMobile}
-        />
-        <StatusDropdown
-          selected={statusFilter}
-          onChange={setStatusFilter}
-          isMobile={isMobile}
-          prCountByStatus={prCountByStatus}
-        />
-        <ReviewStateDropdown
-          selected={reviewStateFilter}
-          onChange={setReviewStateFilter}
-          isMobile={isMobile}
-          prCountByState={prCountByReviewState}
-        />
-          </>
-        )}
-        {isMobile && <div style={styles.iconRowMobile}>{actions}</div>}
-        </div>
-      </header>
+        </header>
+      ) : (
+        <header style={styles.header}>
+          <Link to="/" style={styles.backLink}>
+            &larr; Back
+          </Link>
+          <h1 style={styles.title}>
+            {owner}/{repo}
+          </h1>
+          {data?.viewerLogin && (
+            <span style={styles.viewer}>@{data.viewerLogin}</span>
+          )}
+          <span style={styles.badge}>{countLabel}</span>
+          {activeTab === "prs" && filterControls}
+        </header>
+      )}
 
-      <PageTabs
-        active={activeTab}
-        onChange={setActiveTab}
-        actions={isMobile ? undefined : actions}
-      />
+      {!isMobile && (
+        <PageTabs active={activeTab} onChange={setActiveTab} actions={actions} />
+      )}
 
       <div style={styles.content}>
         {activeTab === "workflows" && owner && repo && (
@@ -1064,6 +1146,8 @@ export default function GraphPage() {
           </>
         )}
       </div>
+
+      {isMobile && <PageTabs active={activeTab} onChange={setActiveTab} />}
     </div>
   );
 }

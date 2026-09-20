@@ -1,4 +1,5 @@
 import { useMemo, type ReactNode } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { GooeyNav } from "@/components/ui/gooey-nav";
 import { FOLDER_ICON_PATH } from "../constants";
 import { useIsMobile } from "../hooks/useIsMobile";
@@ -14,14 +15,66 @@ const styles: Record<string, React.CSSProperties> = {
     borderBottom: "1px solid var(--color-border-subtle)",
     background: "var(--color-header-bg)",
   },
-  barMobile: {
-    padding: "6px 12px",
-  },
   actions: {
     marginLeft: "auto",
     display: "flex",
     alignItems: "center",
     gap: 16,
+  },
+  // The phone layout: a bar along the bottom of the screen, one item per
+  // view, the way native apps place their main navigation.
+  bottomBar: {
+    display: "flex",
+    alignItems: "stretch",
+    justifyContent: "space-around",
+    flexShrink: 0,
+    padding: "6px 8px calc(8px + env(safe-area-inset-bottom, 0px))",
+    borderTop: "1px solid var(--color-border-subtle)",
+    background: "var(--color-header-bg)",
+  },
+  bottomItem: {
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    gap: 4,
+    flex: "1 1 0",
+    minWidth: 0,
+    padding: "4px 0",
+    border: "none",
+    background: "transparent",
+    color: "var(--color-text-secondary)",
+    cursor: "pointer",
+    WebkitTapHighlightColor: "transparent",
+  },
+  bottomItemActive: {
+    color: "var(--color-link)",
+  },
+  bottomIconWrap: {
+    position: "relative" as const,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 60,
+    height: 32,
+  },
+  // The pill behind the active icon, which slides to the item that is tapped.
+  bottomPill: {
+    position: "absolute" as const,
+    inset: 0,
+    borderRadius: 16,
+    background: "color-mix(in srgb, var(--color-link) 18%, transparent)",
+  },
+  bottomLabel: {
+    fontSize: 12,
+    fontWeight: 500,
+    lineHeight: 1.2,
+    whiteSpace: "nowrap" as const,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: "100%",
+  },
+  bottomLabelActive: {
+    fontWeight: 600,
   },
 };
 
@@ -45,17 +98,27 @@ const TABS: { id: PageTab; label: string; iconPath: string }[] = [
   },
 ];
 
-function TabIcon({ path }: { path: string }) {
+function TabIcon({ path, size }: { path: string; size?: number }) {
   return (
-    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+    <svg
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden
+      width={size}
+      height={size}
+      style={size ? { position: "relative", flexShrink: 0 } : undefined}
+    >
       <path d={path} />
     </svg>
   );
 }
 
-// The three views of a repository, as a gooey segmented control: the selected
-// tile pulls away from its neighbours, and the seam between two resting tiles
-// closes up. The active tab still lives in the URL; this only draws it.
+const PILL_SPRING = { type: "spring", stiffness: 420, damping: 34 } as const;
+
+// The three views of a repository. On a desktop they are a gooey segmented
+// control along the top, with room at its right end for the page's actions;
+// on a phone they are a bar along the bottom of the screen, within reach of
+// a thumb. The active tab still lives in the URL; this only draws it.
 export default function PageTabs({
   active,
   onChange,
@@ -63,10 +126,11 @@ export default function PageTabs({
 }: {
   active: PageTab;
   onChange: (tab: PageTab) => void;
-  // Controls shown at the right end of the bar, where there is room for them.
+  // Controls shown at the right end of the desktop bar, where there is room.
   actions?: ReactNode;
 }) {
   const isMobile = useIsMobile();
+  const reduced = useReducedMotion() ?? false;
   // The tile is painted by an SVG gradient as well as a background, and the
   // gradient stop cannot resolve a var(), so the accent is read out here.
   const accent = useThemeColor("--color-link", "#0969da");
@@ -80,19 +144,61 @@ export default function PageTabs({
       })),
     [],
   );
+
+  if (isMobile) {
+    return (
+      <nav style={styles.bottomBar} aria-label="Repository views">
+        {TABS.map((tab) => {
+          const isActive = tab.id === active;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              aria-current={isActive ? "page" : undefined}
+              onClick={() => onChange(tab.id)}
+              style={{
+                ...styles.bottomItem,
+                ...(isActive ? styles.bottomItemActive : {}),
+              }}
+            >
+              <span style={styles.bottomIconWrap}>
+                {isActive && (
+                  <motion.span
+                    layoutId="page-tab-pill"
+                    style={styles.bottomPill}
+                    transition={reduced ? { duration: 0 } : PILL_SPRING}
+                  />
+                )}
+                <TabIcon path={tab.iconPath} size={20} />
+              </span>
+              <span
+                style={{
+                  ...styles.bottomLabel,
+                  ...(isActive ? styles.bottomLabelActive : {}),
+                }}
+              >
+                {tab.label}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+    );
+  }
+
   const index = Math.max(
     0,
     TABS.findIndex((tab) => tab.id === active),
   );
 
   return (
-    <div style={{ ...styles.bar, ...(isMobile ? styles.barMobile : {}) }}>
+    <div style={styles.bar}>
       <GooeyNav
         aria-label="Repository views"
         items={items}
         value={index}
         onChange={(i) => onChange(TABS[i].id)}
-        size={isMobile ? "xs" : "sm"}
+        size="sm"
         activeColor={accent}
         activeLabelColor={onAccent}
       />
