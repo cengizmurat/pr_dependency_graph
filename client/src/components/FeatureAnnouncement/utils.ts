@@ -19,7 +19,7 @@ export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
     version: 14,
     title: "A fresh look for the app",
     description:
-      "The tab bar, the PR counter in the header and a new What's new bell (top right) have been rebuilt with animated components. The loading screens, the workflows list and the Folder churn tab picked up matching pieces. Every animation respects your reduced-motion setting, and the bell reopens past announcements at any time.",
+      "The tab bar and the PR counter in the header have been rebuilt with animated components, and the loading screens, the workflows list and the Folder churn tab picked up matching pieces. Every animation respects your reduced-motion setting.",
     date: "2026-09-20",
   },
   {

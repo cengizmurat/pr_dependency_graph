@@ -26,9 +26,9 @@ Go to your browser, sign in with GitHub (or paste a personal access token in the
 
 ## UI Components
 
-The tab bar, the rolling PR count in the header, the **What's new** bell, the
-announcement pager, the loading orbs, the workflows list and the folder on the
-churn tab are built from [Rare UI](https://rareui.com) components (MIT, by
+The tab bar, the rolling PR count in the header, the announcement pager, the
+loading orbs, the workflows list and the folder on the churn tab are built
+from [Rare UI](https://rareui.com) components (MIT, by
 Swami Malode). They are copied into `client/src/components/ui/` the shadcn
 way, so the code is part of this repository: the Next.js imports are swapped
 for react-router, and every colour they paint with resolves to the app's own
@@ -41,16 +41,14 @@ styles. Every animation honours `prefers-reduced-motion`.
 | --- | --- |
 | Gooey Nav | The Pull requests / Workflows / Folder churn tab bar |
 | Animated Counter | The `N of M open PRs` count, the churn stat tiles and the fetch progress |
-| Notification Bell | The What's new bell, counting unread announcements; opens the full list |
 | Step Player | The pager of the new-feature popup |
 | Matrix Orb | The loading state of the graph and of the sign-in callback |
 | Fluid Orb | The home page |
 | Hook Sidebar | The workflows list, with a run list opening under the selected workflow |
 | Folder Component | The churn tab before anything has been fetched |
 
-New announcements go in `client/src/components/FeatureAnnouncement/utils.ts`:
-returning users see each unread one once as a popup, and the bell in the
-header carries the unread count until it is opened.
+New announcements go in `client/src/components/FeatureAnnouncement/utils.ts`;
+returning users see each unread one once, as a popup.
 
 ## How It Works
 

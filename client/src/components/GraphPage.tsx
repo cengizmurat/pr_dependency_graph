@@ -42,7 +42,6 @@ import { AnimatedCounter } from "@/components/ui/animated-counter";
 import MatrixOrb from "@/components/ui/matrix-orb";
 import GraphView from "./GraphView";
 import FeatureAnnouncementPopup from "./FeatureAnnouncement";
-import WhatsNewBell from "./FeatureAnnouncement/WhatsNew";
 import PageTabs from "./PageTabs";
 import type { PageTab } from "./PageTabs";
 import WorkflowsView from "./WorkflowsView";
@@ -725,12 +724,11 @@ export default function GraphPage() {
 
   const error = prError ?? null;
 
-  // The bell, the settings menu and the GitHub link. On a phone they close
-  // the stacked header; on a desktop they sit at the right end of the tab
-  // bar, which has the room, so the header's toolbar can wrap on its own.
+  // The settings menu and the GitHub link. On a phone they close the stacked
+  // header; on a desktop they sit at the right end of the tab bar, which has
+  // the room, so the header's toolbar can wrap on its own.
   const actions = (
     <>
-      <WhatsNewBell />
       {activeTab === "prs" && (
       <Dropdown
         trigger={["click"]}
