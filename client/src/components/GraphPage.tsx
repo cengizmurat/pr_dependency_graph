@@ -43,6 +43,7 @@ import { AnimatedCounter } from "@/components/ui/animated-counter";
 import MatrixOrb from "@/components/ui/matrix-orb";
 import GraphView from "./GraphView";
 import FeatureAnnouncementPopup from "./FeatureAnnouncement";
+import FoldToggle from "./FoldToggle";
 import PageTabs from "./PageTabs";
 import type { PageTab } from "./PageTabs";
 import WorkflowsView from "./WorkflowsView";
@@ -987,37 +988,18 @@ export default function GraphPage() {
               {/* The filters fold away behind one chip so the header stays
                   two rows tall; the chip says how many are in effect. */}
               <div style={styles.filterRowMobile}>
-                <button
-                  type="button"
-                  onClick={() => setFiltersOpen((open) => !open)}
-                  aria-expanded={filtersOpen}
-                  aria-controls="pr-filters"
-                  style={{
-                    ...styles.filtersToggle,
-                    ...(filtersOpen ? styles.filtersToggleOpen : {}),
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-                    <path d={FILTER_ICON_PATH} />
-                  </svg>
-                  Filters
-                  {activeFilterCount > 0 && (
-                    <span style={styles.filtersCount}>{activeFilterCount}</span>
-                  )}
-                  <svg
-                    width="10"
-                    height="10"
-                    viewBox="0 0 10 10"
-                    fill="none"
-                    aria-hidden
-                    style={{
-                      transition: "transform 0.15s",
-                      transform: filtersOpen ? "rotate(180deg)" : "none",
-                    }}
-                  >
-                    <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
+                <FoldToggle
+                  open={filtersOpen}
+                  onToggle={() => setFiltersOpen((open) => !open)}
+                  label="Filters"
+                  count={activeFilterCount}
+                  controls="pr-filters"
+                  icon={
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                      <path d={FILTER_ICON_PATH} />
+                    </svg>
+                  }
+                />
                 <span style={styles.summaryMobile}>
                   {data?.viewerLogin && (
                     <span style={styles.viewer}>@{data.viewerLogin}</span>
