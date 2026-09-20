@@ -85,12 +85,16 @@ function BudgetReadout({
   rateLimit,
   needed,
   compact,
+  style,
 }: {
   rateLimit: RateLimitStatus | null;
   // Requests the pending fetch wants, so a budget that cannot cover it can say
   // so where it is read rather than only in the warning panel.
   needed: number | null;
   compact?: boolean;
+  // Placement within the bar that holds the full readout; the readout's own
+  // look is not for callers to change.
+  style?: React.CSSProperties;
 }) {
   if (!rateLimit) return null;
 
@@ -113,7 +117,7 @@ function BudgetReadout({
   }
 
   return (
-    <div style={styles.budget}>
+    <div style={{ ...styles.budget, ...style }}>
       <div style={styles.budgetLabel}>API budget</div>
       <div style={{ ...styles.budgetValue, ...(short ? styles.budgetShort : {}) }}>
         {rateLimit.remaining.toLocaleString()} of {rateLimit.limit.toLocaleString()} left
@@ -406,6 +410,15 @@ export default function FolderChurnView({
   const progress =
     data && data.needed > 0 ? Math.round((data.resolved / data.needed) * 100) : 0;
 
+  // A phone packs the stat tiles two to a row: one per row left each tile
+  // mostly empty, with its value on the left and nothing on the right.
+  const tilesStyle = { ...styles.tiles, ...(isMobile ? styles.tilesMobile : {}) };
+  const tileStyle = { ...styles.tile, ...(isMobile ? styles.tileMobile : {}) };
+  const tileValueStyle = {
+    ...styles.tileValue,
+    ...(isMobile ? styles.tileValueMobile : {}),
+  };
+
   // --- The fetch button and what it says it will cost ---------------------
 
   const estimate = churn.estimate;
@@ -672,7 +685,12 @@ export default function FolderChurnView({
           answer to "what will this cost", refreshed whenever an input that
           changes the answer is touched. */}
       {!churn.error && (
-        <div style={styles.actionBar}>
+        <div
+          style={{
+            ...styles.actionBar,
+            ...(isMobile ? styles.actionBarMobile : {}),
+          }}
+        >
           <button
             style={{
               ...styles.fetchBtn,
@@ -684,13 +702,19 @@ export default function FolderChurnView({
           >
             {fetchButtonLabel}
           </button>
-          <div style={styles.actionText}>
+          <div
+            style={{
+              ...styles.actionText,
+              ...(isMobile ? styles.actionTextMobile : {}),
+            }}
+          >
             <div style={styles.actionHeadline}>{estimateHeadline}</div>
             {estimateDetail && <div style={styles.actionDetail}>{estimateDetail}</div>}
           </div>
           <BudgetReadout
             rateLimit={churn.rateLimit}
             needed={churn.requiredRequests}
+            style={isMobile ? styles.budgetMobile : undefined}
           />
         </div>
       )}
@@ -843,21 +867,34 @@ export default function FolderChurnView({
           {/* The charts are built from whatever has arrived, always — the
               progress strip says so rather than hiding them behind a spinner. */}
           {churn.isStreaming && data && (
-            <div style={styles.progressPanel}>
+            <div
+              style={{
+                ...styles.progressPanel,
+                ...(isMobile ? styles.progressPanelMobile : {}),
+              }}
+            >
+              {/* On a phone the budget moves under the bar: beside the text it
+                  would squeeze the count into a column a few words wide. */}
               <div style={styles.progressRow}>
                 <span style={styles.progressText}>
                   Reading commits — {data.resolved.toLocaleString()} of{" "}
                   {data.needed.toLocaleString()}
-                  {data.fromCache > 0 &&
-                    ` (${data.fromCache.toLocaleString()} already cached)`}
-                  . The charts below grow as they arrive.
+                  {!isMobile && (
+                    <>
+                      {data.fromCache > 0 &&
+                        ` (${data.fromCache.toLocaleString()} already cached)`}
+                      . The charts below grow as they arrive.
+                    </>
+                  )}
                 </span>
                 <span style={styles.progressRight}>
-                  <BudgetReadout
-                    rateLimit={churn.rateLimit}
-                    needed={data.needed - data.resolved}
-                    compact
-                  />
+                  {!isMobile && (
+                    <BudgetReadout
+                      rateLimit={churn.rateLimit}
+                      needed={data.needed - data.resolved}
+                      compact
+                    />
+                  )}
                   <span style={styles.progressPercent}>
                     <AnimatedCounter value={progress} duration={0.4} suffix="%" />
                   </span>
@@ -866,6 +903,19 @@ export default function FolderChurnView({
               <div style={styles.progressTrack}>
                 <div style={{ ...styles.progressFill, width: `${progress}%` }} />
               </div>
+              {isMobile && (
+                <div style={styles.progressMeta}>
+                  {data.fromCache > 0 && (
+                    <span>{data.fromCache.toLocaleString()} already cached</span>
+                  )}
+                  {data.fromCache > 0 && churn.rateLimit && <span aria-hidden="true">·</span>}
+                  <BudgetReadout
+                    rateLimit={churn.rateLimit}
+                    needed={data.needed - data.resolved}
+                    compact
+                  />
+                </div>
+              )}
             </div>
           )}
 
@@ -877,10 +927,10 @@ export default function FolderChurnView({
             </p>
           )}
 
-          <div style={styles.tiles}>
-            <div style={styles.tile}>
+          <div style={tilesStyle}>
+            <div style={tileStyle}>
               <div style={styles.tileLabel}>Commits</div>
-              <div style={styles.tileValue}>
+              <div style={tileValueStyle}>
                 <AnimatedCounter value={aggregate.commitsInInterval} />
               </div>
               <div style={styles.tileHint}>
@@ -893,16 +943,16 @@ export default function FolderChurnView({
                   : ""}
               </div>
             </div>
-            <div style={styles.tile}>
+            <div style={tileStyle}>
               <div style={styles.tileLabel}>Folders modified</div>
-              <div style={styles.tileValue}>
+              <div style={tileValueStyle}>
                 <AnimatedCounter value={aggregate.folders.length} />
               </div>
               <div style={styles.tileHint}>directly under {folderLabel}</div>
             </div>
-            <div style={styles.tile}>
+            <div style={tileStyle}>
               <div style={styles.tileLabel}>Busiest folder</div>
-              <div style={styles.tileValue} title={busiest?.folder ?? ""}>
+              <div style={tileValueStyle} title={busiest?.folder ?? ""}>
                 {busiest?.folder ?? "—"}
               </div>
               <div style={styles.tileHint}>
@@ -911,9 +961,9 @@ export default function FolderChurnView({
                   : "nothing changed"}
               </div>
             </div>
-            <div style={styles.tile}>
+            <div style={tileStyle}>
               <div style={styles.tileLabel}>Folders per commit</div>
-              <div style={styles.tileValue}>
+              <div style={tileValueStyle}>
                 <AnimatedCounter value={avgFolders} decimals={2} />
               </div>
               <div style={styles.tileHint}>average, counting each folder once</div>
