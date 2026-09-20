@@ -117,9 +117,21 @@ export const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     padding: "7px 14px",
   },
+  // On a phone the text takes the first line on its own, and the button and
+  // the budget share the second, at either end of it: the button left in a
+  // row of its own had nothing beside it but blank card.
+  actionBarMobile: {
+    justifyContent: "space-between",
+    gap: "10px 12px",
+    padding: "10px 12px",
+  },
   actionText: {
     minWidth: 0,
     flex: "1 1 auto",
+  },
+  actionTextMobile: {
+    order: -1,
+    flex: "1 0 100%",
   },
 
   // The budget sits at the far end of the action bar, so "what this costs" and
@@ -129,6 +141,11 @@ export const styles: Record<string, React.CSSProperties> = {
     paddingLeft: 14,
     borderLeft: "1px solid var(--color-border)",
     textAlign: "right" as const,
+  },
+  // Keeps to the right end of its row on a phone, so it lands under the
+  // button's right edge rather than at the left when a narrow screen wraps it.
+  budgetMobile: {
+    marginLeft: "auto",
   },
   budgetLabel: {
     fontSize: 10,
@@ -227,12 +244,22 @@ export const styles: Record<string, React.CSSProperties> = {
     gap: 12,
     marginTop: 16,
   },
+  // Two to a row on a phone, whatever the width: the auto-fit grid above
+  // falls to one column just under 380px, which is most phones.
+  tilesMobile: {
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 8,
+    marginTop: 12,
+  },
   tile: {
     padding: "12px 14px",
     borderRadius: 8,
     border: "1px solid var(--color-border)",
     background: "var(--churn-tile-bg)",
     minWidth: 0,
+  },
+  tileMobile: {
+    padding: "10px 12px",
   },
   tileLabel: {
     fontSize: 11,
@@ -250,6 +277,9 @@ export const styles: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap" as const,
+  },
+  tileValueMobile: {
+    fontSize: 22,
   },
   tileHint: {
     marginTop: 4,
@@ -502,6 +532,21 @@ export const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     border: "1px solid var(--color-border)",
     background: "var(--churn-tile-bg)",
+  },
+  progressPanelMobile: {
+    marginTop: 12,
+    padding: "8px 12px 10px",
+  },
+  // The phone's third line: what was cached and what the budget has left,
+  // under the bar rather than fighting the count for the row above it.
+  progressMeta: {
+    display: "flex",
+    flexWrap: "wrap" as const,
+    gap: "2px 10px",
+    marginTop: 6,
+    fontSize: 12,
+    color: "var(--color-text-secondary)",
+    fontVariantNumeric: "tabular-nums",
   },
   progressRow: {
     display: "flex",
