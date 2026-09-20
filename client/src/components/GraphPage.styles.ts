@@ -3,10 +3,11 @@
 export const BANNER_EDGE_GAP = 12;
 
 export const styles: Record<string, React.CSSProperties> = {
+  // The height comes from the .app-shell class (see index.css), which can
+  // hold the dvh unit with a vh fallback; an inline style cannot.
   page: {
     display: "flex",
     flexDirection: "column",
-    height: "100vh",
     background: "var(--color-page-bg)",
     fontFamily:
       '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
