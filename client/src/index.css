@@ -423,6 +423,21 @@ body {
   border-color: var(--color-link);
 }
 
+/* The "How it works" fold on the churn tab: no browser marker, a chevron
+   that turns when it is open. */
+.churn-help-summary::-webkit-details-marker {
+  display: none;
+}
+.churn-help-summary:hover {
+  color: var(--color-text);
+}
+.churn-help-chevron {
+  transition: transform 0.15s;
+}
+details[open] > .churn-help-summary .churn-help-chevron {
+  transform: rotate(180deg);
+}
+
 .churn-legend-item {
   border: none;
   background: transparent;

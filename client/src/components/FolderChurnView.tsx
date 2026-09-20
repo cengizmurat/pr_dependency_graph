@@ -627,19 +627,46 @@ export default function FolderChurnView({
       </div>
       )}
 
-      <p style={styles.note}>
-        A folder counts <strong>once per commit</strong>, however deep the change
-        sat or how many of its files moved — so these are measures of how often
-        an area changes, not how much code it holds. Merge commits are skipped,
-        because their changes already belong to the commits they bring in, and a
-        file moved between folders counts as a change to both. Two folder views
-        do not break each other down: a change to{" "}
-        <code style={styles.noteCode}>src/mastra/tools/x.ts</code> counts for{" "}
-        <code style={styles.noteCode}>src</code> at the root and for{" "}
-        <code style={styles.noteCode}>mastra</code> inside{" "}
-        <code style={styles.noteCode}>src/</code>. They overlap; they are not
-        meant to add up.
-      </p>
+      {/* One line says what the page is; the counting rules, which only
+          matter once a number looks odd, stay folded behind it. */}
+      <details style={styles.help}>
+        <summary className="churn-help-summary" style={styles.helpSummary}>
+          <span>Which folders change most often, counted once per commit.</span>
+          <span style={styles.helpLink}>
+            How it works
+            <svg
+              className="churn-help-chevron"
+              width="10"
+              height="10"
+              viewBox="0 0 10 10"
+              fill="none"
+              aria-hidden
+            >
+              <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+        </summary>
+        <ul style={styles.helpList}>
+          <li>
+            <strong style={styles.helpTerm}>Once per commit.</strong> A folder
+            counts once for each commit that touches anything inside it, however
+            deep. So this is how often an area changes, not how much code it holds.
+          </li>
+          <li>
+            <strong style={styles.helpTerm}>Merges are skipped.</strong> Their
+            changes already belong to the commits they bring in. A file moved
+            between folders counts for both.
+          </li>
+          <li>
+            <strong style={styles.helpTerm}>Views overlap.</strong> A change to{" "}
+            <code style={styles.noteCode}>src/mastra/tools/x.ts</code> counts for{" "}
+            <code style={styles.noteCode}>src</code> at the root and for{" "}
+            <code style={styles.noteCode}>mastra</code> inside{" "}
+            <code style={styles.noteCode}>src/</code>. The numbers are not meant
+            to add up.
+          </li>
+        </ul>
+      </details>
 
       {/* Nothing is read until this is pressed. The count beside it is the
           answer to "what will this cost", refreshed whenever an input that

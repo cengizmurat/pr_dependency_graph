@@ -182,6 +182,42 @@ export const styles: Record<string, React.CSSProperties> = {
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
     fontSize: 11,
   },
+  // What the page is, in one line, with the counting rules folded behind a
+  // "How it works" toggle so they take no room until they are wanted.
+  help: {
+    margin: "10px 2px 0",
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: "var(--color-text-secondary)",
+  },
+  helpSummary: {
+    display: "flex",
+    flexWrap: "wrap" as const,
+    alignItems: "baseline",
+    gap: "2px 10px",
+    cursor: "pointer",
+    listStyle: "none",
+  },
+  helpLink: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    fontWeight: 500,
+    color: "var(--color-link)",
+    whiteSpace: "nowrap" as const,
+  },
+  helpList: {
+    margin: "8px 0 0",
+    paddingLeft: 18,
+    listStyle: "disc",
+    display: "grid",
+    gap: 4,
+    maxWidth: 760,
+  },
+  helpTerm: {
+    fontWeight: 600,
+    color: "var(--color-text)",
+  },
 
   // --- Stat tiles ---
 
