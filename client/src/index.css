@@ -184,6 +184,16 @@
   box-sizing: border-box;
 }
 
+/* The app shell fills the viewport that is actually visible, not the largest
+   one: on a phone, 100vh includes the strip under the browser's address bar,
+   which pushed the bottom navigation off the screen with no way to scroll to
+   it. dvh follows the bar as it shows and hides; vh stays as the fallback for
+   browsers that predate it. */
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+}
+
 body {
   margin: 0;
   background-color: var(--color-page-bg);
