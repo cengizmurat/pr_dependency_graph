@@ -3,6 +3,7 @@ import { useParams, Link, Navigate, useLocation, useSearchParams } from "react-r
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DatePicker, Dropdown } from "antd";
 import dayjs from "dayjs";
+import { motion, useReducedMotion } from "motion/react";
 import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, fetchPullRequestSummary, fetchBehindByCounts, buildDependencyGraph } from "../api";
 import type {
   GraphQLPullRequest,
@@ -20,7 +21,7 @@ import {
   PR_REVIEW_STATE_COLOR,
   PR_REVIEW_STATE_LABEL,
 } from "../reviewState";
-import { EYE_ICON_PATH, LOOKBACK_DAYS_KEY, TAG_ICON_PATH } from "../constants";
+import { EYE_ICON_PATH, FILTER_ICON_PATH, LOOKBACK_DAYS_KEY, TAG_ICON_PATH } from "../constants";
 import {
   getStoredLookbackDays,
   getStoredIncludeBots,
@@ -37,6 +38,9 @@ import { hydrateShortcut, pruneStaleShortcut, SHORTCUT_PARAM } from "../filterSh
 import type { DateRange } from "../utils";
 import { useGithubToken } from "../hooks/useGithubToken";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { useThemeColor } from "../hooks/useThemeColor";
+import { AnimatedCounter } from "@/components/ui/animated-counter";
+import MatrixOrb from "@/components/ui/matrix-orb";
 import GraphView from "./GraphView";
 import FeatureAnnouncementPopup from "./FeatureAnnouncement";
 import PageTabs from "./PageTabs";
@@ -236,6 +240,11 @@ export default function GraphPage() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
+  // The loading orb draws on a canvas, which cannot resolve a var().
+  const accent = useThemeColor("--color-link", "#0969da");
+  const reducedMotion = useReducedMotion() ?? false;
+  // On a phone the filters are folded away until asked for.
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // The page has three views selected by a tab bar: the PR dependency graph
   // (default), the GitHub Actions workflows browser and the folder churn
@@ -585,6 +594,15 @@ export default function GraphPage() {
     statusFilter !== "all" ||
     reviewStateFilter.length > 0;
 
+  // What the folded filter chip on a phone reports: every value picked in a
+  // menu counts, so two authors and a label read as 3.
+  const activeFilterCount =
+    authorFilter.length +
+    reviewerFilter.length +
+    labelFilter.length +
+    (statusFilter === "all" ? 0 : 1) +
+    reviewStateFilter.length;
+
   const matchedPRs = useMemo(() => {
     if (!hasActiveFilters) return null;
     return new Set(filterPRs(allPRs, filters).map((pr) => pr.number));
@@ -719,6 +737,224 @@ export default function GraphPage() {
 
   const error = prError ?? null;
 
+  // The settings menu and the GitHub link. On a phone they close the stacked
+  // header; on a desktop they sit at the right end of the tab bar, which has
+  // the room, so the header's toolbar can wrap on its own.
+  const actions = (
+    <>
+      {activeTab === "prs" && (
+      <Dropdown
+        trigger={["click"]}
+        menu={{
+          items: [
+            {
+              key: "orientation",
+              label: (
+                <div style={styles.menuItemRow}>
+                  <span>Orientation</span>
+                  <button
+                    style={styles.menuToggleBtn}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOrientation((o) => (o === "horizontal" ? "vertical" : "horizontal"));
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      {orientation === "horizontal" ? (
+                        <path d="M1 7h10M8 4l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      ) : (
+                        <path d="M7 1v10M4 8l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      )}
+                    </svg>
+                    {orientation === "horizontal" ? "Horizontal" : "Vertical"}
+                  </button>
+                </div>
+              ),
+            },
+            {
+              key: "bots",
+              label: (
+                <div style={styles.menuItemRow}>
+                  <span>Bot reviews</span>
+                  <button
+                    style={styles.menuToggleBtn}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleIncludeBots();
+                    }}
+                    title={
+                      includeBots
+                        ? "Bot reviews count toward reviewers, comments and PR state"
+                        : "Bot reviews are left out of reviewers, comments and PR state"
+                    }
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      {includeBots ? (
+                        <path d="M1 7l4 4 8-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      ) : (
+                        <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      )}
+                    </svg>
+                    {includeBots ? "Included" : "Hidden"}
+                  </button>
+                </div>
+              ),
+            },
+            {
+              key: "filtered",
+              label: (
+                <div style={styles.menuItemRow}>
+                  <span>Filtered-out PRs</span>
+                  <button
+                    style={styles.menuToggleBtn}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFilteredDisplay();
+                    }}
+                    title={
+                      filteredDisplay === "fade"
+                        ? "PRs the filters leave out stay on the graph, faded back"
+                        : "PRs the filters leave out come off the graph, leaving a smaller one"
+                    }
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <rect x="1" y="3.5" width="4.5" height="7" rx="1" fill="currentColor" />
+                      {filteredDisplay === "fade" ? (
+                        <rect
+                          x="8.5"
+                          y="3.5"
+                          width="4.5"
+                          height="7"
+                          rx="1"
+                          fill="currentColor"
+                          opacity="0.3"
+                        />
+                      ) : (
+                        <path
+                          d="M8 4l4.5 6M12.5 4l-4.5 6"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                        />
+                      )}
+                    </svg>
+                    {filteredDisplay === "fade" ? "Faded" : "Hidden"}
+                  </button>
+                </div>
+              ),
+            },
+            {
+              key: "lookback",
+              label: (
+                <div
+                  style={styles.menuItemRow}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span>Default range</span>
+                  <label style={styles.lookbackLabel}>
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={lookbackInput}
+                      onChange={(e) => setLookbackInput(e.target.value)}
+                      style={styles.lookbackInput}
+                    />
+                    days
+                  </label>
+                </div>
+              ),
+            },
+          ],
+        }}
+      >
+        <button style={styles.settingsBtn} title="Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+      </Dropdown>
+      )}
+      <a
+        href="https://github.com/cengizmurat/pr_dependency_graph"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={styles.githubLink}
+        title="View on GitHub"
+      >
+        <svg height="20" width="20" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+        </svg>
+      </a>
+    </>
+  );
+
+  // The date range and the five filter menus, laid out by whichever header
+  // holds them: inline on a desktop, in a wrapping row of chips on a phone.
+  const filterControls = (
+    <>
+          <RangePicker
+            showTime={!isMobile}
+            value={dateRange}
+            onChange={(dates) => {
+              if (dates && dates[0] && dates[1]) {
+                setDateRange([dates[0], dates[1]]);
+              }
+            }}
+            allowClear={false}
+            size="small"
+            style={{ fontSize: 12, flexShrink: 0, ...(isMobile ? { width: "100%" } : {}) }}
+          />
+          <ContributorDropdown
+            contributors={contributors ?? []}
+            prCountByAuthor={prCountByAuthor}
+            selected={authorFilter}
+            onChange={setAuthorFilter}
+            isMobile={isMobile}
+          />
+          <ReviewerDropdown
+            reviewers={reviewerOptions}
+            selected={reviewerFilter}
+            onChange={setReviewerFilter}
+            isMobile={isMobile}
+          />
+          <LabelDropdown
+            labels={labelOptions}
+            selected={labelFilter}
+            onChange={setLabelFilter}
+            isMobile={isMobile}
+          />
+          <StatusDropdown
+            selected={statusFilter}
+            onChange={setStatusFilter}
+            isMobile={isMobile}
+            prCountByStatus={prCountByStatus}
+          />
+          <ReviewStateDropdown
+            selected={reviewStateFilter}
+            onChange={setReviewStateFilter}
+            isMobile={isMobile}
+            prCountByState={prCountByReviewState}
+          />
+    </>
+  );
+
+  // How many PRs the graph is picking out, of how many it holds.
+  const countLabel =
+    activeTab === "prs" && data ? (
+      <>
+        {matchedPRs && (
+          <>
+            <AnimatedCounter value={matchedPRs.size} duration={0.5} />
+            {" of "}
+          </>
+        )}
+        <AnimatedCounter value={allPRs.length} duration={0.5} />
+        {isFetchingMore && "+"} open PRs
+      </>
+    ) : null;
+
   // Signing in happens on the home page, so a visitor who opens a link to a
   // repository without credentials is sent there — carrying where they meant to
   // go, so the sign-in can put them back on it. Without that the query string
@@ -732,222 +968,93 @@ export default function GraphPage() {
 
   return (
     <div style={styles.page}>
-      <header style={{ ...styles.header, ...(isMobile ? styles.headerMobile : {}) }}>
-        <Link to="/" style={styles.backLink}>
-          &larr; Back
-        </Link>
-        <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>
-          {owner}/{repo}
-        </h1>
-        {data?.viewerLogin && (
-          <span style={styles.viewer}>@{data.viewerLogin}</span>
-        )}
-        <span style={styles.badge}>
-          {activeTab === "prs" && data
-            ? matchedPRs
-              ? `${matchedPRs.size} of ${allPRs.length}${isFetchingMore ? "+" : ""} open PRs`
-              : `${allPRs.length}${isFetchingMore ? "+" : ""} open PRs`
-            : ""}
-        </span>
-        <div style={isMobile ? styles.controlsMobile : styles.controlsDesktop}>
-        {activeTab === "prs" && (
-          <>
-        <RangePicker
-          showTime={!isMobile}
-          value={dateRange}
-          onChange={(dates) => {
-            if (dates && dates[0] && dates[1]) {
-              setDateRange([dates[0], dates[1]]);
-            }
-          }}
-          allowClear={false}
-          size="small"
-          style={{ fontSize: 12, ...(isMobile ? { width: "100%" } : {}) }}
-        />
-        <ContributorDropdown
-          contributors={contributors ?? []}
-          prCountByAuthor={prCountByAuthor}
-          selected={authorFilter}
-          onChange={setAuthorFilter}
-          isMobile={isMobile}
-        />
-        <ReviewerDropdown
-          reviewers={reviewerOptions}
-          selected={reviewerFilter}
-          onChange={setReviewerFilter}
-          isMobile={isMobile}
-        />
-        <LabelDropdown
-          labels={labelOptions}
-          selected={labelFilter}
-          onChange={setLabelFilter}
-          isMobile={isMobile}
-        />
-        <StatusDropdown
-          selected={statusFilter}
-          onChange={setStatusFilter}
-          isMobile={isMobile}
-          prCountByStatus={prCountByStatus}
-        />
-        <ReviewStateDropdown
-          selected={reviewStateFilter}
-          onChange={setReviewStateFilter}
-          isMobile={isMobile}
-          prCountByState={prCountByReviewState}
-        />
-          </>
-        )}
-        <div style={isMobile ? styles.iconRowMobile : styles.iconRowDesktop}>
-        {activeTab === "prs" && (
-        <Dropdown
-          trigger={["click"]}
-          menu={{
-            items: [
-              {
-                key: "orientation",
-                label: (
-                  <div style={styles.menuItemRow}>
-                    <span>Orientation</span>
-                    <button
-                      style={styles.menuToggleBtn}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setOrientation((o) => (o === "horizontal" ? "vertical" : "horizontal"));
-                      }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        {orientation === "horizontal" ? (
-                          <path d="M1 7h10M8 4l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        ) : (
-                          <path d="M7 1v10M4 8l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        )}
-                      </svg>
-                      {orientation === "horizontal" ? "Horizontal" : "Vertical"}
-                    </button>
-                  </div>
-                ),
-              },
-              {
-                key: "bots",
-                label: (
-                  <div style={styles.menuItemRow}>
-                    <span>Bot reviews</span>
-                    <button
-                      style={styles.menuToggleBtn}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleIncludeBots();
-                      }}
-                      title={
-                        includeBots
-                          ? "Bot reviews count toward reviewers, comments and PR state"
-                          : "Bot reviews are left out of reviewers, comments and PR state"
-                      }
-                    >
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        {includeBots ? (
-                          <path d="M1 7l4 4 8-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        ) : (
-                          <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        )}
-                      </svg>
-                      {includeBots ? "Included" : "Hidden"}
-                    </button>
-                  </div>
-                ),
-              },
-              {
-                key: "filtered",
-                label: (
-                  <div style={styles.menuItemRow}>
-                    <span>Filtered-out PRs</span>
-                    <button
-                      style={styles.menuToggleBtn}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleFilteredDisplay();
-                      }}
-                      title={
-                        filteredDisplay === "fade"
-                          ? "PRs the filters leave out stay on the graph, faded back"
-                          : "PRs the filters leave out come off the graph, leaving a smaller one"
-                      }
-                    >
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        <rect x="1" y="3.5" width="4.5" height="7" rx="1" fill="currentColor" />
-                        {filteredDisplay === "fade" ? (
-                          <rect
-                            x="8.5"
-                            y="3.5"
-                            width="4.5"
-                            height="7"
-                            rx="1"
-                            fill="currentColor"
-                            opacity="0.3"
-                          />
-                        ) : (
-                          <path
-                            d="M8 4l4.5 6M12.5 4l-4.5 6"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            strokeLinecap="round"
-                          />
-                        )}
-                      </svg>
-                      {filteredDisplay === "fade" ? "Faded" : "Hidden"}
-                    </button>
-                  </div>
-                ),
-              },
-              {
-                key: "lookback",
-                label: (
-                  <div
-                    style={styles.menuItemRow}
-                    onClick={(e) => e.stopPropagation()}
+      {isMobile ? (
+        <header style={{ ...styles.header, ...styles.headerMobile }}>
+          <div style={styles.titleRowMobile}>
+            <Link to="/" style={styles.backLink}>
+              &larr; Back
+            </Link>
+            <h1 style={{ ...styles.title, ...styles.titleMobile }}>
+              {owner}/{repo}
+            </h1>
+            <div style={styles.iconRowMobile}>{actions}</div>
+          </div>
+          {activeTab === "prs" && (
+            <>
+              {/* The filters fold away behind one chip so the header stays
+                  two rows tall; the chip says how many are in effect. */}
+              <div style={styles.filterRowMobile}>
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen((open) => !open)}
+                  aria-expanded={filtersOpen}
+                  aria-controls="pr-filters"
+                  style={{
+                    ...styles.filtersToggle,
+                    ...(filtersOpen ? styles.filtersToggleOpen : {}),
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                    <path d={FILTER_ICON_PATH} />
+                  </svg>
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <span style={styles.filtersCount}>{activeFilterCount}</span>
+                  )}
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 10 10"
+                    fill="none"
+                    aria-hidden
+                    style={{
+                      transition: "transform 0.15s",
+                      transform: filtersOpen ? "rotate(180deg)" : "none",
+                    }}
                   >
-                    <span>Default range</span>
-                    <label style={styles.lookbackLabel}>
-                      <input
-                        type="number"
-                        min={1}
-                        max={365}
-                        value={lookbackInput}
-                        onChange={(e) => setLookbackInput(e.target.value)}
-                        style={styles.lookbackInput}
-                      />
-                      days
-                    </label>
-                  </div>
-                ),
-              },
-            ],
-          }}
-        >
-          <button style={styles.settingsBtn} title="Settings">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-          </button>
-        </Dropdown>
-        )}
-        <a
-          href="https://github.com/cengizmurat/pr_dependency_graph"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={styles.githubLink}
-          title="View on GitHub"
-        >
-          <svg height="20" width="20" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
-          </svg>
-        </a>
-        </div>
-        </div>
-      </header>
+                    <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <span style={styles.summaryMobile}>
+                  {data?.viewerLogin && (
+                    <span style={styles.viewer}>@{data.viewerLogin}</span>
+                  )}
+                  <span style={styles.badge}>{countLabel}</span>
+                </span>
+              </div>
+              {filtersOpen && (
+                <motion.div
+                  id="pr-filters"
+                  style={styles.filterPanelMobile}
+                  initial={reducedMotion ? false : { opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  {filterControls}
+                </motion.div>
+              )}
+            </>
+          )}
+        </header>
+      ) : (
+        <header style={styles.header}>
+          <Link to="/" style={styles.backLink}>
+            &larr; Back
+          </Link>
+          <h1 style={styles.title}>
+            {owner}/{repo}
+          </h1>
+          {data?.viewerLogin && (
+            <span style={styles.viewer}>@{data.viewerLogin}</span>
+          )}
+          <span style={styles.badge}>{countLabel}</span>
+          {activeTab === "prs" && filterControls}
+        </header>
+      )}
 
-      <PageTabs active={activeTab} onChange={setActiveTab} />
+      {!isMobile && (
+        <PageTabs active={activeTab} onChange={setActiveTab} actions={actions} />
+      )}
 
       <div style={styles.content}>
         {activeTab === "workflows" && owner && repo && (
@@ -960,8 +1067,12 @@ export default function GraphPage() {
           <>
         {isLoading && (
           <div style={styles.statusContainer}>
-            <Spinner />
-            <p style={styles.status}>Loading pull requests...</p>
+            <MatrixOrb
+              state="thinking"
+              size={112}
+              color={accent}
+              labels={{ thinking: "Loading pull requests…" }}
+            />
           </div>
         )}
         {!isLoading && !error && data && matchedPRs?.size === 0 && (
@@ -1035,6 +1146,8 @@ export default function GraphPage() {
           </>
         )}
       </div>
+
+      {isMobile && <PageTabs active={activeTab} onChange={setActiveTab} />}
     </div>
   );
 }

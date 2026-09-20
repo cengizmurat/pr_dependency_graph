@@ -87,36 +87,10 @@ export const styles: Record<string, React.CSSProperties> = {
     alignItems: "flex-start",
     gap: 8,
   },
-  workflowItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    width: "100%",
-    padding: "7px 16px",
-    fontSize: 13,
-    fontWeight: 500,
-    border: "none",
-    background: "transparent",
-    color: "var(--color-text)",
-    cursor: "pointer",
-    textAlign: "left" as const,
-    transition: "background 0.1s",
-  },
-  workflowName: {
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap" as const,
-  },
-  workflowDisabledBadge: {
-    marginLeft: "auto",
-    fontSize: 11,
-    fontWeight: 500,
-    color: "var(--color-text-secondary)",
-    border: "1px solid var(--color-border-subtle)",
-    borderRadius: 10,
-    padding: "0 6px",
-    flexShrink: 0,
+  // The hook sidebar keeps its own row styling; this only sets it off the
+  // sticky header and the edges of the pane.
+  workflowList: {
+    padding: "8px 10px 4px",
   },
   runsList: {
     paddingBottom: 4,
@@ -126,7 +100,8 @@ export const styles: Record<string, React.CSSProperties> = {
     alignItems: "flex-start",
     gap: 8,
     width: "100%",
-    padding: "6px 12px 6px 30px",
+    padding: "6px 8px 6px 26px",
+    borderRadius: 8,
     border: "none",
     background: "transparent",
     cursor: "pointer",
@@ -136,6 +111,7 @@ export const styles: Record<string, React.CSSProperties> = {
   runItemSelected: {
     background: "var(--color-card-bg)",
     boxShadow: "inset 2px 0 0 var(--color-link)",
+    borderRadius: 8,
   },
   runItemIcon: {
     flexShrink: 0,
@@ -178,7 +154,7 @@ export const styles: Record<string, React.CSSProperties> = {
   loadMoreRunsBtn: {
     display: "block",
     width: "100%",
-    padding: "6px 12px 6px 52px",
+    padding: "6px 8px 6px 48px",
     fontSize: 12,
     fontWeight: 500,
     color: "var(--color-link)",

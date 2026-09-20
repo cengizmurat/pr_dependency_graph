@@ -2,12 +2,15 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { consumeReturnTo, handleCallback } from "../auth";
+import { useThemeColor } from "../hooks/useThemeColor";
+import MatrixOrb from "@/components/ui/matrix-orb";
 import { styles } from "./LandingPage.styles";
 
 export default function AuthCallback() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const accent = useThemeColor("--color-link", "#0969da");
 
   useEffect(() => {
     let cancelled = false;
@@ -39,9 +42,13 @@ export default function AuthCallback() {
       <div style={styles.card}>
         <h1 style={styles.title}>Signing in</h1>
         {!error ? (
-          <p style={styles.subtitle}>
-            Completing GitHub authorization, please wait...
-          </p>
+          <MatrixOrb
+            state="thinking"
+            size={112}
+            color={accent}
+            labels={{ thinking: "Completing GitHub authorization…" }}
+            className="mx-auto mt-2"
+          />
         ) : (
           <>
             <p style={styles.subtitle}>We could not finish signing you in.</p>

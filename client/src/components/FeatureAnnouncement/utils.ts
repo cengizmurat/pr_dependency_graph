@@ -16,6 +16,13 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
+    version: 14,
+    title: "A fresh look for the app",
+    description:
+      "The tab bar and the PR counter in the header have been rebuilt with animated components, and the loading screens, the workflows list and the Folder churn tab picked up matching pieces. Every animation respects your reduced-motion setting.",
+    date: "2026-09-20",
+  },
+  {
     version: 13,
     title: "Take the filtered-out PRs off the graph",
     description:

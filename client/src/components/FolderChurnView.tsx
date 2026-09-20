@@ -31,6 +31,10 @@ import {
 import type { BucketChoice, Measure } from "../folderChurn";
 import type { RateLimitStatus } from "../types";
 import { useFolderChurn } from "../hooks/useFolderChurn";
+import { useIsMobile } from "../hooks/useIsMobile";
+import { usePrefersDark } from "../hooks/useThemeColor";
+import { AnimatedCounter } from "@/components/ui/animated-counter";
+import FolderComponent from "@/components/ui/folder-component";
 import ChurnBarChart from "./ChurnBarChart";
 import ChurnTrendChart from "./ChurnTrendChart";
 import type { ChurnSeries } from "./ChurnTrendChart";
@@ -130,6 +134,8 @@ export default function FolderChurnView({
   repo: string;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const isMobile = useIsMobile();
+  const prefersDark = usePrefersDark();
 
   // Folder, branch, interval, measure and bucket size live in the URL so a
   // view can be bookmarked and shared, the way the other tabs keep their
@@ -687,13 +693,29 @@ export default function FolderChurnView({
       {/* Nothing has been read yet and nothing is on its way. Say what the
           button will do rather than showing empty charts. */}
       {!churn.error && !churn.started && !aggregate && !emptyScope && !churn.isCounting && (
-        <div style={styles.panel}>
-          <h3 style={styles.panelTitle}>Ready when you are</h3>
-          <p style={styles.panelText}>
-            {estimateHeadline}. Press <strong>{fetchButtonLabel}</strong> above to
-            read them; the tiles, charts and table build up as the commits
-            arrive. Nothing is fetched until you ask.
-          </p>
+        <div
+          style={{
+            ...styles.panel,
+            ...styles.panelWithFolder,
+            ...(isMobile ? styles.panelWithFolderMobile : {}),
+          }}
+        >
+          {/* An empty folder, until the commits are read: hover fans its
+              cards out and a click lifts them. Decoration, not a control. */}
+          <FolderComponent
+            color={prefersDark ? "white" : "black"}
+            size="sm"
+            aria-hidden
+            style={styles.folderArt}
+          />
+          <div style={styles.panelBody}>
+            <h3 style={styles.panelTitle}>Ready when you are</h3>
+            <p style={styles.panelText}>
+              {estimateHeadline}. Press <strong>{fetchButtonLabel}</strong> above to
+              read them; the tiles, charts and table build up as the commits
+              arrive. Nothing is fetched until you ask.
+            </p>
+          </div>
         </div>
       )}
 
@@ -769,7 +791,9 @@ export default function FolderChurnView({
                     needed={data.needed - data.resolved}
                     compact
                   />
-                  <span style={styles.progressPercent}>{progress}%</span>
+                  <span style={styles.progressPercent}>
+                    <AnimatedCounter value={progress} duration={0.4} suffix="%" />
+                  </span>
                 </span>
               </div>
               <div style={styles.progressTrack}>
@@ -790,7 +814,7 @@ export default function FolderChurnView({
             <div style={styles.tile}>
               <div style={styles.tileLabel}>Commits</div>
               <div style={styles.tileValue}>
-                {aggregate.commitsInInterval.toLocaleString()}
+                <AnimatedCounter value={aggregate.commitsInInterval} />
               </div>
               <div style={styles.tileHint}>
                 touching {folderLabel}, of{" "}
@@ -804,7 +828,9 @@ export default function FolderChurnView({
             </div>
             <div style={styles.tile}>
               <div style={styles.tileLabel}>Folders modified</div>
-              <div style={styles.tileValue}>{aggregate.folders.length}</div>
+              <div style={styles.tileValue}>
+                <AnimatedCounter value={aggregate.folders.length} />
+              </div>
               <div style={styles.tileHint}>directly under {folderLabel}</div>
             </div>
             <div style={styles.tile}>
@@ -820,7 +846,9 @@ export default function FolderChurnView({
             </div>
             <div style={styles.tile}>
               <div style={styles.tileLabel}>Folders per commit</div>
-              <div style={styles.tileValue}>{avgFolders.toFixed(2)}</div>
+              <div style={styles.tileValue}>
+                <AnimatedCounter value={avgFolders} decimals={2} />
+              </div>
               <div style={styles.tileHint}>average, counting each folder once</div>
             </div>
           </div>

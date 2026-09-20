@@ -4,6 +4,8 @@ import { Select } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { useGithubToken } from "../hooks/useGithubToken";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { useThemeColor } from "../hooks/useThemeColor";
+import FluidOrb from "@/components/ui/fluid-orb";
 import { isOAuthConfigured, MANAGE_OAUTH_APPS_URL, startLogin } from "../auth";
 import { fetchUserRepos } from "../api";
 import { FOCUS_PR_PARAM, parseRepoTarget } from "../prFocus";
@@ -20,6 +22,7 @@ export default function LandingPage() {
   const location = useLocation();
   const isMobile = useIsMobile();
   const oauthEnabled = isOAuthConfigured();
+  const accent = useThemeColor("--color-link", "#0969da");
 
   // Where the visitor was headed when they were bounced here for lacking
   // credentials, filters and all. Signing in takes them back to it instead of
@@ -113,6 +116,12 @@ export default function LandingPage() {
   return (
     <div style={styles.container}>
       <div style={{ ...styles.card, ...(isMobile ? styles.cardMobile : {}) }}>
+        <FluidOrb
+          size={isMobile ? 72 : 88}
+          color={accent}
+          className="mx-auto mb-4"
+          aria-hidden
+        />
         <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>
           PR Dependency Graph
         </h1>

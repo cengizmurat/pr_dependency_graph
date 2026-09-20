@@ -1,3 +1,31 @@
+@import "tailwindcss";
+
+/* The utilities the Rare UI components are written with resolve to the same
+   custom properties the rest of the app paints with, so the components follow
+   the light/dark switch below without carrying a theme of their own. */
+@theme inline {
+  --color-foreground: var(--color-text);
+  --color-muted-foreground: var(--color-text-secondary);
+  --color-background: var(--color-page-bg);
+  --color-surface: var(--color-card-bg);
+  --color-header: var(--color-header-bg);
+  --color-popover: var(--color-overlay-bg);
+  --color-line: var(--color-border-subtle);
+  --color-accent: var(--color-link);
+  --color-accent-foreground: var(--color-on-link);
+  --color-ring: var(--color-link);
+  --color-danger: var(--color-error);
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+@layer base {
+  /* Preflight sets 1.5; the app's type was sized against the browser default. */
+  html {
+    line-height: normal;
+  }
+}
+
 :root {
   color-scheme: light dark;
 
@@ -6,12 +34,14 @@
   --color-gradient-to: #ffffff;
   --color-card-bg: #f6f8fa;
   --color-header-bg: #f6f8fa;
+  --color-overlay-bg: #ffffff;
   --color-text: #1f2328;
   --color-text-secondary: #656d76;
   --color-border: #d0d7de;
   --color-border-subtle: #d8dee4;
   --color-input-bg: #ffffff;
   --color-link: #0969da;
+  --color-on-link: #ffffff;
   --color-error: #cf222e;
   --color-button-bg: #1a7f37;
   --color-button-text: #ffffff;
@@ -82,12 +112,14 @@
     --color-gradient-to: #161b22;
     --color-card-bg: #1c2128;
     --color-header-bg: #161b22;
+    --color-overlay-bg: #161b22;
     --color-text: #e6edf3;
     --color-text-secondary: #8b949e;
     --color-border: #30363d;
     --color-border-subtle: #21262d;
     --color-input-bg: #0d1117;
     --color-link: #58a6ff;
+    --color-on-link: #0d1117;
     --color-error: #f85149;
     --color-button-bg: #238636;
     --color-button-text: #ffffff;
@@ -160,16 +192,6 @@ body {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-
-@keyframes featurePopupIn {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-@keyframes featureBackdropIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }
 
 .contributor-dropdown-item:hover {
@@ -297,19 +319,6 @@ body {
 .runtime-point:hover .runtime-dot,
 .runtime-point:focus-visible .runtime-dot {
   stroke: var(--color-link);
-}
-
-.page-tab:hover {
-  color: var(--color-text);
-}
-
-.feature-popup-close:hover {
-  background: var(--color-border-subtle);
-  color: var(--color-text);
-}
-
-.feature-popup-dismiss:hover {
-  opacity: 0.9;
 }
 
 .focus-banner-btn:hover {
