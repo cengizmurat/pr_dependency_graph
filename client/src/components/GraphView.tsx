@@ -68,8 +68,9 @@ export default function GraphView({
   highlightPRs = null,
   filteredDisplay = "fade",
 }: Props) {
-  const svgRef = useRef<SVGSVGElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const gRef = useRef<SVGGElement>(null);
+  const cardLayerRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [merging, setMerging] = useState<number | null>(null);
@@ -355,12 +356,13 @@ export default function GraphView({
   const { x: viewX, y: viewY, width: viewWidth, height: viewHeight } = viewBox;
 
   const fitView = useCallback(() => {
-    const svg = svgRef.current;
+    const viewport = viewportRef.current;
     const g = gRef.current;
-    if (!svg || !g) return;
+    const cardLayer = cardLayerRef.current;
+    if (!viewport || !g || !cardLayer) return;
 
-    const width = svg.clientWidth;
-    const height = svg.clientHeight;
+    const width = viewport.clientWidth;
+    const height = viewport.clientHeight;
     const padding = 40;
     const scaleX = (width - padding * 2) / viewWidth;
     const scaleY = (height - padding * 2) / viewHeight;
@@ -370,14 +372,18 @@ export default function GraphView({
     const tx = (width - viewWidth * scale) / 2 - viewX * scale;
     const ty = (height - viewHeight * scale) / 2 - viewY * scale;
 
+    // The edges and card outlines (SVG) and the card contents (HTML) are two
+    // layers moved by the same transform, so they stay on top of each other.
     const zoom = d3
-      .zoom<SVGSVGElement, unknown>()
+      .zoom<HTMLDivElement, unknown>()
       .scaleExtent([0.1, 3])
-      .on("zoom", (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
-        d3.select(g).attr("transform", event.transform.toString());
+      .on("zoom", (event: d3.D3ZoomEvent<HTMLDivElement, unknown>) => {
+        const t = event.transform;
+        g.setAttribute("transform", t.toString());
+        cardLayer.style.transform = `translate(${t.x}px, ${t.y}px) scale(${t.k})`;
       });
 
-    const sel = d3.select(svg);
+    const sel = d3.select(viewport);
     sel.call(zoom);
     sel.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
   }, [viewX, viewY, viewWidth, viewHeight, framedSelection]);
@@ -413,78 +419,78 @@ export default function GraphView({
         <Legend />
         <FilterShortcuts viewerLogin={data.viewerLogin} />
       </div>
-      <svg
-        ref={svgRef}
-        width="100%"
-        height="100%"
-        style={{ touchAction: "none", display: "block" }}
+      <div
+        ref={viewportRef}
+        // Pan and zoom are read from here rather than from the SVG, so a drag
+        // that starts on a card (which sits in the HTML layer above the SVG)
+        // still moves the graph.
+        style={{
+          position: "absolute",
+          inset: 0,
+          overflow: "hidden",
+          touchAction: "none",
+        }}
       >
-        <defs>
-          <marker
-            id="arrowhead"
-            viewBox="0 -5 10 10"
-            refX={10}
-            refY={0}
-            markerWidth={8}
-            markerHeight={8}
-            orient="auto"
-          >
-            <path d="M0,-5L10,0L0,5" fill={COLORS.edge} />
-          </marker>
-        </defs>
+        <svg
+          width="100%"
+          height="100%"
+          style={{ display: "block" }}
+        >
+          <defs>
+            <marker
+              id="arrowhead"
+              viewBox="0 -5 10 10"
+              refX={10}
+              refY={0}
+              markerWidth={8}
+              markerHeight={8}
+              orient="auto"
+            >
+              <path d="M0,-5L10,0L0,5" fill={COLORS.edge} />
+            </marker>
+          </defs>
 
-        <g ref={gRef}>
-          {allEdges.map((e, i) => (
-            <path
-              key={i}
-              d={edgePath(e, orientation)}
-              fill="none"
-              stroke={COLORS.edge}
-              strokeWidth={2}
-              markerEnd="url(#arrowhead)"
-              // A dependency is picked out only when both of its ends are, so
-              // the link coming in from a PR that isn't fades back with it.
-              opacity={
-                highlightIds &&
-                !(
-                  highlightIds.has(e.source.data.id) &&
-                  highlightIds.has(e.target.data.id)
-                )
-                  ? UNFOCUSED_OPACITY
-                  : 1
-              }
-            />
-          ))}
-
-          {allNodes.map((n) => {
-            const w = nodeWidth(n.data);
-            const h = nodeHeight(n.data);
-            const isHovered = hoveredId === n.data.id;
-            // Every PR carries a review state, so a PR node's border always
-            // shows it; only branch nodes fall back to the plain stroke.
-            const reviewState = isPR(n.data) ? prReviewState(n.data) : null;
-            const stroke = isHovered
-              ? COLORS.hover
-              : reviewState
-                ? PR_REVIEW_STATE_COLOR[reviewState]
-                : strokeColor(n.data);
-
-            return (
-              <g
-                key={n.data.id}
-                transform={`translate(${n.x},${n.y})`}
+          <g ref={gRef}>
+            {allEdges.map((e, i) => (
+              <path
+                key={i}
+                d={edgePath(e, orientation)}
+                fill="none"
+                stroke={COLORS.edge}
+                strokeWidth={2}
+                markerEnd="url(#arrowhead)"
+                // A dependency is picked out only when both of its ends are, so
+                // the link coming in from a PR that isn't fades back with it.
                 opacity={
-                  highlightIds && !highlightIds.has(n.data.id) ? UNFOCUSED_OPACITY : 1
+                  highlightIds &&
+                  !(
+                    highlightIds.has(e.source.data.id) &&
+                    highlightIds.has(e.target.data.id)
+                  )
+                    ? UNFOCUSED_OPACITY
+                    : 1
                 }
-                style={{ cursor: "pointer" }}
-                onMouseEnter={() => setHoveredId(n.data.id)}
-                onMouseLeave={() => setHoveredId(null)}
-                onClick={() => window.open(n.data.url, "_blank", "noopener")}
-              >
-                <title>Open PR</title>
+              />
+            ))}
+
+            {allNodes.map((n) => {
+              const w = nodeWidth(n.data);
+              const h = nodeHeight(n.data);
+              const isHovered = hoveredId === n.data.id;
+              // Every PR carries a review state, so a PR node's border always
+              // shows it; only branch nodes fall back to the plain stroke.
+              const reviewState = isPR(n.data) ? prReviewState(n.data) : null;
+              const stroke = isHovered
+                ? COLORS.hover
+                : reviewState
+                  ? PR_REVIEW_STATE_COLOR[reviewState]
+                  : strokeColor(n.data);
+
+              return (
                 <rect
-                  x={-w / 2}
-                  y={-h / 2}
+                  key={n.data.id}
+                  x={n.x - w / 2}
+                  y={n.y - h / 2}
                   width={w}
                   height={h}
                   rx={8}
@@ -495,35 +501,72 @@ export default function GraphView({
                   // requested" stays hairline: every PR has a state now, so
                   // emphasising all of them would emphasise none of them.
                   strokeWidth={reviewState && reviewState !== "none" ? 5 : 1.5}
+                  opacity={
+                    highlightIds && !highlightIds.has(n.data.id) ? UNFOCUSED_OPACITY : 1
+                  }
                 />
-                <foreignObject
-                  x={-w / 2}
-                  y={-h / 2}
-                  width={w}
-                  height={h}
-                  style={{ overflow: "visible" }}
-                >
-                  {isPR(n.data) ? (
-                    <PRCard
-                      pr={n.data}
-                      mergeStatus={nodeFlags.get(n.data.id)}
-                      isMerging={merging === n.data.number}
-                      isUpdating={updatingPRs.has(n.data.number)}
-                      isCurrentlyUpdating={currentlyUpdating === n.data.number}
-                      onMerge={handleMerge}
-                      onUpdateBranch={handleUpdateBranch}
-                      onFocus={onFocusPR}
-                      orientation={orientation}
-                    />
-                  ) : (
-                    <BranchCard branch={n.data} />
-                  )}
-                </foreignObject>
-              </g>
+              );
+            })}
+          </g>
+        </svg>
+
+        {/* The card contents are plain HTML laid over the SVG, not HTML inside
+            a <foreignObject>. Safari draws positioned or transformed HTML in a
+            foreignObject at the wrong place — at the corner of the page instead
+            of inside its card — which left every card empty on an iPhone. */}
+        <div
+          ref={cardLayerRef}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: 0,
+            height: 0,
+            transformOrigin: "0 0",
+          }}
+        >
+          {allNodes.map((n) => {
+            const w = nodeWidth(n.data);
+            const h = nodeHeight(n.data);
+
+            return (
+              <div
+                key={n.data.id}
+                title="Open PR"
+                style={{
+                  position: "absolute",
+                  left: n.x - w / 2,
+                  top: n.y - h / 2,
+                  width: w,
+                  height: h,
+                  cursor: "pointer",
+                  opacity:
+                    highlightIds && !highlightIds.has(n.data.id) ? UNFOCUSED_OPACITY : 1,
+                }}
+                onMouseEnter={() => setHoveredId(n.data.id)}
+                onMouseLeave={() => setHoveredId(null)}
+                onClick={() => window.open(n.data.url, "_blank", "noopener")}
+              >
+                {isPR(n.data) ? (
+                  <PRCard
+                    pr={n.data}
+                    mergeStatus={nodeFlags.get(n.data.id)}
+                    isMerging={merging === n.data.number}
+                    isUpdating={updatingPRs.has(n.data.number)}
+                    isCurrentlyUpdating={currentlyUpdating === n.data.number}
+                    onMerge={handleMerge}
+                    onUpdateBranch={handleUpdateBranch}
+                    onFocus={onFocusPR}
+                    orientation={orientation}
+                  />
+                ) : (
+                  <BranchCard branch={n.data} />
+                )}
+              </div>
             );
           })}
-        </g>
-      </svg>
+        </div>
+      </div>
     </div>
   );
 }
