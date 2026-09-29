@@ -65,6 +65,9 @@ export interface GraphQLPullRequest {
   deletions: number;
   headRefName: string;
   baseRefName: string;
+  // The commit the PR's head branch points at. A PR's file list only changes
+  // when this does (or when it is retargeted), so it keys the cached lists.
+  headRefOid: string;
   authorLogin: string;
   authorAvatarUrl: string;
   labels: PRLabel[];
@@ -208,6 +211,21 @@ export interface CommitFile {
   changes: number;
 }
 
+// A path a pull request changes, with its line counts as GitHub reports them.
+export interface ChangedFile {
+  path: string;
+  additions: number;
+  deletions: number;
+}
+
+// The part of a PR's +/− that sits in files the repository's .gitattributes
+// marks linguist-generated, which the card takes off GitHub's totals.
+export interface GeneratedLines {
+  additions: number;
+  deletions: number;
+  files: number;
+}
+
 // What is left of the token's hourly REST budget. Read from /rate_limit,
 // which is itself free — it does not spend a request — so the cost of a
 // pending fetch can be weighed against the budget before starting it.
@@ -257,6 +275,11 @@ export interface PRNode {
   commentCount: number;
   behindBy?: number;
   stack?: PRStack | null;
+  // Generated lines to take off additions/deletions, or "loading" while the
+  // PR's file list is still being read. Absent when nothing is taken off: the
+  // setting is off, the repository marks nothing as generated, or the file
+  // list could not be read.
+  generated?: GeneratedLines | "loading";
 }
 
 export interface BranchNode {

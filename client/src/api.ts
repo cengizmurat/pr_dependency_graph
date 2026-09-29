@@ -3,6 +3,8 @@ export {
   fetchViewerLogin,
   fetchContributors,
   fetchPRsByDateRange,
+  fetchRootGitattributes,
+  fetchPRChangedFiles,
   fetchPullRequestSummary,
   fetchBehindByCounts,
   fetchUserRepos,

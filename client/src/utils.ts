@@ -7,6 +7,8 @@ import {
   LEGEND_COLLAPSED_KEY,
   INCLUDE_BOTS_KEY,
   DEFAULT_INCLUDE_BOTS,
+  EXCLUDE_GENERATED_KEY,
+  DEFAULT_EXCLUDE_GENERATED,
   FILTERED_DISPLAY_KEY,
   DEFAULT_FILTERED_DISPLAY,
 } from "./constants";
@@ -136,6 +138,23 @@ export function getStoredIncludeBots(): boolean {
 export function setStoredIncludeBots(include: boolean): void {
   try {
     localStorage.setItem(INCLUDE_BOTS_KEY, String(include));
+  } catch {
+    // localStorage unavailable (e.g. private mode); preference won't persist.
+  }
+}
+
+export function getStoredExcludeGenerated(): boolean {
+  try {
+    const stored = localStorage.getItem(EXCLUDE_GENERATED_KEY);
+    return stored === null ? DEFAULT_EXCLUDE_GENERATED : stored === "true";
+  } catch {
+    return DEFAULT_EXCLUDE_GENERATED;
+  }
+}
+
+export function setStoredExcludeGenerated(exclude: boolean): void {
+  try {
+    localStorage.setItem(EXCLUDE_GENERATED_KEY, String(exclude));
   } catch {
     // localStorage unavailable (e.g. private mode); preference won't persist.
   }

@@ -26,6 +26,8 @@ import {
   getStoredLookbackDays,
   getStoredIncludeBots,
   setStoredIncludeBots,
+  getStoredExcludeGenerated,
+  setStoredExcludeGenerated,
   getStoredFilteredDisplay,
   setStoredFilteredDisplay,
   buildDefaultRange,
@@ -37,6 +39,7 @@ import { buildShareUrl, getFocusPR, withFocusPR } from "../prFocus";
 import { hydrateShortcut, pruneStaleShortcut, SHORTCUT_PARAM } from "../filterShortcuts";
 import type { DateRange } from "../utils";
 import { useGithubToken } from "../hooks/useGithubToken";
+import { useGeneratedLines } from "../hooks/useGeneratedLines";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { useThemeColor } from "../hooks/useThemeColor";
 import { AnimatedCounter } from "@/components/ui/animated-counter";
@@ -46,6 +49,7 @@ import FeatureAnnouncementPopup from "./FeatureAnnouncement";
 import FoldToggle from "./FoldToggle";
 import PageTabs from "./PageTabs";
 import type { PageTab } from "./PageTabs";
+import Spinner from "./Spinner";
 import WorkflowsView from "./WorkflowsView";
 import FolderChurnView from "./FolderChurnView";
 import { styles, dropdownStyles, BANNER_EDGE_GAP } from "./GraphPage.styles";
@@ -426,6 +430,16 @@ export default function GraphPage() {
     });
   }, []);
 
+  // Whether a card's +/− leaves out the files .gitattributes marks as
+  // generated, or shows GitHub's own totals.
+  const [excludeGenerated, setExcludeGenerated] = useState(getStoredExcludeGenerated);
+  const toggleExcludeGenerated = useCallback(() => {
+    setExcludeGenerated((prev) => {
+      setStoredExcludeGenerated(!prev);
+      return !prev;
+    });
+  }, []);
+
   // Whether the PRs the filters leave out stay on the graph, faded, or come off
   // it so what matched is laid out on its own — a smaller graph to read.
   const [filteredDisplay, setFilteredDisplay] = useState(getStoredFilteredDisplay);
@@ -457,6 +471,14 @@ export default function GraphPage() {
     queryFn: () => fetchBehindByCounts(token!, owner!, repo!, allPRs, queryClient),
     enabled: !!owner && !!repo && !!token && allPRs.length > 0 && activeTab === "prs",
     staleTime: 60 * 1000,
+  });
+
+  const generatedByPR = useGeneratedLines({
+    token,
+    owner,
+    repo,
+    prs: allPRs,
+    enabled: excludeGenerated && activeTab === "prs",
   });
 
   const filters = useMemo<PRFilters>(
@@ -582,8 +604,16 @@ export default function GraphPage() {
         }
       }
     }
+    if (generatedByPR) {
+      for (const node of graph.nodes) {
+        if (node.type === "pr") {
+          const generated = generatedByPR.get(node.number);
+          if (generated !== undefined) node.generated = generated;
+        }
+      }
+    }
     return graph;
-  }, [allPRs, owner, repo, viewerLogin, contributors, behindByData]);
+  }, [allPRs, owner, repo, viewerLogin, contributors, behindByData, generatedByPR]);
 
   // Which PRs the toolbar filters keep, and so which ones the graph
   // highlights. Null while no filter is set — then nothing is singled out and
@@ -797,6 +827,35 @@ export default function GraphPage() {
                       )}
                     </svg>
                     {includeBots ? "Included" : "Hidden"}
+                  </button>
+                </div>
+              ),
+            },
+            {
+              key: "generated",
+              label: (
+                <div style={styles.menuItemRow}>
+                  <span>Generated files</span>
+                  <button
+                    style={styles.menuToggleBtn}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleExcludeGenerated();
+                    }}
+                    title={
+                      excludeGenerated
+                        ? "Files .gitattributes marks linguist-generated are left out of each card's +/−"
+                        : "Each card's +/− counts every file, as GitHub does"
+                    }
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      {excludeGenerated ? (
+                        <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      ) : (
+                        <path d="M1 7l4 4 8-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      )}
+                    </svg>
+                    {excludeGenerated ? "Left out" : "Counted"}
                   </button>
                 </div>
               ),
@@ -2046,30 +2105,6 @@ function ReviewStateDot({ color }: { color?: string }) {
     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}>
       <path d="M11.28 6.78a.75.75 0 0 0-1.06-1.06L7.25 8.69 5.78 7.22a.75.75 0 0 0-1.06 1.06l2 2a.75.75 0 0 0 1.06 0l3.5-3.5Z" />
       <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0Zm-1.5 0a6.5 6.5 0 1 0-13 0 6.5 6.5 0 0 0 13 0Z" />
-    </svg>
-  );
-}
-
-function Spinner({ size = 24 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      style={{ animation: "spin 0.8s linear infinite" }}
-    >
-      <circle
-        cx="12" cy="12" r="10"
-        stroke="var(--color-border-subtle)"
-        strokeWidth="3"
-      />
-      <path
-        d="M12 2a10 10 0 0 1 10 10"
-        stroke="var(--color-text-secondary)"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
     </svg>
   );
 }

@@ -8,6 +8,7 @@ import {
   STATE_ICONS,
 } from "../constants";
 import { timeAgo } from "../utils";
+import Spinner from "./Spinner";
 import { styles, badgeStyles } from "./PRCard.styles";
 
 function labelTextColor(hex: string): string {
@@ -228,6 +229,13 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurre
   const hasUpdateBadge = isUpdating || (pr.behindBy != null && pr.behindBy > 0);
   const hasBadges = hasMergeBadge || hasUpdateBadge || !!pr.stack || !!onFocus;
 
+  // GitHub's totals, less whatever sits in generated files. While the PR's
+  // file list is still loading there is nothing to show yet but a spinner.
+  const diffLoading = pr.generated === "loading";
+  const generated = pr.generated === "loading" ? undefined : pr.generated;
+  const additions = Math.max(0, pr.additions - (generated?.additions ?? 0));
+  const deletions = Math.max(0, pr.deletions - (generated?.deletions ?? 0));
+
   return (
     <div style={styles.card} data-draft={pr.isDraft || undefined}>
       {hasBadges && (
@@ -299,8 +307,16 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurre
           {timeAgo(pr.stateChangedAt)}
         </span>
         <div style={styles.diff}>
-          <span style={styles.additions}>+{pr.additions}</span>
-          <span style={styles.deletions}>&minus;{pr.deletions}</span>
+          {diffLoading ? (
+            <span style={styles.diffLoading} role="img" title="Loading the diff" aria-label="Loading the diff">
+              <Spinner size={12} />
+            </span>
+          ) : (
+            <>
+              <span style={styles.additions}>+{additions}</span>
+              <span style={styles.deletions}>&minus;{deletions}</span>
+            </>
+          )}
         </div>
       </div>
 

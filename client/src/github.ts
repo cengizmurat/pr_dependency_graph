@@ -14,6 +14,7 @@ import type {
   WorkflowRunsPage,
   WorkflowsPage,
   BranchList,
+  ChangedFile,
   CommitFile,
   CommitHistoryPage,
   RepoTreeDirs,
@@ -126,7 +127,7 @@ query($owner: String!, $name: String!, $cursor: String, $first: Int!) {
       pageInfo { hasNextPage endCursor }
       nodes {
         number title url isDraft createdAt additions deletions
-        headRefName baseRefName mergeable mergeStateStatus reviewDecision
+        headRefName baseRefName headRefOid mergeable mergeStateStatus reviewDecision
         author { login avatarUrl }
         labels(first: 20) { nodes { name color } }${REVIEW_FIELDS}
         comments { totalCount }${STATE_CHANGE_FIELDS}${stackFields}
@@ -446,6 +447,7 @@ interface PRNodeRaw {
   deletions: number;
   headRefName: string;
   baseRefName: string;
+  headRefOid: string;
   mergeable: Mergeable;
   mergeStateStatus: string;
   reviewDecision: string | null;
@@ -617,6 +619,7 @@ function processRawPR(pr: PRNodeRaw): GraphQLPullRequest {
     deletions: pr.deletions,
     headRefName: pr.headRefName,
     baseRefName: pr.baseRefName,
+    headRefOid: pr.headRefOid,
     authorLogin: pr.author?.login ?? "unknown",
     authorAvatarUrl: pr.author?.avatarUrl ?? "",
     labels: (pr.labels?.nodes ?? [])
@@ -671,7 +674,7 @@ query($query: String!, $cursor: String, $first: Int!) {
     nodes {
       ... on PullRequest {
         number title url isDraft createdAt additions deletions
-        headRefName baseRefName mergeable mergeStateStatus reviewDecision
+        headRefName baseRefName headRefOid mergeable mergeStateStatus reviewDecision
         author { login avatarUrl }
         labels(first: 20) { nodes { name color } }${REVIEW_FIELDS}
         comments { totalCount }${STATE_CHANGE_FIELDS}${stackFields}
@@ -725,6 +728,191 @@ export async function fetchPRsByDateRange(
   }
 
   return all;
+}
+
+// --- Generated files ---
+
+const GITATTRIBUTES_QUERY = `
+query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    defaultBranchRef {
+      target {
+        ... on Commit {
+          file(path: ".gitattributes") {
+            oid
+            object { ... on Blob { text isTruncated } }
+          }
+        }
+      }
+    }
+  }
+}`;
+
+// The root .gitattributes on the default branch: the one set of rules every
+// PR's generated files are judged by. Null when the repository has none.
+export async function fetchRootGitattributes(
+  token: string,
+  owner: string,
+  repo: string,
+): Promise<{ oid: string; text: string } | null> {
+  const data = await graphql<{
+    repository: {
+      defaultBranchRef: {
+        target: {
+          file?: {
+            oid: string;
+            object: { text?: string | null; isTruncated?: boolean } | null;
+          } | null;
+        } | null;
+      } | null;
+    } | null;
+  }>(token, GITATTRIBUTES_QUERY, { owner, name: repo });
+
+  const file = data.repository?.defaultBranchRef?.target?.file;
+  const text = file?.object?.text;
+  if (!file || text == null) return null;
+  return {
+    oid: file.oid,
+    // A cut-off file ends mid-line, and half a pattern is a different one.
+    text: file.object?.isTruncated ? text.slice(0, text.lastIndexOf("\n") + 1) : text,
+  };
+}
+
+// PRs asked about in one request, and how many such requests run at once.
+// Each PR brings up to 100 files, so a batch stays quick to answer, and the
+// cards fill in batch by batch rather than all at the end.
+const PR_FILES_BATCH_SIZE = 10;
+const PR_FILES_CONCURRENCY = 3;
+const PR_FILES_TIMEOUT_MS = 30_000;
+
+// One page of changed files for each PR in the batch, one alias per PR. Each
+// alias has its own cursor, so a big PR can keep paging on its own.
+function prFilesQuery(numbers: readonly number[]): string {
+  const cursors = numbers.map((_, i) => `, $c${i}: String`).join("");
+  const fields = numbers
+    .map(
+      (number, i) => `
+    p${i}: pullRequest(number: ${number}) {
+      files(first: 100, after: $c${i}) {
+        pageInfo { hasNextPage endCursor }
+        nodes { path additions deletions }
+      }
+    }`,
+    )
+    .join("");
+  return `
+query($owner: String!, $name: String!${cursors}) {
+  repository(owner: $owner, name: $name) {${fields}
+  }
+}`;
+}
+
+interface RawFilesPage {
+  pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  nodes: (ChangedFile | null)[] | null;
+}
+
+// Unlike graphql(), an error does not sink the whole answer: GitHub returns
+// what it could alongside the errors, so one PR it cannot list comes back
+// null while the rest of its batch is still used.
+async function fetchPRFilesBatch(
+  token: string,
+  owner: string,
+  repo: string,
+  batch: readonly { number: number; cursor: string | null }[],
+): Promise<(RawFilesPage | null)[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PR_FILES_TIMEOUT_MS);
+  try {
+    const variables: Record<string, unknown> = { owner, name: repo };
+    batch.forEach((pr, i) => {
+      variables[`c${i}`] = pr.cursor;
+    });
+    const res = await fetchWithAuth(token, GITHUB_GRAPHQL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: prFilesQuery(batch.map((pr) => pr.number)),
+        variables,
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`GitHub API returned ${res.status}`);
+
+    const json = await res.json();
+    const repository: Record<string, { files: RawFilesPage | null } | null> | undefined =
+      json.data?.repository;
+    if (!repository) throw new Error(json.errors?.[0]?.message ?? "GitHub returned no data");
+    return batch.map((_, i) => repository[`p${i}`]?.files ?? null);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Every file each PR changes, paging past the first 100 for the PRs that have
+// more. `onDone` is called for each PR as soon as its own list is complete —
+// with null when it could not be read — so a PR is ready without waiting for
+// the slowest one in the set.
+export async function fetchPRChangedFiles(
+  token: string,
+  owner: string,
+  repo: string,
+  numbers: readonly number[],
+  onDone: (number: number, files: ChangedFile[] | null) => void,
+): Promise<void> {
+  type Pending = { number: number; cursor: string | null; files: ChangedFile[] };
+  let pending: Pending[] = numbers.map((number) => ({ number, cursor: null, files: [] }));
+
+  // Each round reads one more page of every PR still open. A PR with more
+  // pages to go is carried into the next round with its cursor.
+  while (pending.length > 0) {
+    const carried: Pending[] = [];
+    const batches: Pending[][] = [];
+    for (let i = 0; i < pending.length; i += PR_FILES_BATCH_SIZE) {
+      batches.push(pending.slice(i, i + PR_FILES_BATCH_SIZE));
+    }
+
+    const readBatch = async (batch: Pending[]) => {
+      let pages: (RawFilesPage | null)[] | null = null;
+      // One retry: a heavy query failing once is no reason to give up on the
+      // whole batch.
+      for (let attempt = 0; attempt < 2 && !pages; attempt++) {
+        if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1000));
+        try {
+          pages = await fetchPRFilesBatch(token, owner, repo, batch);
+        } catch {
+          // Retried once, then the batch's PRs are reported as unreadable.
+        }
+      }
+
+      batch.forEach((pr, i) => {
+        const page = pages?.[i];
+        if (!page) {
+          onDone(pr.number, null);
+          return;
+        }
+        for (const file of page.nodes ?? []) {
+          if (file) {
+            pr.files.push({ path: file.path, additions: file.additions, deletions: file.deletions });
+          }
+        }
+        const { hasNextPage, endCursor } = page.pageInfo;
+        if (hasNextPage && endCursor && endCursor !== pr.cursor) {
+          carried.push({ ...pr, cursor: endCursor });
+        } else {
+          onDone(pr.number, pr.files);
+        }
+      });
+    };
+
+    let next = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(PR_FILES_CONCURRENCY, batches.length) }, async () => {
+        while (next < batches.length) await readBatch(batches[next++]);
+      }),
+    );
+    pending = carried;
+  }
 }
 
 // --- GitHub Actions (workflows / runs / jobs) ---
