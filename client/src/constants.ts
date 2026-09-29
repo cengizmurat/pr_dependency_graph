@@ -42,6 +42,13 @@ export const LEGEND_COLLAPSED_KEY = "pr-graph-legend-collapsed";
 export const INCLUDE_BOTS_KEY = "pr-graph-include-bots";
 export const DEFAULT_INCLUDE_BOTS = false;
 
+// Whether a card's +/− leaves out the lines in files the repository's root
+// .gitattributes marks linguist-generated. On by default: generated code is
+// what makes a small change read as a huge one. Off, the card shows GitHub's
+// own totals and no file list is read.
+export const EXCLUDE_GENERATED_KEY = "pr-graph-exclude-generated";
+export const DEFAULT_EXCLUDE_GENERATED = true;
+
 // What the graph does with the pull requests the toolbar filters leave out.
 // "fade" keeps them drawn, so a matched PR is still read in the stack it
 // belongs to — the behaviour the filters have always had, and the default.

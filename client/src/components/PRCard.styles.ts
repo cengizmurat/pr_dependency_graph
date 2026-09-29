@@ -84,6 +84,9 @@ export const styles: Record<string, React.CSSProperties> = {
     gap: 6,
     flexShrink: 0,
   },
+  diffLoading: {
+    display: "inline-flex",
+  },
   additions: {
     color: "var(--color-additions)",
     fontWeight: 600,

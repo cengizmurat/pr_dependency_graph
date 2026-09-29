@@ -16,6 +16,13 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
+    version: 15,
+    title: "PR sizes leave out generated files",
+    description:
+      "A card's +/− no longer counts files your .gitattributes marks linguist-generated. To turn this off, set \"Generated files\" to \"Counted\" in Settings.",
+    date: "2026-09-29",
+  },
+  {
     version: 14,
     title: "A fresh look for the app",
     description:
