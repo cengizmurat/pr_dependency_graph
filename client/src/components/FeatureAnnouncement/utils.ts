@@ -17,9 +17,9 @@ export interface FeatureAnnouncement {
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
     version: 15,
-    title: "Generated files are left out of a PR's size",
+    title: "PR sizes leave out generated files",
     description:
-      "The +/− on a pull request card no longer counts files your repository's root .gitattributes marks linguist-generated. A card shows a spinner while its file list loads. To see GitHub's own numbers again, switch \"Generated files\" to \"Counted\" in Settings.",
+      "A card's +/− no longer counts files your .gitattributes marks linguist-generated. To turn this off, set \"Generated files\" to \"Counted\" in Settings.",
     date: "2026-09-29",
   },
   {
