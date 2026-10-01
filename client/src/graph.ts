@@ -41,6 +41,7 @@ export function buildDependencyGraph(
     reviewers: pr.reviewers,
     reviewDecision: pr.reviewDecision,
     commentCount: pr.commentCount,
+    details: pr.details,
     stack: pr.stack,
   }));
 

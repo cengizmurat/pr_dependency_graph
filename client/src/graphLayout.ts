@@ -34,6 +34,9 @@ function estimatePRHeight(pr: PRNode): number {
   h += (titleLines - 1) * PR_TITLE_LINE_PX;
   if (pr.labels.length > 0) {
     h += estimateLabelRows(pr.labels) * PR_LABEL_ROW_PX;
+  } else if (pr.details.labels !== "loaded") {
+    // One row for the spinner, or the warning, that stands in for the labels.
+    h += PR_LABEL_ROW_PX;
   }
   return h;
 }

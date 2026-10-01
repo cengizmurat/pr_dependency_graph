@@ -50,6 +50,18 @@ export interface PRStack {
   size: number;
 }
 
+// The parts of a PR read after the PR list itself, each in a request of its
+// own. The list alone is enough to draw the graph; these fill the cards in.
+export type PRDetailPart =
+  | "labels"
+  | "reviews"
+  | "opinionatedReviews"
+  | "reviewRequests";
+
+export type PRDetailStatus = "loading" | "loaded" | "failed";
+
+export type PRDetailsStatus = Record<PRDetailPart, PRDetailStatus>;
+
 export interface GraphQLPullRequest {
   number: number;
   title: string;
@@ -80,6 +92,9 @@ export interface GraphQLPullRequest {
   mergeStateStatus: string;
   reviewDecision: ReviewDecision;
   stack: PRStack | null;
+  // Which of the later parts are in. `labels` and `reviewers` hold what has
+  // arrived so far; `commentCount` is only complete once `reviews` is loaded.
+  details: PRDetailsStatus;
 }
 
 // The little that is needed about a PR the graph didn't load: enough to say
@@ -273,6 +288,8 @@ export interface PRNode {
   // from — see prReviewState.
   reviewDecision: ReviewDecision;
   commentCount: number;
+  // See GraphQLPullRequest.details.
+  details: PRDetailsStatus;
   behindBy?: number;
   stack?: PRStack | null;
   // Generated lines to take off additions/deletions, or "loading" while the
