@@ -1,4 +1,11 @@
-import type { PRNode, PRLabel, PRStack, Orientation, MergeStatus } from "../types";
+import type {
+  PRNode,
+  PRLabel,
+  PRStack,
+  Orientation,
+  MergeStatus,
+  PRDetailStatus,
+} from "../types";
 import {
   EYE_ICON_PATH,
   MAX_REVIEWER_AVATARS,
@@ -33,6 +40,45 @@ function ageTitle(pr: PRNode): string {
   const changed = new Date(pr.stateChangedAt).toLocaleString();
   const label = pr.isDraft ? "Converted to draft" : "Ready for review";
   return `${label} ${changed} — ${opened}`;
+}
+
+// Where a part of the card is still loading, a spinner; where it could not be
+// loaded, a warning sign. Nothing once it is in.
+function DetailStatus({
+  status,
+  what,
+  style,
+}: {
+  status: PRDetailStatus;
+  what: string;
+  style?: React.CSSProperties;
+}) {
+  if (status === "loaded") return null;
+  const label = status === "loading" ? `Loading the ${what}` : `The ${what} could not be loaded`;
+  return (
+    <span style={{ ...styles.detailStatus, ...style }} role="img" title={label} aria-label={label}>
+      {status === "loading" ? (
+        <Spinner size={12} />
+      ) : (
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--color-text-secondary)">
+          <path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z" />
+        </svg>
+      )}
+    </span>
+  );
+}
+
+// The reviewers are put together from three parts. They show as each part
+// comes in, with a spinner after them until the last one has.
+function reviewersStatus(pr: PRNode): PRDetailStatus {
+  const parts = [
+    pr.details.reviews,
+    pr.details.opinionatedReviews,
+    pr.details.reviewRequests,
+  ];
+  if (parts.includes("loading")) return "loading";
+  if (parts.includes("failed")) return "failed";
+  return "loaded";
 }
 
 interface Props {
@@ -231,6 +277,8 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurre
 
   // GitHub's totals, less whatever sits in generated files. While the PR's
   // file list is still loading there is nothing to show yet but a spinner.
+  const reviewers = reviewersStatus(pr);
+
   const diffLoading = pr.generated === "loading";
   const generated = pr.generated === "loading" ? undefined : pr.generated;
   const additions = Math.max(0, pr.additions - (generated?.additions ?? 0));
@@ -283,6 +331,12 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurre
       </div>
 
       <span style={styles.branch}>{pr.headBranch}</span>
+
+      {pr.labels.length === 0 && pr.details.labels !== "loaded" && (
+        <div style={styles.labelsStatus}>
+          <DetailStatus status={pr.details.labels} what="labels" />
+        </div>
+      )}
 
       {pr.labels.length > 0 && (
         <div style={styles.labels}>
@@ -357,8 +411,12 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurre
               )}
             </div>
           )}
+          <DetailStatus status={reviewers} what="reviewers" style={styles.reviewersStatus} />
 
-          {pr.commentCount > 0 && (
+          {/* The count is the PR's comments and its review comments together,
+              which both come with the reviews. */}
+          <DetailStatus status={pr.details.reviews} what="comments" />
+          {pr.details.reviews === "loaded" && pr.commentCount > 0 && (
             <div style={styles.comments}>
               <svg
                 width="12"

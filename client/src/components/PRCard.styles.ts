@@ -163,6 +163,24 @@ export const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 3,
   },
+  // A spinner, or a warning, standing in for a part of the card that is still
+  // loading or could not be loaded.
+  detailStatus: {
+    display: "inline-flex",
+    alignItems: "center",
+    flexShrink: 0,
+  },
+  labelsStatus: {
+    display: "flex",
+    alignItems: "center",
+    height: 18,
+    paddingLeft: 18,
+  },
+  reviewersStatus: {
+    display: "inline-flex",
+    alignItems: "center",
+    marginLeft: 4,
+  },
   commentCount: {
     color: "var(--color-text-secondary)",
     fontSize: 11,

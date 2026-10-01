@@ -216,9 +216,11 @@ function useIncrementalPRs(
           endDate,
           hasExisting
             ? undefined
-            : (accumulated) => {
+            : (accumulated, morePages) => {
                 queryClient.setQueryData(queryKey, accumulated);
-                setIsFetchingMore(true);
+                // Only the PR list counts as "loading more PRs". The cards
+                // show their own spinners while their details come in.
+                setIsFetchingMore(morePages);
               },
           signal,
         );

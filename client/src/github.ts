@@ -1,4 +1,6 @@
 import type {
+  PRDetailPart,
+  PRDetailsStatus,
   ReviewState,
   Mergeable,
   Reviewer,
@@ -96,20 +98,32 @@ const STATE_CHANGE_FIELDS = `
 // a person left it — the only reliable way to tell, since an App's login is not
 // always suffixed. `requestedReviewer` asks for Bot as well as User, so a review
 // request sitting with an App is visible too rather than silently dropped.
-const REVIEW_FIELDS = `
+//
+// The PR list asks for none of these: a page of PRs with every review on them
+// is heavy enough for GitHub to give up on it. Each part is read on its own
+// instead, after the list, so the graph is drawn first and the cards fill in.
+const DETAIL_FIELDS: Record<PRDetailPart, string> = {
+  labels: `
+        labels(first: 20) { nodes { name color } }`,
+  // The PR's own comment count travels with the reviews: the count a card
+  // shows is both added together.
+  reviews: `
+        comments { totalCount }
         latestReviews(first: 100) {
           nodes {
             state
             author { __typename login avatarUrl }
             comments { totalCount }
           }
-        }
+        }`,
+  opinionatedReviews: `
         latestOpinionatedReviews(first: 100) {
           nodes {
             state
             author { __typename login avatarUrl }
           }
-        }
+        }`,
+  reviewRequests: `
         reviewRequests(first: 100) {
           nodes {
             requestedReviewer {
@@ -118,7 +132,10 @@ const REVIEW_FIELDS = `
               ... on Bot { login avatarUrl }
             }
           }
-        }`;
+        }`,
+};
+
+const DETAIL_PARTS = Object.keys(DETAIL_FIELDS) as PRDetailPart[];
 
 const prQuery = (stackFields: string) => `
 query($owner: String!, $name: String!, $cursor: String, $first: Int!) {
@@ -128,9 +145,7 @@ query($owner: String!, $name: String!, $cursor: String, $first: Int!) {
       nodes {
         number title url isDraft createdAt additions deletions
         headRefName baseRefName headRefOid mergeable mergeStateStatus reviewDecision
-        author { login avatarUrl }
-        labels(first: 20) { nodes { name color } }${REVIEW_FIELDS}
-        comments { totalCount }${STATE_CHANGE_FIELDS}${stackFields}
+        author { login avatarUrl }${DETAIL_PARTS.map((part) => DETAIL_FIELDS[part]).join("")}${STATE_CHANGE_FIELDS}${stackFields}
       }
     }
   }
@@ -157,7 +172,11 @@ async function graphql<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new Error(body?.message ?? `GitHub API returned ${res.status}`);
+    const error = new Error(
+      body?.message ?? `GitHub API returned ${res.status}`,
+    ) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
   }
 
   const json = await res.json();
@@ -165,6 +184,78 @@ async function graphql<T>(
     throw new Error(json.errors[0].message);
   }
   return json.data as T;
+}
+
+// Waits before the second and the third try. A failure GitHub can recover
+// from usually clears within a few seconds.
+const RETRY_DELAYS_MS = [1_000, 3_000];
+
+// A failure a second try can fix: the request never got an answer the page
+// could read, or GitHub said it is busy or timed out. GitHub's 502 for a query
+// that ran too long often comes without CORS headers, so the browser reports
+// it as a network error ("Failed to fetch") rather than as a 502.
+function isTransientError(err: unknown): boolean {
+  if (err instanceof TypeError) return true;
+  const status = (err as { status?: number } | null)?.status;
+  return status === 502 || status === 503 || status === 504;
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+// Runs a read, giving each try `timeoutMs` to answer and trying again after a
+// failure that can pass. Only for reads: a write that got no answer may still
+// have gone through. Cancelling `signal` stops it at once, with no retry.
+async function readWithRetry<T>(
+  run: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    const onAbort = () => controller.abort();
+    signal?.addEventListener("abort", onAbort, { once: true });
+
+    let error: unknown;
+    try {
+      return await run(controller.signal);
+    } catch (err) {
+      error = err;
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    }
+
+    if (signal?.aborted) throw error;
+    if (timedOut) error = new Error("GitHub did not answer in time.");
+    if ((!timedOut && !isTransientError(error)) || attempt >= RETRY_DELAYS_MS.length) {
+      throw error;
+    }
+    // A little jitter, so requests that failed together don't retry together.
+    await sleep(RETRY_DELAYS_MS[attempt] + Math.random() * 500, signal);
+  }
 }
 
 // Runs a query that asks for the stacked-PR fields, retrying once without them
@@ -437,7 +528,9 @@ interface RawReview {
   comments?: { totalCount: number } | null;
 }
 
-interface PRNodeRaw {
+// The fields the PR list itself asks for: enough to place every PR on the
+// graph. The rest of a card comes from the detail requests below.
+interface PRNodeBaseRaw {
   number: number;
   title: string;
   url: string;
@@ -452,6 +545,16 @@ interface PRNodeRaw {
   mergeStateStatus: string;
   reviewDecision: string | null;
   author: { login: string; avatarUrl: string } | null;
+  // At most one node: the PR's latest draft/ready switch, or none at all when
+  // it has stayed in the state it was opened in.
+  timelineItems: { nodes: ({ createdAt?: string } | null)[] | null } | null;
+  // Absent entirely when the stack fields aren't in the schema, null when the
+  // PR simply isn't stacked.
+  stackEntry?: { position: number } | null;
+  stack?: { number: number; size: number } | null;
+}
+
+interface PRDetailsRaw {
   labels: { nodes: ({ name: string; color: string } | null)[] | null } | null;
   latestReviews: { nodes: (RawReview | null)[] | null } | null;
   // The APPROVED / CHANGES_REQUESTED review each reviewer still stands behind,
@@ -469,14 +572,9 @@ interface PRNodeRaw {
       | null;
   } | null;
   comments: { totalCount: number } | null;
-  // At most one node: the PR's latest draft/ready switch, or none at all when
-  // it has stayed in the state it was opened in.
-  timelineItems: { nodes: ({ createdAt?: string } | null)[] | null } | null;
-  // Absent entirely when the stack fields aren't in the schema, null when the
-  // PR simply isn't stacked.
-  stackEntry?: { position: number } | null;
-  stack?: { number: number; size: number } | null;
 }
+
+type PRNodeRaw = PRNodeBaseRaw & PRDetailsRaw;
 
 interface PRQueryData {
   repository: {
@@ -534,7 +632,7 @@ export async function fetchOpenPRs(
 
 // The timestamp of the PR's latest draft/ready switch, or its creation time
 // when it never switched.
-function stateChangedAt(pr: PRNodeRaw): string {
+function stateChangedAt(pr: PRNodeBaseRaw): string {
   const events = pr.timelineItems?.nodes ?? [];
   for (let i = events.length - 1; i >= 0; i--) {
     const at = events[i]?.createdAt;
@@ -556,7 +654,26 @@ function strongerReviewState(a: ReviewState, b: ReviewState): ReviewState {
   return rankA <= rankB ? a : b;
 }
 
-function processRawPR(pr: PRNodeRaw): GraphQLPullRequest {
+const ALL_DETAILS_LOADED: PRDetailsStatus = {
+  labels: "loaded",
+  reviews: "loaded",
+  opinionatedReviews: "loaded",
+  reviewRequests: "loaded",
+};
+
+const ALL_DETAILS_LOADING: PRDetailsStatus = {
+  labels: "loading",
+  reviews: "loading",
+  opinionatedReviews: "loading",
+  reviewRequests: "loading",
+};
+
+// A PR from whatever has been read of it so far. A detail part that is not in
+// yet reads as empty, and `details` says which parts those are.
+function processRawPR(
+  pr: PRNodeBaseRaw & Partial<PRDetailsRaw>,
+  details: PRDetailsStatus,
+): GraphQLPullRequest {
   const reviewerMap = new Map<string, Reviewer>();
   let reviewCommentCount = 0;
   let botReviewCommentCount = 0;
@@ -647,6 +764,7 @@ function processRawPR(pr: PRNodeRaw): GraphQLPullRequest {
             size: pr.stack.size,
           }
         : null,
+    details,
   };
 }
 
@@ -657,7 +775,7 @@ function processPage(
   const result: GraphQLPullRequest[] = [];
   for (const pr of prs.nodes) {
     if (!pr) continue;
-    result.push(processRawPR(pr));
+    result.push(processRawPR(pr, ALL_DETAILS_LOADED));
   }
   return {
     prs: result,
@@ -667,6 +785,8 @@ function processPage(
   };
 }
 
+// Only what places a PR on the graph and sorts it. The labels and reviews are
+// read afterwards, part by part — see fetchPRDetailsBatch.
 const searchPRQuery = (stackFields: string) => `
 query($query: String!, $cursor: String, $first: Int!) {
   search(query: $query, type: ISSUE, first: $first, after: $cursor) {
@@ -675,9 +795,7 @@ query($query: String!, $cursor: String, $first: Int!) {
       ... on PullRequest {
         number title url isDraft createdAt additions deletions
         headRefName baseRefName headRefOid mergeable mergeStateStatus reviewDecision
-        author { login avatarUrl }
-        labels(first: 20) { nodes { name color } }${REVIEW_FIELDS}
-        comments { totalCount }${STATE_CHANGE_FIELDS}${stackFields}
+        author { login avatarUrl }${STATE_CHANGE_FIELDS}${stackFields}
       }
     }
   }
@@ -686,48 +804,226 @@ query($query: String!, $cursor: String, $first: Int!) {
 interface SearchQueryData {
   search: {
     pageInfo: PRPageInfo;
-    nodes: (PRNodeRaw | null)[];
+    nodes: (PRNodeBaseRaw | null)[];
   };
 }
 
+// PRs per page of the PR list, and how long a page may take.
+const PR_PAGE_SIZE = 25;
+const PR_LIST_TIMEOUT_MS = 20_000;
+
+// PRs asked about in one detail request, how many detail requests run at once,
+// and how long each may take. A batch is one page of PRs, so each page makes
+// four requests (one per part), and a few pages in flight stay under GitHub's
+// limit on concurrent requests.
+const DETAIL_BATCH_SIZE = PR_PAGE_SIZE;
+const DETAIL_CONCURRENCY = 6;
+const DETAIL_TIMEOUT_MS = 20_000;
+
+function prDetailsQuery(part: PRDetailPart, numbers: readonly number[]): string {
+  const fields = numbers
+    .map(
+      (number, i) => `
+    p${i}: pullRequest(number: ${number}) {${DETAIL_FIELDS[part]}
+    }`,
+    )
+    .join("");
+  return `
+query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {${fields}
+  }
+}`;
+}
+
+// One detail part for a batch of PRs, one alias per PR. Like the file lists,
+// an error does not sink the whole answer: a PR GitHub could not read comes
+// back null while the rest of the batch is used.
+function fetchPRDetailsBatch(
+  token: string,
+  owner: string,
+  repo: string,
+  part: PRDetailPart,
+  numbers: readonly number[],
+  signal: AbortSignal,
+): Promise<(Partial<PRDetailsRaw> | null)[]> {
+  return readWithRetry(
+    async (attemptSignal) => {
+      const res = await fetchWithAuth(token, GITHUB_GRAPHQL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: prDetailsQuery(part, numbers),
+          variables: { owner, name: repo },
+        }),
+        signal: attemptSignal,
+      });
+      if (!res.ok) {
+        const error = new Error(`GitHub API returned ${res.status}`) as Error & {
+          status?: number;
+        };
+        error.status = res.status;
+        throw error;
+      }
+      const json = await res.json();
+      const repository: Record<string, Partial<PRDetailsRaw> | null> | undefined =
+        json.data?.repository;
+      if (!repository) throw new Error(json.errors?.[0]?.message ?? "GitHub returned no data");
+      return numbers.map((_, i) => repository[`p${i}`] ?? null);
+    },
+    DETAIL_TIMEOUT_MS,
+    signal,
+  );
+}
+
+// Lets at most `limit` tasks run at once; the others wait their turn in order.
+// A finishing task hands its slot straight to the next one waiting.
+function createLimiter(limit: number) {
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  return async <T>(task: () => Promise<T>): Promise<T> => {
+    if (active >= limit) {
+      await new Promise<void>((resolve) => waiting.push(resolve));
+    } else {
+      active++;
+    }
+    try {
+      return await task();
+    } finally {
+      const next = waiting.shift();
+      if (next) next();
+      else active--;
+    }
+  };
+}
+
+// The open PRs created in the date range, in two steps. The PR list comes
+// first, page by page: it is enough to draw the graph. Each page then starts
+// the detail requests for its PRs — labels, reviews, opinionated reviews and
+// review requests, each in requests of its own, all at once. The PRs carry
+// which parts are still loading, so a card shows a spinner in their place.
+//
+// `onUpdate` is called whenever something new is in: a page of PRs, or one
+// part for a batch of them. `morePages` says whether more PRs are coming.
+// The returned list is the finished one, with every part loaded or failed.
 export async function fetchPRsByDateRange(
   token: string,
   owner: string,
   repo: string,
   startDate: string,
   endDate: string,
-  onPage?: (accumulated: GraphQLPullRequest[]) => void,
+  onUpdate?: (accumulated: GraphQLPullRequest[], morePages: boolean) => void,
   signal?: AbortSignal,
 ): Promise<GraphQLPullRequest[]> {
   const searchQuery = `repo:${owner}/${repo} is:pr is:open created:${startDate}..${endDate}`;
-  const all: GraphQLPullRequest[] = [];
-  let cursor: string | null = null;
 
-  while (true) {
-    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  interface Entry {
+    raw: PRNodeBaseRaw & Partial<PRDetailsRaw>;
+    details: PRDetailsStatus;
+    pr: GraphQLPullRequest;
+  }
+  const order: number[] = [];
+  const entries = new Map<number, Entry>();
+  let morePages = true;
 
-    const result: SearchQueryData = await graphqlWithStack<SearchQueryData>(
-      token,
-      searchPRQuery,
-      { query: searchQuery, cursor, first: 50 },
-      signal,
-    );
+  const snapshot = () => order.map((number) => entries.get(number)!.pr);
+  const publish = () => onUpdate?.(snapshot(), morePages);
 
-    const search = result.search;
-    if (!search?.nodes) break;
+  // Stops the detail requests as soon as the caller cancels or the PR list
+  // fails: there is nothing left to fill in then.
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  if (signal?.aborted) controller.abort();
+  signal?.addEventListener("abort", onAbort, { once: true });
 
-    for (const pr of search.nodes) {
-      if (!pr) continue;
-      all.push(processRawPR(pr));
+  const limit = createLimiter(DETAIL_CONCURRENCY);
+  const reading: Promise<void>[] = [];
+
+  // Folds one part's answer for a batch into its PRs. A PR with no answer —
+  // the request failed even after retrying, or GitHub could not read that PR —
+  // has the part marked failed, so its card stops waiting for it.
+  const settle = (
+    part: PRDetailPart,
+    numbers: readonly number[],
+    answers: (Partial<PRDetailsRaw> | null)[] | null,
+  ) => {
+    numbers.forEach((number, i) => {
+      const entry = entries.get(number);
+      if (!entry) return;
+      const answer = answers?.[i];
+      if (answer) entry.raw = { ...entry.raw, ...answer };
+      entry.details = { ...entry.details, [part]: answer ? "loaded" : "failed" };
+      entry.pr = processRawPR(entry.raw, entry.details);
+    });
+    publish();
+  };
+
+  const readDetails = (numbers: readonly number[]) => {
+    for (let i = 0; i < numbers.length; i += DETAIL_BATCH_SIZE) {
+      const batch = numbers.slice(i, i + DETAIL_BATCH_SIZE);
+      for (const part of DETAIL_PARTS) {
+        reading.push(
+          limit(() =>
+            fetchPRDetailsBatch(token, owner, repo, part, batch, controller.signal),
+          ).then(
+            (answers) => settle(part, batch, answers),
+            (err) => {
+              if (controller.signal.aborted) throw err;
+              console.warn(`Failed to fetch PR ${part}:`, err);
+              settle(part, batch, null);
+            },
+          ),
+        );
+      }
+    }
+  };
+
+  try {
+    let cursor: string | null = null;
+    while (morePages) {
+      const result: SearchQueryData = await readWithRetry(
+        (attemptSignal) =>
+          graphqlWithStack<SearchQueryData>(
+            token,
+            searchPRQuery,
+            { query: searchQuery, cursor, first: PR_PAGE_SIZE },
+            attemptSignal,
+          ),
+        PR_LIST_TIMEOUT_MS,
+        controller.signal,
+      );
+
+      const search = result.search;
+      const added: number[] = [];
+      for (const raw of search?.nodes ?? []) {
+        // A PR opened while paging pushes the others down a place, so the next
+        // page can start with one already seen.
+        if (!raw?.number || entries.has(raw.number)) continue;
+        entries.set(raw.number, {
+          raw,
+          details: ALL_DETAILS_LOADING,
+          pr: processRawPR(raw, ALL_DETAILS_LOADING),
+        });
+        order.push(raw.number);
+        added.push(raw.number);
+      }
+
+      morePages = !!search?.pageInfo.hasNextPage;
+      cursor = search?.pageInfo.endCursor ?? null;
+      publish();
+      readDetails(added);
     }
 
-    onPage?.([...all]);
-
-    if (!search.pageInfo.hasNextPage) break;
-    cursor = search.pageInfo.endCursor;
+    await Promise.all(reading);
+    return snapshot();
+  } catch (err) {
+    controller.abort();
+    // The detail requests still running end on the abort; nothing waits on
+    // them any more, so their rejections are dropped here.
+    void Promise.allSettled(reading);
+    throw err;
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
   }
-
-  return all;
 }
 
 // --- Generated files ---
