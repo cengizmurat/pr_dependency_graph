@@ -808,13 +808,15 @@ interface SearchQueryData {
   };
 }
 
+// PRs per page of the PR list, and how long a page may take.
+const PR_PAGE_SIZE = 25;
 const PR_LIST_TIMEOUT_MS = 20_000;
 
 // PRs asked about in one detail request, how many detail requests run at once,
-// and how long each may take. One page of PRs makes eight requests (two
-// batches, four parts), so a few pages in flight stay under GitHub's limit on
-// concurrent requests.
-const DETAIL_BATCH_SIZE = 25;
+// and how long each may take. A batch is one page of PRs, so each page makes
+// four requests (one per part), and a few pages in flight stay under GitHub's
+// limit on concurrent requests.
+const DETAIL_BATCH_SIZE = PR_PAGE_SIZE;
 const DETAIL_CONCURRENCY = 6;
 const DETAIL_TIMEOUT_MS = 20_000;
 
@@ -983,7 +985,7 @@ export async function fetchPRsByDateRange(
           graphqlWithStack<SearchQueryData>(
             token,
             searchPRQuery,
-            { query: searchQuery, cursor, first: 50 },
+            { query: searchQuery, cursor, first: PR_PAGE_SIZE },
             attemptSignal,
           ),
         PR_LIST_TIMEOUT_MS,
