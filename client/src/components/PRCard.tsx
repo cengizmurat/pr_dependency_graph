@@ -68,13 +68,14 @@ function DetailStatus({
   );
 }
 
-// The reviewers are put together from three parts. They show as each part
+// The reviewers are put together from four parts. They show as each part
 // comes in, with a spinner after them until the last one has.
 function reviewersStatus(pr: PRNode): PRDetailStatus {
   const parts = [
     pr.details.reviews,
     pr.details.opinionatedReviews,
     pr.details.reviewRequests,
+    pr.details.teamReviewRequests,
   ];
   if (parts.includes("loading")) return "loading";
   if (parts.includes("failed")) return "failed";
@@ -268,7 +269,12 @@ function FocusBadge({
 }
 
 export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurrentlyUpdating, onMerge, onUpdateBranch, onFocus, orientation = "horizontal" }: Props) {
-  const visibleReviewers = pr.reviewers.slice(0, MAX_REVIEWER_AVATARS);
+  // Teams go first, so a team asked for a review is never the one folded into
+  // the "+N" when the card runs out of room.
+  const visibleReviewers = [
+    ...pr.reviewers.filter((r) => r.team),
+    ...pr.reviewers.filter((r) => !r.team),
+  ].slice(0, MAX_REVIEWER_AVATARS);
   const extraCount = pr.reviewers.length - MAX_REVIEWER_AVATARS;
 
   const hasMergeBadge = mergeStatus && (mergeStatus.hasConflict || mergeStatus.isMergeable);
@@ -387,12 +393,16 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurre
                 <div
                   key={r.login}
                   style={styles.reviewerWrap}
-                  title={`${r.login}: ${r.state.toLowerCase().replace("_", " ")}`}
+                  title={`${r.team ? `${r.team.name} (team)` : r.login}: ${r.state.toLowerCase().replace("_", " ")}`}
                 >
                   <img
                     src={r.avatarUrl}
                     alt={r.login}
-                    style={styles.reviewerAvatar}
+                    style={
+                      r.team
+                        ? { ...styles.reviewerAvatar, borderRadius: 4 }
+                        : styles.reviewerAvatar
+                    }
                   />
                   <span
                     style={{

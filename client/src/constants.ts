@@ -49,6 +49,13 @@ export const DEFAULT_INCLUDE_BOTS = false;
 export const EXCLUDE_GENERATED_KEY = "pr-graph-exclude-generated";
 export const DEFAULT_EXCLUDE_GENERATED = true;
 
+// Whether a PR that asks a team for review counts as asking each member of it,
+// for the reviewer filter and the "Requested reviews" shortcut. On by default:
+// a review asked of your team is usually a review asked of you. Off, only the
+// people asked by name count; the team still shows on the card.
+export const TEAM_REQUESTS_AS_OWN_KEY = "pr-graph-team-requests-as-own";
+export const DEFAULT_TEAM_REQUESTS_AS_OWN = true;
+
 // What the graph does with the pull requests the toolbar filters leave out.
 // "fade" keeps them drawn, so a matched PR is still read in the stack it
 // belongs to — the behaviour the filters have always had, and the default.
@@ -94,6 +101,17 @@ export const SHARE_BADGE_COLOR = "var(--color-text-secondary)";
 // the card badge, in the legend and in the focus banner.
 export const EYE_ICON_PATH =
   "M8 2c1.981 0 3.671.992 4.933 2.078 1.27 1.091 2.187 2.345 2.637 3.023a1.62 1.62 0 0 1 0 1.798c-.45.678-1.367 1.932-2.637 3.023C11.67 13.008 9.981 14 8 14c-1.981 0-3.671-.992-4.933-2.078C1.797 10.83.88 9.576.43 8.898a1.62 1.62 0 0 1 0-1.798c.45-.677 1.367-1.931 2.637-3.022C4.33 2.992 6.019 2 8 2Zm0 1.5c-1.51 0-2.879.755-4.02 1.73C2.85 6.193 2.02 7.31 1.617 8c.403.69 1.233 1.807 2.363 2.77C5.121 11.745 6.49 12.5 8 12.5c1.51 0 2.879-.755 4.02-1.73 1.13-.963 1.96-2.08 2.363-2.77-.403-.69-1.233-1.807-2.363-2.77C10.879 4.255 9.51 3.5 8 3.5ZM8 5.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z";
+
+// GitHub's "people" octicon (16px), the glyph it uses for a team.
+export const TEAM_ICON_PATH =
+  "M2 5.5a3.5 3.5 0 1 1 5.898 2.549 5.508 5.508 0 0 1 3.034 4.084.75.75 0 1 1-1.482.235 4 4 0 0 0-7.9 0 .75.75 0 0 1-1.482-.236A5.507 5.507 0 0 1 3.102 8.05 3.493 3.493 0 0 1 2 5.5ZM11 4a3.001 3.001 0 0 1 2.22 5.018 5.01 5.01 0 0 1 2.56 3.012.749.749 0 0 1-.885.954.752.752 0 0 1-.549-.514 3.507 3.507 0 0 0-2.522-2.372.75.75 0 0 1-.574-.73v-.352a.75.75 0 0 1 .416-.672A1.5 1.5 0 0 0 11 5.5.75.75 0 0 1 11 4Zm-5.5-.5a2 2 0 1 0-.001 3.999A2 2 0 0 0 5.5 3.5Z";
+
+// The picture of a team that has no avatar of its own: the people icon on a
+// grey tile. A data URL, so it drops in wherever an avatar URL goes — the
+// card and the reviewer menu alike.
+export const TEAM_AVATAR_FALLBACK = `data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#6e7781"/><path transform="translate(2.5 2.5) scale(0.6875)" fill="#ffffff" d="${TEAM_ICON_PATH}"/></svg>`,
+)}`;
 
 // GitHub's "filter" octicon (16px), on the chip that folds the filters away
 // on a phone.

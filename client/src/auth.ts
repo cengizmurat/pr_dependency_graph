@@ -14,8 +14,9 @@ const CLIENT_ID =
 
 // Scopes requested for the OAuth App. `repo` covers reading/writing PRs on any
 // repo the user can access (including private repos in orgs they belong to,
-// subject to the org's OAuth App access policy).
-const OAUTH_SCOPES = "repo";
+// subject to the org's OAuth App access policy). `read:org` lets the app see
+// teams asked for a review, and who is in them.
+const OAUTH_SCOPES = "repo read:org";
 
 export type StoredAuth =
   | { source: "pat"; accessToken: string }

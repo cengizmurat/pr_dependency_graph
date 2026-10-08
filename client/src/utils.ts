@@ -9,6 +9,8 @@ import {
   DEFAULT_INCLUDE_BOTS,
   EXCLUDE_GENERATED_KEY,
   DEFAULT_EXCLUDE_GENERATED,
+  TEAM_REQUESTS_AS_OWN_KEY,
+  DEFAULT_TEAM_REQUESTS_AS_OWN,
   FILTERED_DISPLAY_KEY,
   DEFAULT_FILTERED_DISPLAY,
 } from "./constants";
@@ -155,6 +157,23 @@ export function getStoredExcludeGenerated(): boolean {
 export function setStoredExcludeGenerated(exclude: boolean): void {
   try {
     localStorage.setItem(EXCLUDE_GENERATED_KEY, String(exclude));
+  } catch {
+    // localStorage unavailable (e.g. private mode); preference won't persist.
+  }
+}
+
+export function getStoredTeamRequestsAsOwn(): boolean {
+  try {
+    const stored = localStorage.getItem(TEAM_REQUESTS_AS_OWN_KEY);
+    return stored === null ? DEFAULT_TEAM_REQUESTS_AS_OWN : stored === "true";
+  } catch {
+    return DEFAULT_TEAM_REQUESTS_AS_OWN;
+  }
+}
+
+export function setStoredTeamRequestsAsOwn(asOwn: boolean): void {
+  try {
+    localStorage.setItem(TEAM_REQUESTS_AS_OWN_KEY, String(asOwn));
   } catch {
     // localStorage unavailable (e.g. private mode); preference won't persist.
   }
