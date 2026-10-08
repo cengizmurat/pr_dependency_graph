@@ -269,7 +269,12 @@ function FocusBadge({
 }
 
 export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurrentlyUpdating, onMerge, onUpdateBranch, onFocus, orientation = "horizontal" }: Props) {
-  const visibleReviewers = pr.reviewers.slice(0, MAX_REVIEWER_AVATARS);
+  // Teams go first, so a team asked for a review is never the one folded into
+  // the "+N" when the card runs out of room.
+  const visibleReviewers = [
+    ...pr.reviewers.filter((r) => r.team),
+    ...pr.reviewers.filter((r) => !r.team),
+  ].slice(0, MAX_REVIEWER_AVATARS);
   const extraCount = pr.reviewers.length - MAX_REVIEWER_AVATARS;
 
   const hasMergeBadge = mergeStatus && (mergeStatus.hasConflict || mergeStatus.isMergeable);

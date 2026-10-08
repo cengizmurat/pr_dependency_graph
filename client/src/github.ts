@@ -25,6 +25,7 @@ import type {
 import { REVIEW_STATE_PRIORITY } from "./types";
 import { getToken } from "./auth";
 import { isBotActor } from "./bots";
+import { TEAM_AVATAR_FALLBACK } from "./constants";
 
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 
@@ -146,7 +147,6 @@ const DETAIL_FIELDS: Record<PRDetailPart, string> = {
                 combinedSlug
                 name
                 avatarUrl
-                organization { avatarUrl }
                 members(first: 100) { nodes { login } }
               }
             }
@@ -602,7 +602,6 @@ interface PRDetailsRaw {
             combinedSlug?: string;
             name?: string;
             avatarUrl?: string | null;
-            organization?: { avatarUrl?: string | null } | null;
             members?: { nodes: ({ login?: string } | null)[] | null } | null;
           } | null;
         } | null)[]
@@ -774,7 +773,7 @@ function processRawPR(
       .filter((login): login is string => !!login && login !== pr.author?.login);
     reviewerMap.set(team.combinedSlug, {
       login: team.combinedSlug,
-      avatarUrl: team.avatarUrl || team.organization?.avatarUrl || "",
+      avatarUrl: team.avatarUrl || TEAM_AVATAR_FALLBACK,
       state: "REQUESTED",
       isBot: false,
       team: { name: team.name ?? team.combinedSlug, members },
