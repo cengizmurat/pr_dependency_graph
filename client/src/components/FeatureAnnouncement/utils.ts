@@ -16,6 +16,13 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
+    version: 16,
+    title: "Team review requests count as yours",
+    description:
+      "A pull request that asks one of your teams for a review now shows the team on its card, and counts as asking you: the reviewer filter and the \"Requested reviews\" shortcut find it. To count only the PRs that ask you by name, set \"Team review requests\" to \"Ignored\" in Settings. Seeing teams needs a new GitHub permission, so sign out and in again if you signed in before.",
+    date: "2026-10-08",
+  },
+  {
     version: 15,
     title: "PR sizes leave out generated files",
     description:

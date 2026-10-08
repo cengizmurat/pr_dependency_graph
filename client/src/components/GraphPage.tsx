@@ -28,6 +28,8 @@ import {
   setStoredIncludeBots,
   getStoredExcludeGenerated,
   setStoredExcludeGenerated,
+  getStoredTeamRequestsAsOwn,
+  setStoredTeamRequestsAsOwn,
   getStoredFilteredDisplay,
   setStoredFilteredDisplay,
   buildDefaultRange,
@@ -81,6 +83,8 @@ interface PRFilters {
   labels: string[];
   status: PRStatusFilter;
   reviewStates: PRReviewState[];
+  // Whether a team asked for review counts as asking each of its members.
+  teamRequestsAsOwn: boolean;
 }
 
 type FilterName = "author" | "reviewer" | "label" | "status" | "reviewState";
@@ -95,23 +99,29 @@ function matchesStatusFilter(pr: GraphQLPullRequest, status: PRStatusFilter): bo
   return true;
 }
 
-// Every login a PR asks for a review: its reviewers, and the members of each
-// team it asks, since a review asked of a team is asked of everyone in it.
-function reviewerLogins(pr: GraphQLPullRequest): string[] {
-  return pr.reviewers.flatMap((r) => [r.login, ...(r.team?.members ?? [])]);
+// Every login a PR asks for a review: its reviewers, and — when the setting
+// says so — the members of each team it asks, since a review asked of a team is
+// then asked of everyone in it.
+function reviewerLogins(pr: GraphQLPullRequest, teamRequestsAsOwn: boolean): string[] {
+  return pr.reviewers.flatMap((r) =>
+    teamRequestsAsOwn ? [r.login, ...(r.team?.members ?? [])] : [r.login],
+  );
 }
 
 // Reviewer filter: keep PRs assigned to any of the selected people, so the
-// graph shows one person's review workload — including the PRs that ask a team
-// they are in. Logins are compared case-insensitively since the param can be
-// edited by hand in the URL.
+// graph shows one person's review workload — including, by default, the PRs
+// that ask a team they are in. Logins are compared case-insensitively since the
+// param can be edited by hand in the URL.
 function matchesReviewerFilter(
   pr: GraphQLPullRequest,
   wantedReviewers: ReadonlySet<string> | null,
+  teamRequestsAsOwn: boolean,
 ): boolean {
   return (
     !wantedReviewers ||
-    reviewerLogins(pr).some((login) => wantedReviewers.has(login.toLowerCase()))
+    reviewerLogins(pr, teamRequestsAsOwn).some((login) =>
+      wantedReviewers.has(login.toLowerCase()),
+    )
   );
 }
 
@@ -158,7 +168,7 @@ function filterPRs(
     (pr) =>
       (skip?.has("author") || matchesAuthorFilter(pr, f.authors)) &&
       (skip?.has("status") || matchesStatusFilter(pr, f.status)) &&
-      matchesReviewerFilter(pr, wantedReviewers) &&
+      matchesReviewerFilter(pr, wantedReviewers, f.teamRequestsAsOwn) &&
       matchesLabelFilter(pr, wantedLabels) &&
       (skip?.has("reviewState") || matchesReviewStateFilter(pr, f.reviewStates)),
   );
@@ -449,6 +459,16 @@ export default function GraphPage() {
     });
   }, []);
 
+  // Whether a PR that asks a team for review counts as asking each person in
+  // it, or only the people asked by name count.
+  const [teamRequestsAsOwn, setTeamRequestsAsOwn] = useState(getStoredTeamRequestsAsOwn);
+  const toggleTeamRequestsAsOwn = useCallback(() => {
+    setTeamRequestsAsOwn((prev) => {
+      setStoredTeamRequestsAsOwn(!prev);
+      return !prev;
+    });
+  }, []);
+
   // Whether the PRs the filters leave out stay on the graph, faded, or come off
   // it so what matched is laid out on its own — a smaller graph to read.
   const [filteredDisplay, setFilteredDisplay] = useState(getStoredFilteredDisplay);
@@ -497,8 +517,16 @@ export default function GraphPage() {
       labels: labelFilter,
       status: statusFilter,
       reviewStates: reviewStateFilter,
+      teamRequestsAsOwn,
     }),
-    [authorFilter, reviewerFilter, labelFilter, statusFilter, reviewStateFilter],
+    [
+      authorFilter,
+      reviewerFilter,
+      labelFilter,
+      statusFilter,
+      reviewStateFilter,
+      teamRequestsAsOwn,
+    ],
   );
 
   // How many PRs each author would leave on screen — every other filter still
@@ -549,7 +577,7 @@ export default function GraphPage() {
       byLogin.set(login, { login, avatarUrl, count: 0 });
     }
     for (const pr of pool) {
-      for (const login of new Set(reviewerLogins(pr))) {
+      for (const login of new Set(reviewerLogins(pr, filters.teamRequestsAsOwn))) {
         const entry = byLogin.get(login);
         if (entry) entry.count += 1;
       }
@@ -875,6 +903,35 @@ export default function GraphPage() {
                       )}
                     </svg>
                     {excludeGenerated ? "Left out" : "Counted"}
+                  </button>
+                </div>
+              ),
+            },
+            {
+              key: "teamRequests",
+              label: (
+                <div style={styles.menuItemRow}>
+                  <span>Team review requests</span>
+                  <button
+                    style={styles.menuToggleBtn}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleTeamRequestsAsOwn();
+                    }}
+                    title={
+                      teamRequestsAsOwn
+                        ? "A PR that asks one of your teams counts as asking you"
+                        : "Only the PRs that ask you by name count as asking you"
+                    }
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      {teamRequestsAsOwn ? (
+                        <path d="M1 7l4 4 8-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      ) : (
+                        <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      )}
+                    </svg>
+                    {teamRequestsAsOwn ? "As mine" : "Ignored"}
                   </button>
                 </div>
               ),

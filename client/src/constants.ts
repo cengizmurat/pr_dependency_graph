@@ -49,6 +49,13 @@ export const DEFAULT_INCLUDE_BOTS = false;
 export const EXCLUDE_GENERATED_KEY = "pr-graph-exclude-generated";
 export const DEFAULT_EXCLUDE_GENERATED = true;
 
+// Whether a PR that asks a team for review counts as asking each member of it,
+// for the reviewer filter and the "Requested reviews" shortcut. On by default:
+// a review asked of your team is usually a review asked of you. Off, only the
+// people asked by name count; the team still shows on the card.
+export const TEAM_REQUESTS_AS_OWN_KEY = "pr-graph-team-requests-as-own";
+export const DEFAULT_TEAM_REQUESTS_AS_OWN = true;
+
 // What the graph does with the pull requests the toolbar filters leave out.
 // "fade" keeps them drawn, so a matched PR is still read in the stack it
 // belongs to — the behaviour the filters have always had, and the default.
