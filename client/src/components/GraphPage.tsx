@@ -95,16 +95,23 @@ function matchesStatusFilter(pr: GraphQLPullRequest, status: PRStatusFilter): bo
   return true;
 }
 
+// Every login a PR asks for a review: its reviewers, and the members of each
+// team it asks, since a review asked of a team is asked of everyone in it.
+function reviewerLogins(pr: GraphQLPullRequest): string[] {
+  return pr.reviewers.flatMap((r) => [r.login, ...(r.team?.members ?? [])]);
+}
+
 // Reviewer filter: keep PRs assigned to any of the selected people, so the
-// graph shows one person's review workload. Logins are compared
-// case-insensitively since the param can be edited by hand in the URL.
+// graph shows one person's review workload — including the PRs that ask a team
+// they are in. Logins are compared case-insensitively since the param can be
+// edited by hand in the URL.
 function matchesReviewerFilter(
   pr: GraphQLPullRequest,
   wantedReviewers: ReadonlySet<string> | null,
 ): boolean {
   return (
     !wantedReviewers ||
-    pr.reviewers.some((r) => wantedReviewers.has(r.login.toLowerCase()))
+    reviewerLogins(pr).some((login) => wantedReviewers.has(login.toLowerCase()))
   );
 }
 
@@ -510,20 +517,24 @@ export default function GraphPage() {
   // themselves rather than the contributor list because a reviewer need not
   // have committed to the repo. Sorted by PR count so the busiest reviewers are
   // at the top of the menu.
+  //
+  // A team's members are not listed for it — a large team would flood the
+  // menu — but a person who is listed counts their teams' PRs as well, so the
+  // number still matches what picking them shows.
   const reviewerOptions = useMemo(() => {
+    const pool = filterPRs(allPRs, filters, REVIEWER_FACET_SKIP);
     const byLogin = new Map<string, ReviewerOption>();
-    for (const pr of filterPRs(allPRs, filters, REVIEWER_FACET_SKIP)) {
+    for (const pr of pool) {
       for (const reviewer of pr.reviewers) {
         const entry = byLogin.get(reviewer.login);
-        if (entry) {
-          entry.count += 1;
-          if (!entry.avatarUrl) entry.avatarUrl = reviewer.avatarUrl;
-        } else {
+        if (!entry) {
           byLogin.set(reviewer.login, {
             login: reviewer.login,
             avatarUrl: reviewer.avatarUrl,
-            count: 1,
+            count: 0,
           });
+        } else if (!entry.avatarUrl) {
+          entry.avatarUrl = reviewer.avatarUrl;
         }
       }
     }
@@ -536,6 +547,12 @@ export default function GraphPage() {
           .flatMap((pr) => pr.reviewers)
           .find((r) => r.login === login)?.avatarUrl ?? "";
       byLogin.set(login, { login, avatarUrl, count: 0 });
+    }
+    for (const pr of pool) {
+      for (const login of new Set(reviewerLogins(pr))) {
+        const entry = byLogin.get(login);
+        if (entry) entry.count += 1;
+      }
     }
     return [...byLogin.values()].sort(
       (a, b) => b.count - a.count || a.login.localeCompare(b.login),

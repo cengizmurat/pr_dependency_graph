@@ -58,6 +58,7 @@ returning users see each unread one once, as a popup.
 4. Stacked PR dependencies are detected: if PR-B's base branch matches PR-A's head branch, PR-B depends on PR-A.
 5. PRs belonging to a native GitHub stack also carry their stack membership, read from the `stack` and `stackEntry` fields on the GraphQL `PullRequest` type. A stack badge on the card shows the PR's layer, e.g. `2/3`. GitHub rejects the update-branch endpoint for a stacked PR — a stack is rebased as a whole, and only the PR's own "Rebase Stack" button or `gh stack rebase` can ask for that — so the update badge opens the pull request instead. Repositories without GitHub's stacked pull requests are unaffected: the fields are dropped from the query and the branch heuristic above still applies.
 6. An interactive force-directed graph is rendered with clickable PR nodes.
+7. Teams asked for a review show on the card next to the people. A PR that asks a team counts as asking each member of it, so the reviewer filter and the "Requested reviews" shortcut find it for them. Reading teams needs the `read:org` scope: the sign-in asks for it, and a personal access token needs it too. Without it the teams are left out and everything else still works. If you signed in before this change, sign out and in again to grant it.
 
 ## Folder Churn Counts Commits, Not Lines
 

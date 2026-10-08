@@ -133,9 +133,32 @@ const DETAIL_FIELDS: Record<PRDetailPart, string> = {
             }
           }
         }`,
+  // Teams asked for a review, read apart from the people because they need the
+  // `read:org` scope: a token without it fails this part alone, and the people
+  // asked still show. The members are what let a PR asking a team count as
+  // asking each person in it — see matchesReviewerFilter.
+  teamReviewRequests: `
+        teamReviewRequests: reviewRequests(first: 100) {
+          nodes {
+            requestedReviewer {
+              __typename
+              ... on Team {
+                combinedSlug
+                name
+                avatarUrl
+                organization { avatarUrl }
+                members(first: 100) { nodes { login } }
+              }
+            }
+          }
+        }`,
 };
 
 const DETAIL_PARTS = Object.keys(DETAIL_FIELDS) as PRDetailPart[];
+
+// The parts the one-query PR list asks for. Teams are left out: without
+// `read:org` they would fail the whole list rather than just themselves.
+const LIST_DETAIL_PARTS = DETAIL_PARTS.filter((part) => part !== "teamReviewRequests");
 
 const prQuery = (stackFields: string) => `
 query($owner: String!, $name: String!, $cursor: String, $first: Int!) {
@@ -145,7 +168,7 @@ query($owner: String!, $name: String!, $cursor: String, $first: Int!) {
       nodes {
         number title url isDraft createdAt additions deletions
         headRefName baseRefName headRefOid mergeable mergeStateStatus reviewDecision
-        author { login avatarUrl }${DETAIL_PARTS.map((part) => DETAIL_FIELDS[part]).join("")}${STATE_CHANGE_FIELDS}${stackFields}
+        author { login avatarUrl }${LIST_DETAIL_PARTS.map((part) => DETAIL_FIELDS[part]).join("")}${STATE_CHANGE_FIELDS}${stackFields}
       }
     }
   }
@@ -571,6 +594,20 @@ interface PRDetailsRaw {
         } | null)[]
       | null;
   } | null;
+  teamReviewRequests: {
+    nodes:
+      | ({
+          requestedReviewer: {
+            __typename?: string;
+            combinedSlug?: string;
+            name?: string;
+            avatarUrl?: string | null;
+            organization?: { avatarUrl?: string | null } | null;
+            members?: { nodes: ({ login?: string } | null)[] | null } | null;
+          } | null;
+        } | null)[]
+      | null;
+  } | null;
   comments: { totalCount: number } | null;
 }
 
@@ -659,6 +696,7 @@ const ALL_DETAILS_LOADED: PRDetailsStatus = {
   reviews: "loaded",
   opinionatedReviews: "loaded",
   reviewRequests: "loaded",
+  teamReviewRequests: "loaded",
 };
 
 const ALL_DETAILS_LOADING: PRDetailsStatus = {
@@ -666,6 +704,7 @@ const ALL_DETAILS_LOADING: PRDetailsStatus = {
   reviews: "loading",
   opinionatedReviews: "loading",
   reviewRequests: "loading",
+  teamReviewRequests: "loading",
 };
 
 // A PR from whatever has been read of it so far. A detail part that is not in
@@ -723,6 +762,23 @@ function processRawPR(
         isBot: isBotActor(reviewer.__typename, reviewer.login),
       });
     }
+  }
+
+  // A team is listed under its "org/slug" name. The PR's author is left out of
+  // its members: GitHub never asks someone to review their own PR.
+  for (const req of pr.teamReviewRequests?.nodes ?? []) {
+    const team = req?.requestedReviewer;
+    if (!team?.combinedSlug || reviewerMap.has(team.combinedSlug)) continue;
+    const members = (team.members?.nodes ?? [])
+      .map((m) => m?.login)
+      .filter((login): login is string => !!login && login !== pr.author?.login);
+    reviewerMap.set(team.combinedSlug, {
+      login: team.combinedSlug,
+      avatarUrl: team.avatarUrl || team.organization?.avatarUrl || "",
+      state: "REQUESTED",
+      isBot: false,
+      team: { name: team.name ?? team.combinedSlug, members },
+    });
   }
 
   return {
@@ -814,7 +870,7 @@ const PR_LIST_TIMEOUT_MS = 20_000;
 
 // PRs asked about in one detail request, how many detail requests run at once,
 // and how long each may take. A batch is one page of PRs, so each page makes
-// four requests (one per part), and a few pages in flight stay under GitHub's
+// five requests (one per part), and a few pages in flight stay under GitHub's
 // limit on concurrent requests.
 const DETAIL_BATCH_SIZE = PR_PAGE_SIZE;
 const DETAIL_CONCURRENCY = 6;
@@ -833,6 +889,20 @@ query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {${fields}
   }
 }`;
+}
+
+function hasInsufficientScopes(json: { errors?: { type?: string }[] }): boolean {
+  return !!json.errors?.some((e) => e.type === "INSUFFICIENT_SCOPES");
+}
+
+let warnedMissingTeamScope = false;
+
+function warnMissingTeamScope(): void {
+  if (warnedMissingTeamScope) return;
+  warnedMissingTeamScope = true;
+  console.warn(
+    "The GitHub token lacks the read:org scope, so teams asked for a review are not shown. Sign out and in again to grant it.",
+  );
 }
 
 // One detail part for a batch of PRs, one alias per PR. Like the file lists,
@@ -865,6 +935,12 @@ function fetchPRDetailsBatch(
         throw error;
       }
       const json = await res.json();
+      // A token without `read:org` cannot see teams at all. That is not
+      // something a retry fixes, so the PRs read as asking no team.
+      if (part === "teamReviewRequests" && hasInsufficientScopes(json)) {
+        warnMissingTeamScope();
+        return numbers.map(() => ({ teamReviewRequests: { nodes: [] } }));
+      }
       const repository: Record<string, Partial<PRDetailsRaw> | null> | undefined =
         json.data?.repository;
       if (!repository) throw new Error(json.errors?.[0]?.message ?? "GitHub returned no data");
@@ -898,9 +974,10 @@ function createLimiter(limit: number) {
 
 // The open PRs created in the date range, in two steps. The PR list comes
 // first, page by page: it is enough to draw the graph. Each page then starts
-// the detail requests for its PRs — labels, reviews, opinionated reviews and
-// review requests, each in requests of its own, all at once. The PRs carry
-// which parts are still loading, so a card shows a spinner in their place.
+// the detail requests for its PRs — labels, reviews, opinionated reviews,
+// review requests and team review requests, each in requests of its own, all
+// at once. The PRs carry which parts are still loading, so a card shows a
+// spinner in their place.
 //
 // `onUpdate` is called whenever something new is in: a page of PRs, or one
 // part for a batch of them. `morePages` says whether more PRs are coming.

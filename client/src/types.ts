@@ -31,6 +31,10 @@ export interface Reviewer {
   // A GitHub App rather than a person. Bot reviewers are fetched either way and
   // hidden downstream when the setting says so — see withoutBotContributions.
   isBot: boolean;
+  // Set when a team rather than a person is asked for a review. `login` is
+  // then the team's "org/slug" name, and `members` the logins of the people in
+  // it, so the PR counts as asking each of them too.
+  team?: { name: string; members: string[] };
 }
 
 export interface PRLabel {
@@ -56,7 +60,8 @@ export type PRDetailPart =
   | "labels"
   | "reviews"
   | "opinionatedReviews"
-  | "reviewRequests";
+  | "reviewRequests"
+  | "teamReviewRequests";
 
 export type PRDetailStatus = "loading" | "loaded" | "failed";
 
@@ -283,6 +288,7 @@ export interface PRNode {
     login: string;
     avatarUrl: string;
     state: ReviewState;
+    team?: { name: string; members: string[] };
   }[];
   // GitHub's own verdict on the PR, which is what its review state is read
   // from — see prReviewState.
