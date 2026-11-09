@@ -77,6 +77,15 @@ function isFailure(conclusion: string | null): boolean {
   return conclusion === "failure" || conclusion === "timed_out";
 }
 
+// A duration of an hour or more also shows its length in minutes, in
+// parentheses ("9h 45m (585 min)"), so totals can be compared or copied
+// without working out the hours. Shorter durations already read in minutes.
+function formatUsageDuration(seconds: number): string {
+  const text = formatDuration(seconds);
+  if (seconds < 3600) return text;
+  return `${text} (${Math.round(seconds / 60).toLocaleString()} min)`;
+}
+
 function percent(part: number, total: number): string {
   if (total <= 0) return "0%";
   const p = (part / total) * 100;
@@ -334,7 +343,7 @@ export default function CiTimeUsage({
                   seconds={wf.seconds}
                   max={topSeconds}
                   share={percent(wf.seconds, totalSeconds)}
-                  meta={`${wf.runs} run${wf.runs === 1 ? "" : "s"} · ${formatDuration(wf.seconds / wf.runs)} per run`}
+                  meta={`${wf.runs} run${wf.runs === 1 ? "" : "s"} · ${formatUsageDuration(wf.seconds / wf.runs)} per run`}
                 />
               </button>
               {open && (
@@ -456,7 +465,7 @@ export default function CiTimeUsage({
         </div>
         {totalSeconds > 0 && (
           <span style={styles.usageTotal}>
-            Total{walking ? " so far" : ""}: <strong>{formatDuration(totalSeconds)}</strong> over{" "}
+            Total{walking ? " so far" : ""}: <strong>{formatUsageDuration(totalSeconds)}</strong> over{" "}
             {runs.length} run{runs.length === 1 ? "" : "s"}
           </span>
         )}
@@ -524,7 +533,7 @@ export default function CiTimeUsage({
 function jobMeta(job: JobUsage): string {
   const parts = [
     `${job.runs} run${job.runs === 1 ? "" : "s"}`,
-    `${formatDuration(job.seconds / job.runs)} each`,
+    `${formatUsageDuration(job.seconds / job.runs)} each`,
   ];
   if (job.failures > 0) parts.push(`${job.failures} failed`);
   return parts.join(" · ");
@@ -565,7 +574,7 @@ function UsageBar({
           {caption && <span style={styles.usageCaption}> · {caption}</span>}
         </span>
         <span style={styles.usageValue}>
-          {formatDuration(seconds)}
+          {formatUsageDuration(seconds)}
           <span style={styles.usageShare}>{share}</span>
         </span>
       </span>
