@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { motion } from "motion/react";
 import { fetchUsageRound, fetchUsageWorkflows, type UsageCursors } from "../api";
 import type { WorkflowInfo, WorkflowJob } from "../types";
 import { formatDuration } from "./RunTimeline";
@@ -29,6 +30,11 @@ export function parseUsageWindow(value: string | null): UsageWindow {
 // runaway guard for a repository with an unusual amount of CI: past it the walk
 // stops and the note under the table says so.
 const MAX_MEASURED_RUNS = 20_000;
+// How long a bar takes to fill or empty to its new length, and a row to slide
+// to its new place, when a batch of runs changes the numbers.
+const BAR_TRANSITION_S = 0.6;
+const ROW_TRANSITION = { duration: BAR_TRANSITION_S, ease: [0.22, 1, 0.36, 1] as const };
+
 // Jobs listed under an expanded workflow, and rows in the job ranking.
 const TOP_JOBS = 10;
 const TOP_JOBS_OVERALL = 25;
@@ -286,7 +292,15 @@ export default function CiTimeUsage({
         {workflowRows.map((wf) => {
           const open = expanded === wf.workflowId;
           return (
-            <li key={wf.workflowId} style={styles.usageItem}>
+            // A batch can change the order, and the row then slides to its
+            // new place. Only the position animates: a size animation would
+            // stretch the text while a workflow opens.
+            <motion.li
+              key={wf.workflowId}
+              layout="position"
+              transition={ROW_TRANSITION}
+              style={styles.usageItem}
+            >
               <button
                 className="workflow-run-item"
                 style={styles.usageRow}
@@ -333,7 +347,7 @@ export default function CiTimeUsage({
                   )}
                 </div>
               )}
-            </li>
+            </motion.li>
           );
         })}
       </ol>
@@ -342,7 +356,12 @@ export default function CiTimeUsage({
     body = (
       <ol style={styles.usageList}>
         {jobRows.map((job) => (
-          <li key={job.key} style={styles.usageItem}>
+          <motion.li
+            key={job.key}
+            layout="position"
+            transition={ROW_TRANSITION}
+            style={styles.usageItem}
+          >
             <div style={{ ...styles.usageRow, cursor: "default" }}>
               <UsageBar
                 name={job.name}
@@ -353,7 +372,7 @@ export default function CiTimeUsage({
                 meta={jobMeta(job)}
               />
             </div>
-          </li>
+          </motion.li>
         ))}
       </ol>
     );
@@ -489,6 +508,15 @@ function UsageBar({
   small?: boolean;
 }) {
   const width = max > 0 ? Math.max(1, (seconds / max) * 100) : 0;
+  // The bar starts empty and is given its length one frame later, so a new
+  // row fills in rather than appearing full. After that, every new length is
+  // reached through the CSS transition on the width, so a batch that changes
+  // the numbers makes the bars fill and empty instead of jumping.
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setShown(width));
+    return () => cancelAnimationFrame(frame);
+  }, [width]);
   return (
     <span style={styles.usageBarBody}>
       <span style={styles.usageBarHead}>
@@ -502,7 +530,13 @@ function UsageBar({
         </span>
       </span>
       <span style={{ ...styles.usageTrack, ...(small ? styles.usageTrackSmall : {}) }}>
-        <span style={{ ...styles.usageFill, width: `${width}%` }} />
+        <span
+          style={{
+            ...styles.usageFill,
+            width: `${shown}%`,
+            transition: `width ${BAR_TRANSITION_S}s cubic-bezier(0.22, 1, 0.36, 1)`,
+          }}
+        />
       </span>
       <span style={styles.usageMeta}>{meta}</span>
     </span>
