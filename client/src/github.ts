@@ -1605,6 +1605,32 @@ const USAGE_CONCURRENCY = 4;
 // holding the walk.
 const USAGE_REQUEST_TIMEOUT_MS = 15_000;
 
+// Runs one request under a signal that aborts when the caller's signal does,
+// or after USAGE_REQUEST_TIMEOUT_MS. A timeout is thrown as a TimeoutError, so
+// it is told apart from the viewer stopping the walk.
+async function withRequestTimeout<T>(
+  outer: AbortSignal | undefined,
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, USAGE_REQUEST_TIMEOUT_MS);
+  const onAbort = () => controller.abort();
+  outer?.addEventListener("abort", onAbort);
+  try {
+    return await run(controller.signal);
+  } catch (err) {
+    if (timedOut) throw new DOMException("The request timed out", "TimeoutError");
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    outer?.removeEventListener("abort", onAbort);
+  }
+}
+
 // A failure that a smaller request may get past: GitHub's own timeout (a 502
 // or 504, or an error naming a timeout), our cut-off, or a dropped connection.
 // Rate limits and permission errors are not; asking smaller would not help.
@@ -1735,6 +1761,9 @@ export async function fetchUsageRound(
   cursors: UsageCursors | null,
   sinceMs: number,
   branch: string | null,
+  // Aborted when the viewer stops the walk: the request in flight is cut, and
+  // no further request of this round starts.
+  signal?: AbortSignal,
 ): Promise<UsageRound> {
   const active = cursors
     ? workflows.filter((w) => w.nodeId in cursors)
@@ -1795,15 +1824,20 @@ export async function fetchUsageRound(
     });
     let data: Record<string, RawUsageWorkflowRuns | null>;
     try {
-      data = await limit(() =>
-        graphql<Record<string, RawUsageWorkflowRuns | null>>(
-          token,
-          usageRunsQuery(chunk.length),
-          variables,
-          AbortSignal.timeout(USAGE_REQUEST_TIMEOUT_MS),
-        ),
-      );
+      data = await limit(() => {
+        signal?.throwIfAborted();
+        return withRequestTimeout(signal, (requestSignal) =>
+          graphql<Record<string, RawUsageWorkflowRuns | null>>(
+            token,
+            usageRunsQuery(chunk.length),
+            variables,
+            requestSignal,
+          ),
+        );
+      });
     } catch (err) {
+      // Stopped by the viewer: not a failure to retry smaller.
+      if (signal?.aborted) throw err;
       if (!isRetryableSmaller(err)) throw err;
       if (chunk.length > 1) {
         await Promise.all(chunk.map((item) => fetchChunk([item])));
@@ -1834,6 +1868,7 @@ export async function fetchUsageRound(
   await Promise.all(
     viaRest.map(({ run, id }) =>
       limit(async () => {
+        signal?.throwIfAborted();
         run.jobs = await fetchWorkflowRunJobs(token, owner, repo, id);
       }),
     ),

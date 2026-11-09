@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { fetchUsageRound, fetchUsageWorkflows, type UsageCursors } from "../api";
 import type { WorkflowInfo, WorkflowJob } from "../types";
@@ -131,10 +131,14 @@ export default function CiTimeUsage({
   // workflow still inside the window. Pages are fetched one after another (see
   // the effect below) until every workflow has gone past the window's start,
   // and the table fills in as they arrive.
+  const runsKey = useMemo(
+    () => ["ciUsage", owner, repo, sinceMs, branch] as const,
+    [owner, repo, sinceMs, branch],
+  );
   const runsQuery = useInfiniteQuery({
-    queryKey: ["ciUsage", owner, repo, sinceMs, branch],
-    queryFn: ({ pageParam }) =>
-      fetchUsageRound(token, owner, repo, usageWorkflows!, pageParam, sinceMs, branch),
+    queryKey: runsKey,
+    queryFn: ({ pageParam, signal }) =>
+      fetchUsageRound(token, owner, repo, usageWorkflows!, pageParam, sinceMs, branch, signal),
     initialPageParam: null as UsageCursors | null,
     getNextPageParam: (last) => (Object.keys(last.next).length > 0 ? last.next : undefined),
     enabled: !!usageWorkflows,
@@ -157,20 +161,36 @@ export default function CiTimeUsage({
   }, [runsQuery.data]);
 
   const capped = runs.length >= MAX_MEASURED_RUNS;
+
+  // The viewer can stop the walk once the ranking is enough for them. The
+  // round in flight is cancelled, which keeps the pages already loaded, and no
+  // next round starts. Remembered by query key, so another window or branch
+  // starts its own walk; "Resume" picks up from the last round kept.
+  const queryClient = useQueryClient();
+  const keyString = JSON.stringify(runsKey);
+  const [stoppedKey, setStoppedKey] = useState<string | null>(null);
+  const stopped = stoppedKey === keyString;
+  const stopLoading = () => {
+    setStoppedKey(keyString);
+    queryClient.cancelQueries({ queryKey: runsKey });
+  };
+  const resumeLoading = () => setStoppedKey(null);
+
   const { hasNextPage, isFetchingNextPage, isError, fetchNextPage } = runsQuery;
   useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage && !isError && !capped) fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, isError, capped, fetchNextPage]);
+    if (hasNextPage && !isFetchingNextPage && !isError && !capped && !stopped) fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, isError, capped, stopped, fetchNextPage]);
 
   // Loading covers every stage: the workflow list, the first round (the runs
   // query waits on that list, so it is not fetching yet), and every round
   // after it. Without the first two the panel would read "no finished run"
   // before a single run was asked for.
   const walking =
-    workflowsQuery.isPending ||
-    (!!usageWorkflows && runsQuery.isPending && !runsQuery.isError) ||
-    (!!hasNextPage && !isError && !capped) ||
-    runsQuery.isFetching;
+    !stopped &&
+    (workflowsQuery.isPending ||
+      (!!usageWorkflows && runsQuery.isPending && !runsQuery.isError) ||
+      (!!hasNextPage && !isError && !capped) ||
+      runsQuery.isFetching);
   const pages = runsQuery.data?.pages ?? [];
   const reachedIso = pages.reduce<string | null>((oldest, p) => {
     if (!p.oldestCreatedAt) return oldest;
@@ -448,11 +468,18 @@ export default function CiTimeUsage({
         <div style={styles.usageLoadingBanner} role="status">
           <div style={styles.usageLoadingBannerRow}>
             <Spinner size={18} color="var(--color-link)" />
-            <span>
+            <span style={styles.usageLoadingText}>
               Still loading older runs — the numbers below will grow.{" "}
               <strong>{runs.length}</strong> run{runs.length === 1 ? "" : "s"} so far
               {reached ? `, back to ${reached}` : ""}.
             </span>
+            <button
+              style={styles.usageStopBtn}
+              onClick={stopLoading}
+              title="Stop loading older runs and keep the ranking as it is now"
+            >
+              Stop loading
+            </button>
           </div>
           <div
             style={styles.usageProgressTrack}
@@ -471,6 +498,19 @@ export default function CiTimeUsage({
       )}
 
       {body}
+
+      {stopped && hasNextPage && (
+        <div style={styles.usageStoppedNote}>
+          <span>
+            Loading stopped: this ranking covers the {runs.length} most recent run
+            {runs.length === 1 ? "" : "s"}
+            {reached ? `, back to ${reached}` : ""}, not the whole window.
+          </span>
+          <button style={styles.usageOpenBtn} onClick={resumeLoading}>
+            Resume loading
+          </button>
+        </div>
+      )}
 
       {notes.length > 0 && (
         <div style={styles.trendFooter}>
