@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { fetchRepoWorkflowRuns, fetchWorkflowRunJobs } from "../api";
+import { fetchRepoWorkflowRuns, fetchRunJobTimings } from "../api";
 import type { WorkflowInfo, WorkflowJob, WorkflowRunInfo } from "../types";
 import { formatDuration } from "./RunTimeline";
 import { styles } from "./WorkflowsView.styles";
@@ -24,38 +24,17 @@ export function parseUsageWindow(value: string | null): UsageWindow {
   return value === "1d" || value === "30d" ? value : "7d";
 }
 
-// Every measured run costs one jobs request, so the window is measured on its
-// most recent runs only. The note under the table says when it was cut.
-const MAX_MEASURED_RUNS = 300;
-// Jobs requests in flight at once. GitHub rejects bursts of many concurrent
-// requests, and a few hundred runs fired together would hit that limit.
-const JOBS_CONCURRENCY = 8;
+// The run list is paged through REST, 100 runs a request, and GitHub stops a
+// filtered run list at 1000 results. The note under the table says when the
+// window held more than this.
+const MAX_MEASURED_RUNS = 1000;
+// Runs whose jobs are fetched in one GraphQL request. At 50 runs of up to 100
+// jobs each, a request stays far below GitHub's node limit and costs about one
+// point of the GraphQL rate limit.
+const JOBS_BATCH_SIZE = 50;
 // Jobs listed under an expanded workflow, and rows in the job ranking.
 const TOP_JOBS = 10;
 const TOP_JOBS_OVERALL = 25;
-
-// A small semaphore shared by every jobs request this view starts. The query
-// key stays the same as the run timeline's, so a run measured here opens from
-// cache, and the run timeline's own requests are not slowed by this queue.
-let jobsInFlight = 0;
-const jobsWaiting: (() => void)[] = [];
-
-async function limitedJobs<T>(fn: () => Promise<T>): Promise<T> {
-  // A finished request hands its slot straight to the next waiter, so a new
-  // caller arriving in between cannot take it as well.
-  if (jobsInFlight >= JOBS_CONCURRENCY) {
-    await new Promise<void>((resolve) => jobsWaiting.push(resolve));
-  } else {
-    jobsInFlight++;
-  }
-  try {
-    return await fn();
-  } finally {
-    const next = jobsWaiting.shift();
-    if (next) next();
-    else jobsInFlight--;
-  }
-}
 
 function parseTime(iso: string | null): number | null {
   if (!iso) return null;
@@ -141,13 +120,36 @@ export default function CiTimeUsage({
 
   const runs = runsQuery.data?.runs;
 
-  const jobQueries = useQueries({
-    queries: (runs ?? []).map((run) => ({
-      queryKey: ["workflowRunJobs", owner, repo, run.id],
-      queryFn: () => limitedJobs(() => fetchWorkflowRunJobs(token, owner, repo, run.id)),
+  // The window's runs, cut into batches. A batch is keyed by the runs it
+  // holds, so the same window opened again is served from cache, and a refetch
+  // that brings a new run only fetches the batches that changed.
+  const batches = useMemo(() => {
+    const out: WorkflowRunInfo[][] = [];
+    for (let i = 0; i < (runs?.length ?? 0); i += JOBS_BATCH_SIZE) {
+      out.push(runs!.slice(i, i + JOBS_BATCH_SIZE));
+    }
+    return out;
+  }, [runs]);
+
+  const batchQueries = useQueries({
+    queries: batches.map((batch) => ({
+      queryKey: ["runJobTimings", owner, repo, batch.map((r) => r.id).join(",")],
+      queryFn: () => fetchRunJobTimings(token, owner, repo, batch),
       // A completed run's jobs do not change.
       staleTime: Infinity,
     })),
+  });
+
+  // One entry per run, in the order of `runs`, so the counts and the loop
+  // below read the same way they would with one query per run.
+  const jobQueries = batches.flatMap((batch, b) => {
+    const q = batchQueries[b];
+    return batch.map((run) => ({
+      isPending: !!q?.isPending,
+      isError: !!q?.isError,
+      isSuccess: !!q?.isSuccess,
+      data: q?.data?.get(run.id),
+    }));
   });
 
   const pendingCount = jobQueries.filter((q) => q.isPending).length;

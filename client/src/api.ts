@@ -13,6 +13,7 @@ export {
   fetchRepoWorkflowRuns,
   fetchWorkflowRun,
   fetchWorkflowRunJobs,
+  fetchRunJobTimings,
   fetchBranches,
   searchBranches,
   fetchCommitHistoryPage,

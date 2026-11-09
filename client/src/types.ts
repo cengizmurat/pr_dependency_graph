@@ -157,6 +157,9 @@ export interface WorkflowRunInfo {
   // grouped by workflow.
   workflowId: number;
   workflowName: string | null;
+  // GraphQL id of the run's check suite. Each job of the run is a check run
+  // in it, so this is how many runs' jobs are fetched in one GraphQL request.
+  checkSuiteNodeId: string | null;
   runNumber: number;
   event: string;
   status: string;

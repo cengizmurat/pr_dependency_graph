@@ -1301,6 +1301,7 @@ interface RawWorkflow {
 interface RawWorkflowRun {
   id: number;
   workflow_id: number;
+  check_suite_node_id?: string | null;
   run_number: number;
   event: string;
   status: string | null;
@@ -1409,6 +1410,7 @@ function processRawRun(run: RawWorkflowRun): WorkflowRunInfo {
     id: run.id,
     workflowId: run.workflow_id,
     workflowName: run.name ?? null,
+    checkSuiteNodeId: run.check_suite_node_id ?? null,
     runNumber: run.run_number,
     event: run.event,
     status: run.status ?? "completed",
@@ -1500,6 +1502,7 @@ export async function fetchRepoWorkflowRuns(
   const created = encodeURIComponent(`>=${since.toISOString().replace(/\.\d{3}Z$/, "Z")}`);
   const branchParam = branch ? `&branch=${encodeURIComponent(branch)}` : "";
   const runs: WorkflowRunInfo[] = [];
+  const seen = new Set<number>();
   let totalCount = 0;
 
   for (let page = 1; runs.length < maxRuns; page++) {
@@ -1512,7 +1515,13 @@ export async function fetchRepoWorkflowRuns(
     );
     totalCount = data.total_count ?? 0;
     const batch = data.workflow_runs ?? [];
-    runs.push(...batch.map(processRawRun));
+    // A run created while paging pushes the older ones down a page, so the
+    // same run can come back twice; it is counted once.
+    for (const raw of batch) {
+      if (seen.has(raw.id)) continue;
+      seen.add(raw.id);
+      runs.push(processRawRun(raw));
+    }
     if (batch.length < perPage || page * perPage >= totalCount) break;
   }
 
@@ -1574,6 +1583,106 @@ export async function fetchWorkflowRunJobs(
   }
 
   return jobs;
+}
+
+// Job timings for many runs in one GraphQL request. REST has no batch form of
+// the jobs endpoint, so measuring 300 runs there costs 300 requests; here a run
+// is its check suite and each job is a check run in it, so `nodes(ids:)` asks
+// for a whole batch of runs at once. Only what the CI time usage view needs is
+// fetched: names, times and outcomes, no steps.
+//
+// LATEST matches the REST endpoint's `filter=latest`: a re-run job counts only
+// its last attempt. A run with more check runs than one page holds, or with no
+// check suite id, is fetched through REST instead, so no job is left out.
+const RUN_JOBS_PAGE = 100;
+
+const RUN_JOB_TIMINGS_QUERY = `
+query($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on CheckSuite {
+      id
+      checkRuns(first: ${RUN_JOBS_PAGE}, filterBy: { checkType: LATEST }) {
+        pageInfo { hasNextPage }
+        nodes {
+          databaseId
+          name
+          status
+          conclusion
+          startedAt
+          completedAt
+          url
+        }
+      }
+    }
+  }
+}`;
+
+interface RawCheckRun {
+  databaseId: number | null;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  url: string | null;
+}
+
+interface RawCheckSuiteJobs {
+  id: string;
+  checkRuns: { pageInfo: { hasNextPage: boolean }; nodes: (RawCheckRun | null)[] | null };
+}
+
+export async function fetchRunJobTimings(
+  token: string,
+  owner: string,
+  repo: string,
+  runs: { id: number; checkSuiteNodeId: string | null }[],
+): Promise<Map<number, WorkflowJob[]>> {
+  const result = new Map<number, WorkflowJob[]>();
+  const viaRest: number[] = [];
+
+  const withSuite = runs.filter((r) => r.checkSuiteNodeId);
+  for (const r of runs) if (!r.checkSuiteNodeId) viaRest.push(r.id);
+
+  if (withSuite.length > 0) {
+    const data = await graphql<{ nodes: (RawCheckSuiteJobs | null)[] }>(
+      token,
+      RUN_JOB_TIMINGS_QUERY,
+      { ids: withSuite.map((r) => r.checkSuiteNodeId) },
+    );
+    // `nodes` answers in the order of the ids it was given, with null for an
+    // id it could not resolve.
+    withSuite.forEach((run, i) => {
+      const suite = data.nodes[i];
+      if (!suite || suite.checkRuns.pageInfo.hasNextPage) {
+        viaRest.push(run.id);
+        return;
+      }
+      result.set(
+        run.id,
+        (suite.checkRuns.nodes ?? [])
+          .filter((c): c is RawCheckRun => c !== null)
+          .map((c) => ({
+            id: c.databaseId ?? 0,
+            name: c.name,
+            // GraphQL spells these in upper case; REST, and the rest of the
+            // app, in lower case.
+            status: c.status.toLowerCase(),
+            conclusion: c.conclusion?.toLowerCase() ?? null,
+            createdAt: null,
+            startedAt: c.startedAt,
+            completedAt: c.completedAt,
+            htmlUrl: c.url,
+            steps: [],
+          })),
+      );
+    });
+  }
+
+  for (const id of viaRest) {
+    result.set(id, await fetchWorkflowRunJobs(token, owner, repo, id));
+  }
+  return result;
 }
 
 interface RawUserRepo {
