@@ -15,6 +15,7 @@ import type {
   WorkflowRunInfo,
   WorkflowRunsPage,
   WorkflowsPage,
+  RepoWorkflowRunsPage,
   BranchList,
   ChangedFile,
   CommitFile,
@@ -1299,6 +1300,7 @@ interface RawWorkflow {
 
 interface RawWorkflowRun {
   id: number;
+  workflow_id: number;
   run_number: number;
   event: string;
   status: string | null;
@@ -1405,6 +1407,8 @@ async function fetchRestJson<T>(token: string, url: string): Promise<T> {
 function processRawRun(run: RawWorkflowRun): WorkflowRunInfo {
   return {
     id: run.id,
+    workflowId: run.workflow_id,
+    workflowName: run.name ?? null,
     runNumber: run.run_number,
     event: run.event,
     status: run.status ?? "completed",
@@ -1478,6 +1482,41 @@ export async function fetchWorkflowRuns(
     runs: batch.map(processRawRun),
     hasMore: batch.length > 0 && page * perPage < (data.total_count ?? 0),
   };
+}
+
+// Every finished run of every workflow created since `since`, newest first,
+// for the CI time usage view. GitHub filters on the creation date and the
+// branch server-side; the walk stops at `maxRuns` so a very busy repository
+// does not turn one view into hundreds of list requests.
+export async function fetchRepoWorkflowRuns(
+  token: string,
+  owner: string,
+  repo: string,
+  since: Date,
+  branch: string | null,
+  maxRuns: number,
+): Promise<RepoWorkflowRunsPage> {
+  const perPage = 100;
+  const created = encodeURIComponent(`>=${since.toISOString().replace(/\.\d{3}Z$/, "Z")}`);
+  const branchParam = branch ? `&branch=${encodeURIComponent(branch)}` : "";
+  const runs: WorkflowRunInfo[] = [];
+  let totalCount = 0;
+
+  for (let page = 1; runs.length < maxRuns; page++) {
+    const data = await fetchRestJson<{
+      total_count?: number;
+      workflow_runs?: RawWorkflowRun[] | null;
+    }>(
+      token,
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/runs?status=completed&created=${created}&per_page=${perPage}&page=${page}${branchParam}`,
+    );
+    totalCount = data.total_count ?? 0;
+    const batch = data.workflow_runs ?? [];
+    runs.push(...batch.map(processRawRun));
+    if (batch.length < perPage || page * perPage >= totalCount) break;
+  }
+
+  return { runs: runs.slice(0, maxRuns), totalCount };
 }
 
 export async function fetchWorkflowRun(

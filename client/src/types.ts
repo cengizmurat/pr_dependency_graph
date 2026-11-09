@@ -153,6 +153,10 @@ export interface WorkflowInfo {
 
 export interface WorkflowRunInfo {
   id: number;
+  // The workflow this run belongs to, so a repository-wide run list can be
+  // grouped by workflow.
+  workflowId: number;
+  workflowName: string | null;
   runNumber: number;
   event: string;
   status: string;
@@ -175,6 +179,12 @@ export interface WorkflowsPage {
 export interface WorkflowRunsPage {
   runs: WorkflowRunInfo[];
   hasMore: boolean;
+}
+
+export interface RepoWorkflowRunsPage {
+  runs: WorkflowRunInfo[];
+  // Runs GitHub counted for the filter, which can be more than were fetched.
+  totalCount: number;
 }
 
 export interface WorkflowStep {

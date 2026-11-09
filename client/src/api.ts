@@ -10,6 +10,7 @@ export {
   fetchUserRepos,
   fetchWorkflows,
   fetchWorkflowRuns,
+  fetchRepoWorkflowRuns,
   fetchWorkflowRun,
   fetchWorkflowRunJobs,
   fetchBranches,
