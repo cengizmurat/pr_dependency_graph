@@ -3,6 +3,7 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { fetchUsageRound, fetchUsageWorkflows, type UsageCursors } from "../api";
 import type { WorkflowInfo, WorkflowJob } from "../types";
 import { formatDuration } from "./RunTimeline";
+import Spinner from "./Spinner";
 import { styles } from "./WorkflowsView.styles";
 
 // Where the repository's CI time goes. Every finished run in the picked window
@@ -155,7 +156,15 @@ export default function CiTimeUsage({
     if (hasNextPage && !isFetchingNextPage && !isError && !capped) fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, isError, capped, fetchNextPage]);
 
-  const walking = (!!hasNextPage && !isError && !capped) || runsQuery.isFetching;
+  // Loading covers every stage: the workflow list, the first round (the runs
+  // query waits on that list, so it is not fetching yet), and every round
+  // after it. Without the first two the panel would read "no finished run"
+  // before a single run was asked for.
+  const walking =
+    workflowsQuery.isPending ||
+    (!!usageWorkflows && runsQuery.isPending && !runsQuery.isError) ||
+    (!!hasNextPage && !isError && !capped) ||
+    runsQuery.isFetching;
   const pages = runsQuery.data?.pages ?? [];
   const reachedIso = pages.reduce<string | null>((oldest, p) => {
     if (!p.oldestCreatedAt) return oldest;
@@ -164,6 +173,12 @@ export default function CiTimeUsage({
   const reached = reachedIso
     ? new Date(reachedIso).toLocaleDateString(undefined, { month: "short", day: "numeric" })
     : null;
+  // How far back the walk has gone, as a share of the window. Runs come newest
+  // first, so the oldest one reached tells how much of the window is covered.
+  // It is a lower bound: a workflow that is already done may reach no further.
+  const progress = reachedIso
+    ? Math.min(1, Math.max(0, (Date.now() - Date.parse(reachedIso)) / (Date.now() - sinceMs)))
+    : 0;
 
   const workflowNames = useMemo(() => {
     const names = new Map<number, string>();
@@ -237,10 +252,19 @@ export default function CiTimeUsage({
       </div>
     );
   } else if (walking && totalSeconds === 0) {
+    // Nothing to rank yet: a large spinner in the middle of the card, so the
+    // empty space reads as "working" rather than "empty".
     body = (
-      <p style={styles.cardMessage}>
-        {runs.length > 0 ? `Loading runs... ${runs.length} so far` : "Loading runs..."}
-      </p>
+      <div style={styles.usageLoadingBlock} role="status">
+        <Spinner size={36} color="var(--color-link)" />
+        <span>
+          {workflowsQuery.isPending
+            ? "Loading workflows…"
+            : runs.length > 0
+              ? `Loading runs… ${runs.length} so far`
+              : "Loading runs…"}
+        </span>
+      </div>
     );
   } else if (runs.length === 0) {
     body = (
@@ -336,9 +360,6 @@ export default function CiTimeUsage({
   }
 
   const notes = [
-    walking && runs.length > 0
-      ? `loading older runs… ${runs.length} so far${reached ? `, back to ${reached}` : ""}`
-      : null,
     loadError && runs.length > 0 ? `stopped early: ${loadError.message}` : null,
     capped ? `stopped after the ${MAX_MEASURED_RUNS} most recent runs` : null,
   ].filter(Boolean);
@@ -348,6 +369,7 @@ export default function CiTimeUsage({
       <div style={styles.trendHeader}>
         <h2 style={styles.trendTitle}>
           CI time usage
+          {walking && <Spinner size={16} color="var(--color-link)" label="Loading" />}
           {branch && (
             <span style={styles.trendTitleBranch} title={`Runs on ${branch} only`}>
               {branch}
@@ -395,11 +417,39 @@ export default function CiTimeUsage({
         </div>
         {totalSeconds > 0 && (
           <span style={styles.usageTotal}>
-            Total: <strong>{formatDuration(totalSeconds)}</strong> over {runs.length} run
-            {runs.length === 1 ? "" : "s"}
+            Total{walking ? " so far" : ""}: <strong>{formatDuration(totalSeconds)}</strong> over{" "}
+            {runs.length} run{runs.length === 1 ? "" : "s"}
           </span>
         )}
       </div>
+
+      {/* Shown above the table while older runs are still coming, so the
+          ranking is not read as final: the numbers will still grow. */}
+      {walking && totalSeconds > 0 && (
+        <div style={styles.usageLoadingBanner} role="status">
+          <div style={styles.usageLoadingBannerRow}>
+            <Spinner size={18} color="var(--color-link)" />
+            <span>
+              Still loading older runs — the numbers below will grow.{" "}
+              <strong>{runs.length}</strong> run{runs.length === 1 ? "" : "s"} so far
+              {reached ? `, back to ${reached}` : ""}.
+            </span>
+          </div>
+          <div
+            style={styles.usageProgressTrack}
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(progress * 100)}
+            aria-label="Share of the time window loaded"
+          >
+            <div
+              className="usage-progress-fill"
+              style={{ ...styles.usageProgressFill, width: `${Math.max(4, progress * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {body}
 

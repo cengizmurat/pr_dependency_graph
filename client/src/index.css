@@ -232,6 +232,27 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* The CI time usage progress bar: moving stripes, so the bar shows the app
+   is working even while a slow request keeps its width still. */
+@keyframes usage-progress-stripes {
+  to { background-position: 24px 0; }
+}
+
+.usage-progress-fill {
+  background-color: var(--color-link);
+  background-image: linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.28) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.28) 50%,
+    rgba(255, 255, 255, 0.28) 75%,
+    transparent 75%
+  );
+  background-size: 24px 24px;
+  animation: usage-progress-stripes 0.8s linear infinite;
+}
+
 .contributor-dropdown-item:hover {
   background: var(--color-border-subtle);
 }
