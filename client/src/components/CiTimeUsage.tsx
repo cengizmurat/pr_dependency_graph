@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { motion } from "motion/react";
 import { fetchUsageRound, fetchUsageWorkflows, type UsageCursors } from "../api";
 import type { WorkflowInfo, WorkflowJob } from "../types";
 import { formatDuration } from "./RunTimeline";
@@ -29,6 +30,11 @@ export function parseUsageWindow(value: string | null): UsageWindow {
 // runaway guard for a repository with an unusual amount of CI: past it the walk
 // stops and the note under the table says so.
 const MAX_MEASURED_RUNS = 20_000;
+// How long a bar takes to fill or empty to its new length, and a row to slide
+// to its new place, when a batch of runs changes the numbers.
+const BAR_TRANSITION_S = 0.6;
+const ROW_TRANSITION = { duration: BAR_TRANSITION_S, ease: [0.22, 1, 0.36, 1] as const };
+
 // Jobs listed under an expanded workflow, and rows in the job ranking.
 const TOP_JOBS = 10;
 const TOP_JOBS_OVERALL = 25;
@@ -125,10 +131,14 @@ export default function CiTimeUsage({
   // workflow still inside the window. Pages are fetched one after another (see
   // the effect below) until every workflow has gone past the window's start,
   // and the table fills in as they arrive.
+  const runsKey = useMemo(
+    () => ["ciUsage", owner, repo, sinceMs, branch] as const,
+    [owner, repo, sinceMs, branch],
+  );
   const runsQuery = useInfiniteQuery({
-    queryKey: ["ciUsage", owner, repo, sinceMs, branch],
-    queryFn: ({ pageParam }) =>
-      fetchUsageRound(token, owner, repo, usageWorkflows!, pageParam, sinceMs, branch),
+    queryKey: runsKey,
+    queryFn: ({ pageParam, signal }) =>
+      fetchUsageRound(token, owner, repo, usageWorkflows!, pageParam, sinceMs, branch, signal),
     initialPageParam: null as UsageCursors | null,
     getNextPageParam: (last) => (Object.keys(last.next).length > 0 ? last.next : undefined),
     enabled: !!usageWorkflows,
@@ -151,20 +161,36 @@ export default function CiTimeUsage({
   }, [runsQuery.data]);
 
   const capped = runs.length >= MAX_MEASURED_RUNS;
+
+  // The viewer can stop the walk once the ranking is enough for them. The
+  // round in flight is cancelled, which keeps the pages already loaded, and no
+  // next round starts. Remembered by query key, so another window or branch
+  // starts its own walk; "Resume" picks up from the last round kept.
+  const queryClient = useQueryClient();
+  const keyString = JSON.stringify(runsKey);
+  const [stoppedKey, setStoppedKey] = useState<string | null>(null);
+  const stopped = stoppedKey === keyString;
+  const stopLoading = () => {
+    setStoppedKey(keyString);
+    queryClient.cancelQueries({ queryKey: runsKey });
+  };
+  const resumeLoading = () => setStoppedKey(null);
+
   const { hasNextPage, isFetchingNextPage, isError, fetchNextPage } = runsQuery;
   useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage && !isError && !capped) fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, isError, capped, fetchNextPage]);
+    if (hasNextPage && !isFetchingNextPage && !isError && !capped && !stopped) fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, isError, capped, stopped, fetchNextPage]);
 
   // Loading covers every stage: the workflow list, the first round (the runs
   // query waits on that list, so it is not fetching yet), and every round
   // after it. Without the first two the panel would read "no finished run"
   // before a single run was asked for.
   const walking =
-    workflowsQuery.isPending ||
-    (!!usageWorkflows && runsQuery.isPending && !runsQuery.isError) ||
-    (!!hasNextPage && !isError && !capped) ||
-    runsQuery.isFetching;
+    !stopped &&
+    (workflowsQuery.isPending ||
+      (!!usageWorkflows && runsQuery.isPending && !runsQuery.isError) ||
+      (!!hasNextPage && !isError && !capped) ||
+      runsQuery.isFetching);
   const pages = runsQuery.data?.pages ?? [];
   const reachedIso = pages.reduce<string | null>((oldest, p) => {
     if (!p.oldestCreatedAt) return oldest;
@@ -286,7 +312,15 @@ export default function CiTimeUsage({
         {workflowRows.map((wf) => {
           const open = expanded === wf.workflowId;
           return (
-            <li key={wf.workflowId} style={styles.usageItem}>
+            // A batch can change the order, and the row then slides to its
+            // new place. Only the position animates: a size animation would
+            // stretch the text while a workflow opens.
+            <motion.li
+              key={wf.workflowId}
+              layout="position"
+              transition={ROW_TRANSITION}
+              style={styles.usageItem}
+            >
               <button
                 className="workflow-run-item"
                 style={styles.usageRow}
@@ -333,7 +367,7 @@ export default function CiTimeUsage({
                   )}
                 </div>
               )}
-            </li>
+            </motion.li>
           );
         })}
       </ol>
@@ -342,7 +376,12 @@ export default function CiTimeUsage({
     body = (
       <ol style={styles.usageList}>
         {jobRows.map((job) => (
-          <li key={job.key} style={styles.usageItem}>
+          <motion.li
+            key={job.key}
+            layout="position"
+            transition={ROW_TRANSITION}
+            style={styles.usageItem}
+          >
             <div style={{ ...styles.usageRow, cursor: "default" }}>
               <UsageBar
                 name={job.name}
@@ -353,7 +392,7 @@ export default function CiTimeUsage({
                 meta={jobMeta(job)}
               />
             </div>
-          </li>
+          </motion.li>
         ))}
       </ol>
     );
@@ -429,11 +468,18 @@ export default function CiTimeUsage({
         <div style={styles.usageLoadingBanner} role="status">
           <div style={styles.usageLoadingBannerRow}>
             <Spinner size={18} color="var(--color-link)" />
-            <span>
+            <span style={styles.usageLoadingText}>
               Still loading older runs — the numbers below will grow.{" "}
               <strong>{runs.length}</strong> run{runs.length === 1 ? "" : "s"} so far
               {reached ? `, back to ${reached}` : ""}.
             </span>
+            <button
+              style={styles.usageStopBtn}
+              onClick={stopLoading}
+              title="Stop loading older runs and keep the ranking as it is now"
+            >
+              Stop loading
+            </button>
           </div>
           <div
             style={styles.usageProgressTrack}
@@ -452,6 +498,19 @@ export default function CiTimeUsage({
       )}
 
       {body}
+
+      {stopped && hasNextPage && (
+        <div style={styles.usageStoppedNote}>
+          <span>
+            Loading stopped: this ranking covers the {runs.length} most recent run
+            {runs.length === 1 ? "" : "s"}
+            {reached ? `, back to ${reached}` : ""}, not the whole window.
+          </span>
+          <button style={styles.usageOpenBtn} onClick={resumeLoading}>
+            Resume loading
+          </button>
+        </div>
+      )}
 
       {notes.length > 0 && (
         <div style={styles.trendFooter}>
@@ -489,6 +548,15 @@ function UsageBar({
   small?: boolean;
 }) {
   const width = max > 0 ? Math.max(1, (seconds / max) * 100) : 0;
+  // The bar starts empty and is given its length one frame later, so a new
+  // row fills in rather than appearing full. After that, every new length is
+  // reached through the CSS transition on the width, so a batch that changes
+  // the numbers makes the bars fill and empty instead of jumping.
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setShown(width));
+    return () => cancelAnimationFrame(frame);
+  }, [width]);
   return (
     <span style={styles.usageBarBody}>
       <span style={styles.usageBarHead}>
@@ -502,7 +570,13 @@ function UsageBar({
         </span>
       </span>
       <span style={{ ...styles.usageTrack, ...(small ? styles.usageTrackSmall : {}) }}>
-        <span style={{ ...styles.usageFill, width: `${width}%` }} />
+        <span
+          style={{
+            ...styles.usageFill,
+            width: `${shown}%`,
+            transition: `width ${BAR_TRANSITION_S}s cubic-bezier(0.22, 1, 0.36, 1)`,
+          }}
+        />
       </span>
       <span style={styles.usageMeta}>{meta}</span>
     </span>
