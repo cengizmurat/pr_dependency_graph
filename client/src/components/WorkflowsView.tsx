@@ -442,6 +442,7 @@ export default function WorkflowsView({
             onWindowChange={selectUsageWindow}
             workflows={workflows}
             onSelectWorkflow={selectWorkflow}
+            isMobile={isMobile}
           />
         )}
       </main>

@@ -80,9 +80,10 @@ function isFailure(conclusion: string | null): boolean {
 // A duration of an hour or more also shows its length in minutes, in
 // parentheses ("9h 45m (585 min)"), so totals can be compared or copied
 // without working out the hours. Shorter durations already read in minutes.
-function formatUsageDuration(seconds: number): string {
+// `withMinutes` false leaves the minutes out, where a row has no room.
+function formatUsageDuration(seconds: number, withMinutes = true): string {
   const text = formatDuration(seconds);
-  if (seconds < 3600) return text;
+  if (seconds < 3600 || !withMinutes) return text;
   return `${text} (${Math.round(seconds / 60).toLocaleString()} min)`;
 }
 
@@ -101,6 +102,7 @@ export default function CiTimeUsage({
   onWindowChange,
   workflows,
   onSelectWorkflow,
+  isMobile,
 }: {
   token: string;
   owner: string;
@@ -112,7 +114,11 @@ export default function CiTimeUsage({
   // opened in the sidebar.
   workflows: WorkflowInfo[] | undefined;
   onSelectWorkflow: (id: number) => void;
+  // On a phone, job rows leave the minutes out: their names are long and the
+  // row is narrow. The total and the workflow rows keep them.
+  isMobile: boolean;
 }) {
+  const jobMinutes = !isMobile;
   const [mode, setMode] = useState<"workflows" | "jobs">("workflows");
   const [expanded, setExpanded] = useState<number | null>(null);
 
@@ -355,7 +361,8 @@ export default function CiTimeUsage({
                         seconds={job.seconds}
                         max={wf.jobs[0]?.seconds ?? 0}
                         share={percent(job.seconds, wf.seconds)}
-                        meta={jobMeta(job)}
+                        meta={jobMeta(job, jobMinutes)}
+                        withMinutes={jobMinutes}
                         small
                       />
                     </div>
@@ -398,7 +405,8 @@ export default function CiTimeUsage({
                 seconds={job.seconds}
                 max={topSeconds}
                 share={percent(job.seconds, totalSeconds)}
-                meta={jobMeta(job)}
+                meta={jobMeta(job, jobMinutes)}
+                withMinutes={jobMinutes}
               />
             </div>
           </motion.li>
@@ -530,10 +538,10 @@ export default function CiTimeUsage({
   );
 }
 
-function jobMeta(job: JobUsage): string {
+function jobMeta(job: JobUsage, withMinutes: boolean): string {
   const parts = [
     `${job.runs} run${job.runs === 1 ? "" : "s"}`,
-    `${formatUsageDuration(job.seconds / job.runs)} each`,
+    `${formatUsageDuration(job.seconds / job.runs, withMinutes)} each`,
   ];
   if (job.failures > 0) parts.push(`${job.failures} failed`);
   return parts.join(" · ");
@@ -547,6 +555,7 @@ function UsageBar({
   share,
   meta,
   small = false,
+  withMinutes = true,
 }: {
   name: string;
   caption?: string;
@@ -555,6 +564,7 @@ function UsageBar({
   share: string;
   meta: string;
   small?: boolean;
+  withMinutes?: boolean;
 }) {
   const width = max > 0 ? Math.max(1, (seconds / max) * 100) : 0;
   // The bar starts empty and is given its length one frame later, so a new
@@ -574,7 +584,7 @@ function UsageBar({
           {caption && <span style={styles.usageCaption}> · {caption}</span>}
         </span>
         <span style={styles.usageValue}>
-          {formatUsageDuration(seconds)}
+          {formatUsageDuration(seconds, withMinutes)}
           <span style={styles.usageShare}>{share}</span>
         </span>
       </span>
