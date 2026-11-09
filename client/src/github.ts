@@ -15,7 +15,6 @@ import type {
   WorkflowRunInfo,
   WorkflowRunsPage,
   WorkflowsPage,
-  RepoWorkflowRunsPage,
   BranchList,
   ChangedFile,
   CommitFile,
@@ -1301,7 +1300,6 @@ interface RawWorkflow {
 interface RawWorkflowRun {
   id: number;
   workflow_id: number;
-  check_suite_node_id?: string | null;
   run_number: number;
   event: string;
   status: string | null;
@@ -1410,7 +1408,6 @@ function processRawRun(run: RawWorkflowRun): WorkflowRunInfo {
     id: run.id,
     workflowId: run.workflow_id,
     workflowName: run.name ?? null,
-    checkSuiteNodeId: run.check_suite_node_id ?? null,
     runNumber: run.run_number,
     event: run.event,
     status: run.status ?? "completed",
@@ -1486,48 +1483,6 @@ export async function fetchWorkflowRuns(
   };
 }
 
-// Every finished run of every workflow created since `since`, newest first,
-// for the CI time usage view. GitHub filters on the creation date and the
-// branch server-side; the walk stops at `maxRuns` so a very busy repository
-// does not turn one view into hundreds of list requests.
-export async function fetchRepoWorkflowRuns(
-  token: string,
-  owner: string,
-  repo: string,
-  since: Date,
-  branch: string | null,
-  maxRuns: number,
-): Promise<RepoWorkflowRunsPage> {
-  const perPage = 100;
-  const created = encodeURIComponent(`>=${since.toISOString().replace(/\.\d{3}Z$/, "Z")}`);
-  const branchParam = branch ? `&branch=${encodeURIComponent(branch)}` : "";
-  const runs: WorkflowRunInfo[] = [];
-  const seen = new Set<number>();
-  let totalCount = 0;
-
-  for (let page = 1; runs.length < maxRuns; page++) {
-    const data = await fetchRestJson<{
-      total_count?: number;
-      workflow_runs?: RawWorkflowRun[] | null;
-    }>(
-      token,
-      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/runs?status=completed&created=${created}&per_page=${perPage}&page=${page}${branchParam}`,
-    );
-    totalCount = data.total_count ?? 0;
-    const batch = data.workflow_runs ?? [];
-    // A run created while paging pushes the older ones down a page, so the
-    // same run can come back twice; it is counted once.
-    for (const raw of batch) {
-      if (seen.has(raw.id)) continue;
-      seen.add(raw.id);
-      runs.push(processRawRun(raw));
-    }
-    if (batch.length < perPage || page * perPage >= totalCount) break;
-  }
-
-  return { runs: runs.slice(0, maxRuns), totalCount };
-}
-
 export async function fetchWorkflowRun(
   token: string,
   owner: string,
@@ -1585,39 +1540,81 @@ export async function fetchWorkflowRunJobs(
   return jobs;
 }
 
-// Job timings for many runs in one GraphQL request. REST has no batch form of
-// the jobs endpoint, so measuring 300 runs there costs 300 requests; here a run
-// is its check suite and each job is a check run in it, so `nodes(ids:)` asks
-// for a whole batch of runs at once. Only what the CI time usage view needs is
-// fetched: names, times and outcomes, no steps.
+// --- CI time usage ---
 //
-// LATEST matches the REST endpoint's `filter=latest`: a re-run job counts only
-// its last attempt. A run with more check runs than one page holds, or with no
-// check suite id, is fetched through REST instead, so no job is left out.
-const RUN_JOBS_PAGE = 100;
+// Every finished run of every workflow over a time window, with its jobs'
+// timings, walked through GraphQL. REST cannot do this: its repository-wide
+// run list stops at 1000 results once it is filtered by date, and each run's
+// jobs cost one more request. Here each workflow's runs come newest first, 50
+// at a time, with the jobs of every run in the same response (a run is a
+// check suite, each job a check run in it). A workflow's walk stops at the
+// first run older than the window, so every run inside it is counted.
+//
+// GraphQL has no run filter on branch or status, so those are applied here.
+// LATEST matches REST's `filter=latest`: a re-run job counts only its last
+// attempt.
 
-const RUN_JOB_TIMINGS_QUERY = `
-query($ids: [ID!]!) {
-  nodes(ids: $ids) {
-    ... on CheckSuite {
-      id
-      checkRuns(first: ${RUN_JOBS_PAGE}, filterBy: { checkType: LATEST }) {
-        pageInfo { hasNextPage }
-        nodes {
-          databaseId
-          name
-          status
-          conclusion
-          startedAt
-          completedAt
-          url
-        }
-      }
-    }
+export interface UsageWorkflow {
+  id: number;
+  nodeId: string;
+  name: string;
+}
+
+export interface UsageRun {
+  id: number;
+  workflowId: number;
+  createdAt: string;
+  jobs: WorkflowJob[];
+}
+
+// Where each workflow's walk stands: the cursor to continue from, keyed by
+// the workflow's node id. A workflow is left out once its walk is done.
+export type UsageCursors = Record<string, string | null>;
+
+export interface UsageRound {
+  runs: UsageRun[];
+  // Cursors for the next round; empty once every workflow is done.
+  next: UsageCursors;
+  // The oldest run creation time this round reached, to show progress.
+  oldestCreatedAt: string | null;
+}
+
+const USAGE_RUNS_PAGE = 50;
+const USAGE_JOBS_PAGE = 100;
+// Workflows asked about in one request, and requests in flight at once. A
+// request holds up to 4 x 50 runs x 100 jobs, far below GitHub's node limit,
+// and small enough to answer inside GitHub's GraphQL time limit.
+const USAGE_WORKFLOWS_PER_REQUEST = 4;
+const USAGE_CONCURRENCY = 4;
+
+interface RawWorkflowWithNode extends RawWorkflow {
+  node_id: string;
+}
+
+// All of the repository's workflows, including disabled ones: a workflow
+// turned off last week still used CI time before that.
+export async function fetchUsageWorkflows(
+  token: string,
+  owner: string,
+  repo: string,
+): Promise<UsageWorkflow[]> {
+  const out: UsageWorkflow[] = [];
+  for (let page = 1; ; page++) {
+    const data = await fetchRestJson<{
+      total_count?: number;
+      workflows?: RawWorkflowWithNode[] | null;
+    }>(
+      token,
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/workflows?per_page=100&page=${page}`,
+    );
+    const batch = data.workflows ?? [];
+    for (const w of batch) out.push({ id: w.id, nodeId: w.node_id, name: w.name });
+    if (batch.length < 100 || page * 100 >= (data.total_count ?? 0)) break;
   }
-}`;
+  return out;
+}
 
-interface RawCheckRun {
+interface RawUsageCheckRun {
   databaseId: number | null;
   name: string;
   status: string;
@@ -1627,62 +1624,161 @@ interface RawCheckRun {
   url: string | null;
 }
 
-interface RawCheckSuiteJobs {
-  id: string;
-  checkRuns: { pageInfo: { hasNextPage: boolean }; nodes: (RawCheckRun | null)[] | null };
+interface RawUsageRun {
+  databaseId: number | null;
+  createdAt: string;
+  checkSuite: {
+    status: string;
+    branch: { name: string } | null;
+    checkRuns: {
+      pageInfo: { hasNextPage: boolean };
+      nodes: (RawUsageCheckRun | null)[] | null;
+    };
+  } | null;
 }
 
-export async function fetchRunJobTimings(
+interface RawUsageWorkflowRuns {
+  runs: {
+    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+    nodes: (RawUsageRun | null)[] | null;
+  };
+}
+
+function usageRunsQuery(count: number): string {
+  const vars = Array.from({ length: count }, (_, i) => `$w${i}: ID!, $a${i}: String`).join(", ");
+  const fields = Array.from(
+    { length: count },
+    (_, i) => `
+  w${i}: node(id: $w${i}) {
+    ... on Workflow {
+      runs(first: ${USAGE_RUNS_PAGE}, after: $a${i}, orderBy: { field: CREATED_AT, direction: DESC }) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          databaseId
+          createdAt
+          checkSuite {
+            status
+            branch { name }
+            checkRuns(first: ${USAGE_JOBS_PAGE}, filterBy: { checkType: LATEST }) {
+              pageInfo { hasNextPage }
+              nodes { databaseId name status conclusion startedAt completedAt url }
+            }
+          }
+        }
+      }
+    }
+  }`,
+  ).join("");
+  return `query(${vars}) {${fields}
+}`;
+}
+
+function usageJob(c: RawUsageCheckRun): WorkflowJob {
+  return {
+    id: c.databaseId ?? 0,
+    name: c.name,
+    // GraphQL spells these in upper case; REST, and the rest of the app, in
+    // lower case.
+    status: c.status.toLowerCase(),
+    conclusion: c.conclusion?.toLowerCase() ?? null,
+    createdAt: null,
+    startedAt: c.startedAt,
+    completedAt: c.completedAt,
+    htmlUrl: c.url,
+    steps: [],
+  };
+}
+
+// One step of the walk: the next page of runs for every workflow that is not
+// done yet. Pass `null` cursors to start every workflow from its newest run.
+export async function fetchUsageRound(
   token: string,
   owner: string,
   repo: string,
-  runs: { id: number; checkSuiteNodeId: string | null }[],
-): Promise<Map<number, WorkflowJob[]>> {
-  const result = new Map<number, WorkflowJob[]>();
-  const viaRest: number[] = [];
+  workflows: UsageWorkflow[],
+  cursors: UsageCursors | null,
+  sinceMs: number,
+  branch: string | null,
+): Promise<UsageRound> {
+  const active = cursors
+    ? workflows.filter((w) => w.nodeId in cursors)
+    : workflows;
+  const limit = createLimiter(USAGE_CONCURRENCY);
+  const runs: UsageRun[] = [];
+  const next: UsageCursors = {};
+  let oldest: number | null = null;
+  // A run with more jobs than one page holds is fetched through REST, so none
+  // of its jobs is left out.
+  const viaRest: { run: UsageRun; id: number }[] = [];
 
-  const withSuite = runs.filter((r) => r.checkSuiteNodeId);
-  for (const r of runs) if (!r.checkSuiteNodeId) viaRest.push(r.id);
-
-  if (withSuite.length > 0) {
-    const data = await graphql<{ nodes: (RawCheckSuiteJobs | null)[] }>(
-      token,
-      RUN_JOB_TIMINGS_QUERY,
-      { ids: withSuite.map((r) => r.checkSuiteNodeId) },
-    );
-    // `nodes` answers in the order of the ids it was given, with null for an
-    // id it could not resolve.
-    withSuite.forEach((run, i) => {
-      const suite = data.nodes[i];
-      if (!suite || suite.checkRuns.pageInfo.hasNextPage) {
-        viaRest.push(run.id);
-        return;
-      }
-      result.set(
-        run.id,
-        (suite.checkRuns.nodes ?? [])
-          .filter((c): c is RawCheckRun => c !== null)
-          .map((c) => ({
-            id: c.databaseId ?? 0,
-            name: c.name,
-            // GraphQL spells these in upper case; REST, and the rest of the
-            // app, in lower case.
-            status: c.status.toLowerCase(),
-            conclusion: c.conclusion?.toLowerCase() ?? null,
-            createdAt: null,
-            startedAt: c.startedAt,
-            completedAt: c.completedAt,
-            htmlUrl: c.url,
-            steps: [],
-          })),
-      );
-    });
+  const chunks: UsageWorkflow[][] = [];
+  for (let i = 0; i < active.length; i += USAGE_WORKFLOWS_PER_REQUEST) {
+    chunks.push(active.slice(i, i + USAGE_WORKFLOWS_PER_REQUEST));
   }
 
-  for (const id of viaRest) {
-    result.set(id, await fetchWorkflowRunJobs(token, owner, repo, id));
-  }
-  return result;
+  await Promise.all(
+    chunks.map((chunk) =>
+      limit(async () => {
+        const variables: Record<string, unknown> = {};
+        chunk.forEach((w, i) => {
+          variables[`w${i}`] = w.nodeId;
+          variables[`a${i}`] = cursors?.[w.nodeId] ?? null;
+        });
+        const data = await graphql<Record<string, RawUsageWorkflowRuns | null>>(
+          token,
+          usageRunsQuery(chunk.length),
+          variables,
+        );
+
+        chunk.forEach((wf, i) => {
+          const page = data[`w${i}`]?.runs;
+          if (!page) return;
+          let reachedEnd = false;
+          for (const raw of page.nodes ?? []) {
+            if (!raw || raw.databaseId === null) continue;
+            const created = Date.parse(raw.createdAt);
+            if (created < sinceMs) {
+              reachedEnd = true;
+              break;
+            }
+            if (oldest === null || created < oldest) oldest = created;
+            const suite = raw.checkSuite;
+            // Only finished runs: one still running would count a number
+            // that keeps growing.
+            if (!suite || suite.status !== "COMPLETED") continue;
+            if (branch && suite.branch?.name !== branch) continue;
+            const run: UsageRun = {
+              id: raw.databaseId,
+              workflowId: wf.id,
+              createdAt: raw.createdAt,
+              jobs: (suite.checkRuns.nodes ?? [])
+                .filter((c): c is RawUsageCheckRun => c !== null)
+                .map(usageJob),
+            };
+            if (suite.checkRuns.pageInfo.hasNextPage) viaRest.push({ run, id: raw.databaseId });
+            runs.push(run);
+          }
+          if (!reachedEnd && page.pageInfo.hasNextPage) {
+            next[wf.nodeId] = page.pageInfo.endCursor;
+          }
+        });
+      }),
+    ),
+  );
+
+  await Promise.all(
+    viaRest.map(({ run, id }) =>
+      limit(async () => {
+        run.jobs = await fetchWorkflowRunJobs(token, owner, repo, id);
+      }),
+    ),
+  );
+
+  return {
+    runs,
+    next,
+    oldestCreatedAt: oldest === null ? null : new Date(oldest).toISOString(),
+  };
 }
 
 interface RawUserRepo {

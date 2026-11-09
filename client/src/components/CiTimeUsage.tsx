@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
-import { fetchRepoWorkflowRuns, fetchRunJobTimings } from "../api";
-import type { WorkflowInfo, WorkflowJob, WorkflowRunInfo } from "../types";
+import { useEffect, useMemo, useState } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { fetchUsageRound, fetchUsageWorkflows, type UsageCursors } from "../api";
+import type { WorkflowInfo, WorkflowJob } from "../types";
 import { formatDuration } from "./RunTimeline";
 import { styles } from "./WorkflowsView.styles";
 
@@ -24,14 +24,10 @@ export function parseUsageWindow(value: string | null): UsageWindow {
   return value === "1d" || value === "30d" ? value : "7d";
 }
 
-// The run list is paged through REST, 100 runs a request, and GitHub stops a
-// filtered run list at 1000 results. The note under the table says when the
-// window held more than this.
-const MAX_MEASURED_RUNS = 1000;
-// Runs whose jobs are fetched in one GraphQL request. At 50 runs of up to 100
-// jobs each, a request stays far below GitHub's node limit and costs about one
-// point of the GraphQL rate limit.
-const JOBS_BATCH_SIZE = 50;
+// The walk goes back through every run in the window, so this is only a
+// runaway guard for a repository with an unusual amount of CI: past it the walk
+// stops and the note under the table says so.
+const MAX_MEASURED_RUNS = 20_000;
 // Jobs listed under an expanded workflow, and rows in the job ranking.
 const TOP_JOBS = 10;
 const TOP_JOBS_OVERALL = 25;
@@ -106,73 +102,85 @@ export default function CiTimeUsage({
 
   const days = USAGE_WINDOWS.find((w) => w.value === usageWindow)?.days ?? 7;
 
-  const runsQuery = useQuery({
-    queryKey: ["repoWorkflowRuns", owner, repo, usageWindow, branch],
-    queryFn: () => {
-      // Rounded to the hour so the key's data matches what was asked for, and
-      // a refetch a minute later does not walk a slightly different window.
-      const since = new Date(Date.now() - days * 86_400_000);
-      since.setMinutes(0, 0, 0);
-      return fetchRepoWorkflowRuns(token, owner, repo, since, branch, MAX_MEASURED_RUNS);
-    },
+  // Rounded down to the hour, and part of the query key: every round of one
+  // walk uses the same start, and opening the same window again within the
+  // hour is served from cache.
+  const sinceMs = useMemo(() => {
+    const since = new Date(Date.now() - days * 86_400_000);
+    since.setMinutes(0, 0, 0);
+    return since.getTime();
+  }, [days]);
+
+  // Every workflow, disabled ones included, with the GraphQL id the walk
+  // needs. The sidebar's list is paged, so it cannot be used here.
+  const workflowsQuery = useQuery({
+    queryKey: ["usageWorkflows", owner, repo],
+    queryFn: () => fetchUsageWorkflows(token, owner, repo),
+    staleTime: 5 * 60 * 1000,
+  });
+  const usageWorkflows = workflowsQuery.data;
+
+  // One page of this query is one round of the walk: the next 50 runs of each
+  // workflow still inside the window. Pages are fetched one after another (see
+  // the effect below) until every workflow has gone past the window's start,
+  // and the table fills in as they arrive.
+  const runsQuery = useInfiniteQuery({
+    queryKey: ["ciUsage", owner, repo, sinceMs, branch],
+    queryFn: ({ pageParam }) =>
+      fetchUsageRound(token, owner, repo, usageWorkflows!, pageParam, sinceMs, branch),
+    initialPageParam: null as UsageCursors | null,
+    getNextPageParam: (last) => (Object.keys(last.next).length > 0 ? last.next : undefined),
+    enabled: !!usageWorkflows,
     staleTime: 5 * 60 * 1000,
   });
 
-  const runs = runsQuery.data?.runs;
-
-  // The window's runs, cut into batches. A batch is keyed by the runs it
-  // holds, so the same window opened again is served from cache, and a refetch
-  // that brings a new run only fetches the batches that changed.
-  const batches = useMemo(() => {
-    const out: WorkflowRunInfo[][] = [];
-    for (let i = 0; i < (runs?.length ?? 0); i += JOBS_BATCH_SIZE) {
-      out.push(runs!.slice(i, i + JOBS_BATCH_SIZE));
+  // Runs come back in cursor order, so none repeats; the set is a guard all
+  // the same, as a run counted twice would skew the ranking.
+  const runs = useMemo(() => {
+    const seen = new Set<number>();
+    const out = [];
+    for (const page of runsQuery.data?.pages ?? []) {
+      for (const run of page.runs) {
+        if (seen.has(run.id)) continue;
+        seen.add(run.id);
+        out.push(run);
+      }
     }
     return out;
-  }, [runs]);
+  }, [runsQuery.data]);
 
-  const batchQueries = useQueries({
-    queries: batches.map((batch) => ({
-      queryKey: ["runJobTimings", owner, repo, batch.map((r) => r.id).join(",")],
-      queryFn: () => fetchRunJobTimings(token, owner, repo, batch),
-      // A completed run's jobs do not change.
-      staleTime: Infinity,
-    })),
-  });
+  const capped = runs.length >= MAX_MEASURED_RUNS;
+  const { hasNextPage, isFetchingNextPage, isError, fetchNextPage } = runsQuery;
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage && !isError && !capped) fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, isError, capped, fetchNextPage]);
 
-  // One entry per run, in the order of `runs`, so the counts and the loop
-  // below read the same way they would with one query per run.
-  const jobQueries = batches.flatMap((batch, b) => {
-    const q = batchQueries[b];
-    return batch.map((run) => ({
-      isPending: !!q?.isPending,
-      isError: !!q?.isError,
-      isSuccess: !!q?.isSuccess,
-      data: q?.data?.get(run.id),
-    }));
-  });
-
-  const pendingCount = jobQueries.filter((q) => q.isPending).length;
-  const failedCount = jobQueries.filter((q) => q.isError).length;
-  const measuredCount = jobQueries.filter((q) => q.isSuccess).length;
+  const walking = (!!hasNextPage && !isError && !capped) || runsQuery.isFetching;
+  const pages = runsQuery.data?.pages ?? [];
+  const reachedIso = pages.reduce<string | null>((oldest, p) => {
+    if (!p.oldestCreatedAt) return oldest;
+    return !oldest || p.oldestCreatedAt < oldest ? p.oldestCreatedAt : oldest;
+  }, null);
+  const reached = reachedIso
+    ? new Date(reachedIso).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    : null;
 
   const workflowNames = useMemo(() => {
     const names = new Map<number, string>();
-    for (const wf of workflows ?? []) names.set(wf.id, wf.name);
+    for (const wf of usageWorkflows ?? []) names.set(wf.id, wf.name);
     return names;
-  }, [workflows]);
+  }, [usageWorkflows]);
+  // Only a workflow the sidebar lists can be opened from a row.
+  const sidebarIds = useMemo(() => new Set((workflows ?? []).map((w) => w.id)), [workflows]);
 
-  // Rebuilt on every render: the query array is new each time anyway, and the
-  // work is a single pass over at most a few thousand jobs.
+  // A single pass over the runs' jobs; cheap next to the requests behind it.
   const byWorkflow = new Map<number, WorkflowUsage>();
   const jobMap = new Map<string, JobUsage>();
   let totalSeconds = 0;
 
-  (runs ?? []).forEach((run: WorkflowRunInfo, i) => {
-    const jobs = jobQueries[i]?.data;
-    if (!jobs) return;
-    const name =
-      workflowNames.get(run.workflowId) ?? run.workflowName ?? `Workflow ${run.workflowId}`;
+  for (const run of runs) {
+    const jobs = run.jobs;
+    const name = workflowNames.get(run.workflowId) ?? `Workflow ${run.workflowId}`;
     let wf = byWorkflow.get(run.workflowId);
     if (!wf) {
       wf = { workflowId: run.workflowId, name, seconds: 0, runs: 0, jobs: [] };
@@ -202,7 +210,7 @@ export default function CiTimeUsage({
       usage.runs++;
       if (isFailure(job.conclusion)) usage.failures++;
     }
-  });
+  }
 
   const allJobs = [...jobMap.values()].sort((a, b) => b.seconds - a.seconds);
   for (const job of allJobs) byWorkflow.get(job.workflowId)?.jobs.push(job);
@@ -212,24 +220,29 @@ export default function CiTimeUsage({
   const jobRows = allJobs.slice(0, TOP_JOBS_OVERALL);
 
   const topSeconds = mode === "workflows" ? (workflowRows[0]?.seconds ?? 0) : (jobRows[0]?.seconds ?? 0);
-  const knownWorkflow = (id: number) => workflowNames.has(id);
-
-  const totalCount = runsQuery.data?.totalCount ?? 0;
-  const cutOff = runs ? Math.max(0, totalCount - runs.length) : 0;
+  const knownWorkflow = (id: number) => sidebarIds.has(id);
+  const loadError = (workflowsQuery.error ?? runsQuery.error) as Error | null;
 
   let body: React.ReactNode;
-  if (runsQuery.isLoading) {
-    body = <p style={styles.cardMessage}>Loading runs...</p>;
-  } else if (runsQuery.error) {
+  if (loadError && runs.length === 0) {
     body = (
       <div style={{ ...styles.cardError, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-        <span>{(runsQuery.error as Error).message}</span>
-        <button style={styles.retryBtn} onClick={() => runsQuery.refetch()}>
+        <span>{loadError.message}</span>
+        <button
+          style={styles.retryBtn}
+          onClick={() => (workflowsQuery.error ? workflowsQuery.refetch() : runsQuery.refetch())}
+        >
           Retry
         </button>
       </div>
     );
-  } else if (runs && runs.length === 0) {
+  } else if (walking && totalSeconds === 0) {
+    body = (
+      <p style={styles.cardMessage}>
+        {runs.length > 0 ? `Loading runs... ${runs.length} so far` : "Loading runs..."}
+      </p>
+    );
+  } else if (runs.length === 0) {
     body = (
       <p style={styles.cardMessage}>
         {branch
@@ -240,9 +253,7 @@ export default function CiTimeUsage({
   } else if (totalSeconds === 0) {
     body = (
       <p style={styles.cardMessage}>
-        {pendingCount > 0
-          ? `Measuring runs... ${measuredCount}/${runs?.length ?? 0}`
-          : "None of these runs reported job timings, so there is no run time to rank."}
+        None of these runs reported job timings, so there is no run time to rank.
       </p>
     );
   } else if (mode === "workflows") {
@@ -325,11 +336,11 @@ export default function CiTimeUsage({
   }
 
   const notes = [
-    pendingCount > 0 ? `measuring ${pendingCount} more run${pendingCount === 1 ? "" : "s"}…` : null,
-    failedCount > 0
-      ? `${failedCount} run${failedCount === 1 ? "" : "s"} could not be measured`
+    walking && runs.length > 0
+      ? `loading older runs… ${runs.length} so far${reached ? `, back to ${reached}` : ""}`
       : null,
-    cutOff > 0 ? `only the ${runs?.length} most recent of ${totalCount} runs are counted` : null,
+    loadError && runs.length > 0 ? `stopped early: ${loadError.message}` : null,
+    capped ? `stopped after the ${MAX_MEASURED_RUNS} most recent runs` : null,
   ].filter(Boolean);
 
   return (
@@ -384,8 +395,8 @@ export default function CiTimeUsage({
         </div>
         {totalSeconds > 0 && (
           <span style={styles.usageTotal}>
-            Total: <strong>{formatDuration(totalSeconds)}</strong> over {measuredCount} run
-            {measuredCount === 1 ? "" : "s"}
+            Total: <strong>{formatDuration(totalSeconds)}</strong> over {runs.length} run
+            {runs.length === 1 ? "" : "s"}
           </span>
         )}
       </div>
