@@ -1299,6 +1299,7 @@ interface RawWorkflow {
 
 interface RawWorkflowRun {
   id: number;
+  workflow_id: number;
   run_number: number;
   event: string;
   status: string | null;
@@ -1405,6 +1406,8 @@ async function fetchRestJson<T>(token: string, url: string): Promise<T> {
 function processRawRun(run: RawWorkflowRun): WorkflowRunInfo {
   return {
     id: run.id,
+    workflowId: run.workflow_id,
+    workflowName: run.name ?? null,
     runNumber: run.run_number,
     event: run.event,
     status: run.status ?? "completed",
@@ -1535,6 +1538,312 @@ export async function fetchWorkflowRunJobs(
   }
 
   return jobs;
+}
+
+// --- CI time usage ---
+//
+// Every finished run of every workflow over a time window, with its jobs'
+// timings, walked through GraphQL. REST cannot do this: its repository-wide
+// run list stops at 1000 results once it is filtered by date, and each run's
+// jobs cost one more request. Here each workflow's runs come newest first, 50
+// at a time, with the jobs of every run in the same response (a run is a
+// check suite, each job a check run in it). A workflow's walk stops at the
+// first run older than the window, so every run inside it is counted.
+//
+// GraphQL has no run filter on branch or status, so those are applied here.
+// LATEST matches REST's `filter=latest`: a re-run job counts only its last
+// attempt.
+
+export interface UsageWorkflow {
+  id: number;
+  nodeId: string;
+  name: string;
+}
+
+export interface UsageRun {
+  id: number;
+  workflowId: number;
+  createdAt: string;
+  jobs: WorkflowJob[];
+}
+
+// Where each workflow's walk stands, keyed by the workflow's node id: the
+// cursor to continue from, and the step of USAGE_SIZES its pages are asked at.
+// A workflow is left out once its walk is done.
+export type UsageCursors = Record<string, { after: string | null; size: number }>;
+
+export interface UsageRound {
+  runs: UsageRun[];
+  // Cursors for the next round; empty once every workflow is done.
+  next: UsageCursors;
+  // The oldest run creation time this round reached, to show progress.
+  oldestCreatedAt: string | null;
+}
+
+// Page sizes a workflow's runs are asked at: runs per page, and jobs per run.
+// Every workflow starts at the first step. A request that times out is asked
+// again smaller: first each of its workflows on its own, then that one
+// workflow a step further down this list. The step a workflow reached is kept
+// for the rest of its walk, so a heavy workflow does not time out on every
+// round, while the light ones keep their large pages. A run with more jobs
+// than its page holds gets its jobs through REST, so a small job page never
+// leaves a job out.
+const USAGE_SIZES: { runs: number; jobs: number }[] = [
+  { runs: 50, jobs: 100 },
+  { runs: 25, jobs: 100 },
+  { runs: 10, jobs: 100 },
+  { runs: 5, jobs: 50 },
+  { runs: 2, jobs: 25 },
+  { runs: 1, jobs: 10 },
+];
+// Workflows asked about in one request, while they are all at the first step,
+// and requests in flight at once.
+const USAGE_WORKFLOWS_PER_REQUEST = 4;
+const USAGE_CONCURRENCY = 4;
+// GitHub gives up on a GraphQL query after about 10 seconds. A request still
+// open after this long is cut here, so it is retried smaller instead of
+// holding the walk.
+const USAGE_REQUEST_TIMEOUT_MS = 15_000;
+
+// A failure that a smaller request may get past: GitHub's own timeout (a 502
+// or 504, or an error naming a timeout), our cut-off, or a dropped connection.
+// Rate limits and permission errors are not; asking smaller would not help.
+function isRetryableSmaller(err: unknown): boolean {
+  if (err instanceof DOMException && (err.name === "TimeoutError" || err.name === "AbortError")) {
+    return true;
+  }
+  if (err instanceof TypeError) return true;
+  const status = (err as { status?: number }).status;
+  if (status !== undefined && status >= 500) return true;
+  const message = err instanceof Error ? err.message : "";
+  return /time ?out|timed out|something went wrong/i.test(message);
+}
+
+interface RawWorkflowWithNode extends RawWorkflow {
+  node_id: string;
+}
+
+// All of the repository's workflows, including disabled ones: a workflow
+// turned off last week still used CI time before that.
+export async function fetchUsageWorkflows(
+  token: string,
+  owner: string,
+  repo: string,
+): Promise<UsageWorkflow[]> {
+  const out: UsageWorkflow[] = [];
+  for (let page = 1; ; page++) {
+    const data = await fetchRestJson<{
+      total_count?: number;
+      workflows?: RawWorkflowWithNode[] | null;
+    }>(
+      token,
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/workflows?per_page=100&page=${page}`,
+    );
+    const batch = data.workflows ?? [];
+    for (const w of batch) out.push({ id: w.id, nodeId: w.node_id, name: w.name });
+    if (batch.length < 100 || page * 100 >= (data.total_count ?? 0)) break;
+  }
+  return out;
+}
+
+interface RawUsageCheckRun {
+  databaseId: number | null;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  url: string | null;
+}
+
+interface RawUsageRun {
+  databaseId: number | null;
+  createdAt: string;
+  checkSuite: {
+    status: string;
+    branch: { name: string } | null;
+    checkRuns: {
+      pageInfo: { hasNextPage: boolean };
+      nodes: (RawUsageCheckRun | null)[] | null;
+    };
+  } | null;
+}
+
+interface RawUsageWorkflowRuns {
+  runs: {
+    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+    nodes: (RawUsageRun | null)[] | null;
+  };
+}
+
+// Page sizes are variables, so workflows at different steps of USAGE_SIZES
+// can share one query text.
+function usageRunsQuery(count: number): string {
+  const vars = Array.from(
+    { length: count },
+    (_, i) => `$w${i}: ID!, $a${i}: String, $f${i}: Int!, $j${i}: Int!`,
+  ).join(", ");
+  const fields = Array.from(
+    { length: count },
+    (_, i) => `
+  w${i}: node(id: $w${i}) {
+    ... on Workflow {
+      runs(first: $f${i}, after: $a${i}, orderBy: { field: CREATED_AT, direction: DESC }) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          databaseId
+          createdAt
+          checkSuite {
+            status
+            branch { name }
+            checkRuns(first: $j${i}, filterBy: { checkType: LATEST }) {
+              pageInfo { hasNextPage }
+              nodes { databaseId name status conclusion startedAt completedAt url }
+            }
+          }
+        }
+      }
+    }
+  }`,
+  ).join("");
+  return `query(${vars}) {${fields}\n}`;
+}
+
+function usageJob(c: RawUsageCheckRun): WorkflowJob {
+  return {
+    id: c.databaseId ?? 0,
+    name: c.name,
+    // GraphQL spells these in upper case; REST, and the rest of the app, in
+    // lower case.
+    status: c.status.toLowerCase(),
+    conclusion: c.conclusion?.toLowerCase() ?? null,
+    createdAt: null,
+    startedAt: c.startedAt,
+    completedAt: c.completedAt,
+    htmlUrl: c.url,
+    steps: [],
+  };
+}
+
+// One step of the walk: the next page of runs for every workflow that is not
+// done yet. Pass `null` cursors to start every workflow from its newest run.
+export async function fetchUsageRound(
+  token: string,
+  owner: string,
+  repo: string,
+  workflows: UsageWorkflow[],
+  cursors: UsageCursors | null,
+  sinceMs: number,
+  branch: string | null,
+): Promise<UsageRound> {
+  const active = cursors
+    ? workflows.filter((w) => w.nodeId in cursors)
+    : workflows;
+  const stateOf = (w: UsageWorkflow) => cursors?.[w.nodeId] ?? { after: null, size: 0 };
+  const limit = createLimiter(USAGE_CONCURRENCY);
+  const runs: UsageRun[] = [];
+  const next: UsageCursors = {};
+  let oldest: number | null = null;
+  // A run with more jobs than its page holds is fetched through REST, so none
+  // of its jobs is left out.
+  const viaRest: { run: UsageRun; id: number }[] = [];
+
+  function takePage(wf: UsageWorkflow, size: number, result: RawUsageWorkflowRuns | null) {
+    const page = result?.runs;
+    if (!page) return;
+    let reachedEnd = false;
+    for (const raw of page.nodes ?? []) {
+      if (!raw || raw.databaseId === null) continue;
+      const created = Date.parse(raw.createdAt);
+      if (created < sinceMs) {
+        reachedEnd = true;
+        break;
+      }
+      if (oldest === null || created < oldest) oldest = created;
+      const suite = raw.checkSuite;
+      // Only finished runs: one still running would count a number that keeps
+      // growing.
+      if (!suite || suite.status !== "COMPLETED") continue;
+      if (branch && suite.branch?.name !== branch) continue;
+      const run: UsageRun = {
+        id: raw.databaseId,
+        workflowId: wf.id,
+        createdAt: raw.createdAt,
+        jobs: (suite.checkRuns.nodes ?? [])
+          .filter((c): c is RawUsageCheckRun => c !== null)
+          .map(usageJob),
+      };
+      if (suite.checkRuns.pageInfo.hasNextPage) viaRest.push({ run, id: raw.databaseId });
+      runs.push(run);
+    }
+    if (!reachedEnd && page.pageInfo.hasNextPage) {
+      next[wf.nodeId] = { after: page.pageInfo.endCursor, size };
+    }
+  }
+
+  // Asks for the next page of each workflow in `chunk`, at the given steps of
+  // USAGE_SIZES. On a timeout, a chunk of several workflows is split into one
+  // request each, and a single workflow is asked again a step smaller, until
+  // the smallest step also fails.
+  async function fetchChunk(chunk: { wf: UsageWorkflow; size: number }[]): Promise<void> {
+    const variables: Record<string, unknown> = {};
+    chunk.forEach(({ wf, size }, i) => {
+      variables[`w${i}`] = wf.nodeId;
+      variables[`a${i}`] = stateOf(wf).after;
+      variables[`f${i}`] = USAGE_SIZES[size].runs;
+      variables[`j${i}`] = USAGE_SIZES[size].jobs;
+    });
+    let data: Record<string, RawUsageWorkflowRuns | null>;
+    try {
+      data = await limit(() =>
+        graphql<Record<string, RawUsageWorkflowRuns | null>>(
+          token,
+          usageRunsQuery(chunk.length),
+          variables,
+          AbortSignal.timeout(USAGE_REQUEST_TIMEOUT_MS),
+        ),
+      );
+    } catch (err) {
+      if (!isRetryableSmaller(err)) throw err;
+      if (chunk.length > 1) {
+        await Promise.all(chunk.map((item) => fetchChunk([item])));
+        return;
+      }
+      const { wf, size } = chunk[0];
+      if (size + 1 >= USAGE_SIZES.length) throw err;
+      await fetchChunk([{ wf, size: size + 1 }]);
+      return;
+    }
+    chunk.forEach(({ wf, size }, i) => takePage(wf, size, data[`w${i}`]));
+  }
+
+  // Workflows still at the first step share requests; one that had to be
+  // asked smaller before keeps a request of its own.
+  const chunks: { wf: UsageWorkflow; size: number }[][] = [];
+  const shared = active.filter((w) => stateOf(w).size === 0);
+  for (let i = 0; i < shared.length; i += USAGE_WORKFLOWS_PER_REQUEST) {
+    chunks.push(shared.slice(i, i + USAGE_WORKFLOWS_PER_REQUEST).map((wf) => ({ wf, size: 0 })));
+  }
+  for (const wf of active) {
+    const size = stateOf(wf).size;
+    if (size > 0) chunks.push([{ wf, size }]);
+  }
+
+  await Promise.all(chunks.map(fetchChunk));
+
+  await Promise.all(
+    viaRest.map(({ run, id }) =>
+      limit(async () => {
+        run.jobs = await fetchWorkflowRunJobs(token, owner, repo, id);
+      }),
+    ),
+  );
+
+  return {
+    runs,
+    next,
+    oldestCreatedAt: oldest === null ? null : new Date(oldest).toISOString(),
+  };
 }
 
 interface RawUserRepo {

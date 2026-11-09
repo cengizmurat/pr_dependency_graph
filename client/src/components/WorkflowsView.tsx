@@ -23,6 +23,7 @@ import { timeAgo } from "../utils";
 import { HookSidebar } from "@/components/ui/hook-sidebar";
 import RunTimeline, { formatDuration } from "./RunTimeline";
 import RuntimeTrendChart, { BackArrow } from "./RuntimeTrendChart";
+import CiTimeUsage, { parseUsageWindow, type UsageWindow } from "./CiTimeUsage";
 import { styles } from "./WorkflowsView.styles";
 
 // Runs of the expanded workflow refresh on this interval so new pushes show up
@@ -74,6 +75,20 @@ export default function WorkflowsView({
   // views share one query string, and a branch picked for churn is not a
   // filter the viewer asked this tab for.
   const branchFilter = searchParams.get("wfBranch") || null;
+  const usageWindow = parseUsageWindow(searchParams.get("wfWindow"));
+
+  const selectUsageWindow = useCallback(
+    (value: UsageWindow) => {
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev);
+        // Seven days is the default, so it keeps the link short.
+        if (value === "7d") params.delete("wfWindow");
+        else params.set("wfWindow", value);
+        return params;
+      });
+    },
+    [setSearchParams],
+  );
 
   const selectWorkflow = useCallback(
     (id: number) => {
@@ -416,14 +431,18 @@ export default function WorkflowsView({
             onSelectRun={selectRun}
           />
         ) : (
-          <div style={styles.emptyState}>
-            <WorkflowIcon size={28} />
-            <span>
-              {branchFilter
-                ? `Pick a workflow to browse its recent runs on ${branchFilter}.`
-                : "Pick a workflow to browse its recent runs."}
-            </span>
-          </div>
+          // With no workflow open, the pane shows where the repository's CI
+          // time goes, so the heaviest workflow is one click away.
+          <CiTimeUsage
+            token={token}
+            owner={owner}
+            repo={repo}
+            branch={branchFilter}
+            usageWindow={usageWindow}
+            onWindowChange={selectUsageWindow}
+            workflows={workflows}
+            onSelectWorkflow={selectWorkflow}
+          />
         )}
       </main>
     </div>

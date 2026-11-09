@@ -153,6 +153,10 @@ export interface WorkflowInfo {
 
 export interface WorkflowRunInfo {
   id: number;
+  // The workflow this run belongs to, so a repository-wide run list can be
+  // grouped by workflow.
+  workflowId: number;
+  workflowName: string | null;
   runNumber: number;
   event: string;
   status: string;

@@ -10,6 +10,8 @@ export {
   fetchUserRepos,
   fetchWorkflows,
   fetchWorkflowRuns,
+  fetchUsageWorkflows,
+  fetchUsageRound,
   fetchWorkflowRun,
   fetchWorkflowRunJobs,
   fetchBranches,
@@ -21,4 +23,5 @@ export {
   getObservedRateLimit,
   subscribeRateLimit,
 } from "./github";
+export type { UsageCursors, UsageRun, UsageWorkflow } from "./github";
 export { buildDependencyGraph } from "./graph";

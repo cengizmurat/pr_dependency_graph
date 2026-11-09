@@ -16,6 +16,13 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
+    version: 17,
+    title: "See where your CI time goes",
+    description:
+      "The Workflows tab now opens on \"CI time usage\": every workflow ranked by the runner time its jobs used over the last 24 hours, 7 days or 30 days. Click a workflow to see which of its jobs cost the most, or switch to \"By job\" to rank every job of the repository. The branch filter applies here too.",
+    date: "2026-11-09",
+  },
+  {
     version: 16,
     title: "Team review requests count as yours",
     description:
