@@ -88,6 +88,26 @@ export default function Legend() {
         <span
           style={{
             ...styles.nodeChip,
+            borderColor: COLORS.merged,
+            background: COLORS.mergedBg,
+          }}
+        />
+        <span style={styles.label}>Merged layer of a stack</span>
+      </div>
+      <div style={styles.row}>
+        <span
+          style={{
+            ...styles.nodeChip,
+            borderColor: COLORS.stack,
+            background: COLORS.stackBg,
+          }}
+        />
+        <span style={styles.label}>Pull requests of one GitHub stack</span>
+      </div>
+      <div style={styles.row}>
+        <span
+          style={{
+            ...styles.nodeChip,
             borderColor: COLORS.ready,
             background: COLORS.readyBg,
             opacity: 0.18,
@@ -171,6 +191,25 @@ export default function Legend() {
           </svg>
         </span>
         <span style={styles.label}>Focus on this PR and its stack</span>
+      </div>
+      <div style={styles.row}>
+        <span
+          style={{
+            ...styles.badge,
+            borderColor: COLORS.stack,
+            background: COLORS.stack,
+            color: "var(--color-on-stack)",
+            borderRadius: 9,
+          }}
+        >
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+            <path d="M5.7 7.1l4.6-2.6M5.7 8.9l4.6 2.6" stroke="currentColor" strokeWidth="1.4" />
+            <circle cx="12.25" cy="3.5" r="2.25" fill="currentColor" />
+            <circle cx="3.75" cy="8" r="2.25" fill="currentColor" />
+            <circle cx="12.25" cy="12.5" r="2.25" fill="currentColor" />
+          </svg>
+        </span>
+        <span style={styles.label}>Share a whole stack (copies its link)</span>
       </div>
         </>
       )}

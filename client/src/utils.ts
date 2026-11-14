@@ -20,8 +20,10 @@ export function isPR(d: GraphNode): d is PRNode {
 }
 
 export function collectDescendantPRs(startPrNumber: number, nodes: GraphNode[]): number[] {
+  // Merged layers are left out: nothing is stacked on a branch that has
+  // already gone into its base.
   const prNodes = nodes.filter(
-    (n): n is PRNode => n.type === "pr",
+    (n): n is PRNode => n.type === "pr" && n.state !== "MERGED",
   );
   const startPR = prNodes.find((n) => n.number === startPrNumber);
   if (!startPR) return [startPrNumber];

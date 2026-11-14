@@ -11,14 +11,30 @@ import { collectDescendantPRs } from "./utils";
 
 export const FOCUS_PR_PARAM = "pr";
 
+// A whole GitHub stack can be focused too, by its number, in the `stack`
+// param. That is the link the share button on a stack's rectangle copies. It
+// names the stack rather than one of its PRs, so it keeps working as layers
+// merge, and it takes in the merged layers, which a PR's descendants never do.
+// The two params are one choice: setting either drops the other.
+export const FOCUS_STACK_PARAM = "stack";
+
+function positiveInt(raw: string | null): number | null {
+  if (raw === null || !/^\d+$/.test(raw)) return null;
+  const parsed = parseInt(raw, 10);
+  return parsed > 0 ? parsed : null;
+}
+
 // The PR number the URL asks the graph to focus on, or null when there is
 // none. A non-numeric or non-positive value counts as no focus rather than an
 // error: the param is hand-editable and a bad one should just show everything.
 export function getFocusPR(params: URLSearchParams): number | null {
-  const raw = params.get(FOCUS_PR_PARAM);
-  if (raw === null || !/^\d+$/.test(raw)) return null;
-  const parsed = parseInt(raw, 10);
-  return parsed > 0 ? parsed : null;
+  return positiveInt(params.get(FOCUS_PR_PARAM));
+}
+
+// The stack number the URL asks the graph to focus on, read as leniently as
+// the PR number above.
+export function getFocusStack(params: URLSearchParams): number | null {
+  return positiveInt(params.get(FOCUS_STACK_PARAM));
 }
 
 export function withFocusPR(
@@ -27,7 +43,23 @@ export function withFocusPR(
 ): URLSearchParams {
   const next = new URLSearchParams(params);
   if (prNumber === null) next.delete(FOCUS_PR_PARAM);
-  else next.set(FOCUS_PR_PARAM, String(prNumber));
+  else {
+    next.set(FOCUS_PR_PARAM, String(prNumber));
+    next.delete(FOCUS_STACK_PARAM);
+  }
+  return next;
+}
+
+export function withFocusStack(
+  params: URLSearchParams,
+  stackNumber: number | null,
+): URLSearchParams {
+  const next = new URLSearchParams(params);
+  if (stackNumber === null) next.delete(FOCUS_STACK_PARAM);
+  else {
+    next.set(FOCUS_STACK_PARAM, String(stackNumber));
+    next.delete(FOCUS_PR_PARAM);
+  }
   return next;
 }
 
@@ -42,6 +74,30 @@ export function buildShareUrl(
 ): string {
   const path = `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
   return `${window.location.origin}${path}?${FOCUS_PR_PARAM}=${prNumber}`;
+}
+
+// The link the share button on a stack copies. Free of filters for the same
+// reason as the PR link above.
+export function buildStackShareUrl(
+  owner: string,
+  repo: string,
+  stackNumber: number,
+): string {
+  const path = `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+  return `${window.location.origin}${path}?${FOCUS_STACK_PARAM}=${stackNumber}`;
+}
+
+// Node ids of every layer of a stack that is on the graph, merged ones
+// included. Null when none is, which tells the page to show the full view.
+export function collectStackIds(
+  stackNumber: number,
+  nodes: GraphNode[],
+): Set<string> | null {
+  const ids = new Set<string>();
+  for (const node of nodes) {
+    if (node.type === "pr" && node.stack?.number === stackNumber) ids.add(node.id);
+  }
+  return ids.size > 0 ? ids : null;
 }
 
 // Node ids of the focused PR plus every PR stacked on top of it — the same

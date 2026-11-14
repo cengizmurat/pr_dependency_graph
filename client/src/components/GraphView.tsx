@@ -3,24 +3,23 @@ import * as d3 from "d3";
 import { useQueryClient } from "@tanstack/react-query";
 import type { GraphData, PRNode, Orientation, EdgeFlags, FilteredDisplay } from "../types";
 import { mergeAndCascade, updatePRBranch } from "../github";
-import { collectDescendantPRs, isPR } from "../utils";
-import { collectFocusIds } from "../prFocus";
-import { restrictGraphToPRs } from "../graph";
-import { PR_WIDTH, SPACING, COLORS } from "../constants";
+import { collectDescendantPRs, copyToClipboard, isPR } from "../utils";
+import { buildStackShareUrl, collectFocusIds, collectStackIds } from "../prFocus";
+import { branchNodeId, isMergedPR, mergedIntoBranch, restrictGraphToPRs } from "../graph";
+import { COLORS } from "../constants";
 import {
-  buildTrees,
-  layoutTree,
-  flattenTree,
-  flattenEdges,
+  layoutGraph,
   nodeWidth,
   nodeHeight,
   edgePath,
+  mergedEdgePath,
   strokeColor,
   bgColor,
 } from "../graphLayout";
 import { prReviewState, PR_REVIEW_STATE_COLOR } from "../reviewState";
 import PRCard from "./PRCard";
 import BranchCard from "./BranchCard";
+import StackTab, { STACK_TAB_HEIGHT } from "./StackTab";
 import Legend from "./Legend";
 import FilterShortcuts from "./FilterShortcuts";
 
@@ -49,6 +48,11 @@ interface Props {
   // Asks the page to focus a PR — what the eye badge on a card does. The page
   // puts the PR in the address bar, so the focused view is a link to share.
   onFocusPR?: (prNumber: number | null) => void;
+  // Number of the GitHub stack the view frames on: every layer of it, merged
+  // ones included. It wins over `focusPR` when both are given.
+  focusStack?: number | null;
+  // Asks the page to focus a stack — what the name on a stack's tab does.
+  onFocusStack?: (stackNumber: number) => void;
   // PR numbers the toolbar filters keep. Null when no filter is set. The graph
   // draws every PR either way — these are the ones it picks out.
   highlightPRs?: ReadonlySet<number> | null;
@@ -65,6 +69,8 @@ export default function GraphView({
   token,
   focusPR = null,
   onFocusPR,
+  focusStack = null,
+  onFocusStack,
   highlightPRs = null,
   filteredDisplay = "fade",
 }: Props) {
@@ -95,10 +101,10 @@ export default function GraphView({
   // Node ids making up the focused stack, or null when nothing is focused (or
   // the focused PR isn't part of this graph). Read from the whole graph, so a
   // stack is the stack whatever the filters are hiding of it.
-  const focusIds = useMemo(
-    () => (focusPR === null ? null : collectFocusIds(focusPR, data.nodes)),
-    [focusPR, data.nodes],
-  );
+  const focusIds = useMemo(() => {
+    if (focusStack !== null) return collectStackIds(focusStack, data.nodes);
+    return focusPR === null ? null : collectFocusIds(focusPR, data.nodes);
+  }, [focusStack, focusPR, data.nodes]);
 
   // Node ids drawn at full strength; everything else fades back. Selections
   // compose — a PR is picked out when it satisfies every one of them, so
@@ -126,8 +132,40 @@ export default function GraphView({
         if (isBranch.get(edge.source) && ids.has(edge.target)) ids.add(edge.source);
       }
     }
+    // The branch a merged layer went into is picked out with it, focused or
+    // not: the layer is drawn leading into that branch, and in a stack the
+    // branch stands between the merged layers and the open ones.
+    for (const node of shownData.nodes) {
+      if (isMergedPR(node) && ids.has(node.id)) {
+        ids.add(branchNodeId(mergedIntoBranch(node)));
+      }
+    }
     return ids;
   }, [shownData.nodes, shownData.edges, focusIds, highlightPRs]);
+
+  // How many layers of each stack are merged, counted on the whole graph so
+  // the tab on a stack says the same thing whatever the filters hide of it.
+  const mergedByStack = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const node of data.nodes) {
+      if (isMergedPR(node) && node.stack) {
+        counts.set(node.stack.number, (counts.get(node.stack.number) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [data.nodes]);
+
+  // The share button on a stack: its link goes straight to the clipboard, and
+  // where the browser refuses the clipboard the link is shown to copy by hand.
+  const handleShareStack = useCallback(
+    async (stackNumber: number) => {
+      const url = buildStackShareUrl(data.owner, data.repo, stackNumber);
+      const copied = await copyToClipboard(url);
+      if (!copied) window.prompt(`Copy this link to share stack #${stackNumber}`, url);
+      return copied;
+    },
+    [data.owner, data.repo],
+  );
 
   const handleMerge = useCallback(
     async (prNumber: number, prTitle: string) => {
@@ -137,7 +175,7 @@ export default function GraphView({
       const dependents = prNode
         ? data.nodes.filter(
             (n): n is PRNode =>
-              n.type === "pr" && n.baseBranch === prNode.headBranch,
+              n.type === "pr" && n.state === "OPEN" && n.baseBranch === prNode.headBranch,
           )
         : [];
 
@@ -158,7 +196,8 @@ export default function GraphView({
           data.owner,
           data.repo,
           prNumber,
-          data.nodes,
+          // Only open PRs can be retargeted and updated.
+          data.nodes.filter((n) => n.type !== "pr" || n.state === "OPEN"),
         );
         if (result.errors.length > 0) {
           const errList = result.errors
@@ -249,19 +288,12 @@ export default function GraphView({
     [token, data, queryClient],
   );
 
-  const { allNodes, allEdges, nodeFlags, totalWidth, totalHeight } =
+  const { allNodes, allEdges, mergedEdges, stackBoxes, nodeFlags, totalWidth, totalHeight } =
     useMemo(() => {
-      const { roots: trees, edgeFlagsMap } = buildTrees(shownData);
-      const gap = SPACING[orientation].sibling;
-      let nextSecondary = gap;
-      for (const tree of trees) {
-        nextSecondary = layoutTree(tree, nextSecondary, orientation) + gap;
-      }
-      const nodes = trees.flatMap(flattenTree);
-      const edges = trees.flatMap((t) => flattenEdges(t, edgeFlagsMap));
+      const layout = layoutGraph(shownData, orientation);
 
       const nf = new Map<string, EdgeFlags>();
-      for (const e of edges) {
+      for (const e of layout.edges) {
         if (e.hasConflict || e.isMergeable) {
           nf.set(e.target.data.id, {
             hasConflict: e.hasConflict,
@@ -271,26 +303,14 @@ export default function GraphView({
         }
       }
 
-      if (orientation === "horizontal") {
-        const maxX = nodes.reduce((m, n) => Math.max(m, n.x), 0);
-        return {
-          allNodes: nodes,
-          allEdges: edges,
-          nodeFlags: nf,
-          totalWidth: maxX + PR_WIDTH + 80,
-          totalHeight: nextSecondary,
-        };
-      }
-      const maxBottom = nodes.reduce(
-        (m, n) => Math.max(m, n.y + nodeHeight(n.data) / 2),
-        0,
-      );
       return {
-        allNodes: nodes,
-        allEdges: edges,
+        allNodes: layout.nodes,
+        allEdges: layout.edges,
+        mergedEdges: layout.mergedEdges,
+        stackBoxes: layout.stackBoxes,
         nodeFlags: nf,
-        totalWidth: nextSecondary,
-        totalHeight: maxBottom + 80,
+        totalWidth: layout.width,
+        totalHeight: layout.height,
       };
     }, [shownData, orientation]);
 
@@ -339,6 +359,16 @@ export default function GraphView({
       minY = Math.min(minY, n.y - h / 2);
       maxY = Math.max(maxY, n.y + h / 2);
     }
+    // A stack with a picked layer is framed whole, rectangle and name tab
+    // included, so the tab and its share button are never cut off at the edge.
+    const pickedIds = new Set(picked.map((n) => n.data.id));
+    for (const box of stackBoxes) {
+      if (!box.nodeIds.some((id) => pickedIds.has(id))) continue;
+      minX = Math.min(minX, box.x);
+      maxX = Math.max(maxX, box.x + box.width);
+      minY = Math.min(minY, box.y - STACK_TAB_HEIGHT / 2);
+      maxY = Math.max(maxY, box.y + box.height);
+    }
     return {
       viewBox: {
         x: minX - HIGHLIGHT_MARGIN,
@@ -348,7 +378,7 @@ export default function GraphView({
       },
       framedSelection: highlightIds !== null,
     };
-  }, [allNodes, highlightIds, totalWidth, totalHeight]);
+  }, [allNodes, stackBoxes, highlightIds, totalWidth, totalHeight]);
 
   // Depending on the four numbers rather than the object keeps fitView stable
   // across a background refresh that leaves the layout where it was, so the
@@ -451,6 +481,50 @@ export default function GraphView({
           </defs>
 
           <g ref={gRef}>
+            {/* The rectangle around each stack goes down first, so the edges
+                and the cards are drawn on top of its wash. */}
+            {stackBoxes.map((box) => (
+              <rect
+                key={`stack-${box.number}`}
+                data-stack-box={box.number}
+                x={box.x}
+                y={box.y}
+                width={box.width}
+                height={box.height}
+                rx={14}
+                ry={14}
+                fill={COLORS.stackBg}
+                stroke={COLORS.stack}
+                strokeWidth={2}
+                // A stack is picked out as long as any layer of it is.
+                opacity={
+                  highlightIds && !box.nodeIds.some((id) => highlightIds.has(id))
+                    ? UNFOCUSED_OPACITY
+                    : 1
+                }
+              />
+            ))}
+
+            {mergedEdges.map((e) => (
+              <path
+                key={`${e.from.data.id}->${e.to.data.id}`}
+                d={mergedEdgePath(e, orientation)}
+                fill="none"
+                stroke={COLORS.edge}
+                strokeWidth={2}
+                // Dashed: this is where the layer went, not something it is
+                // still waiting on.
+                strokeDasharray="5 5"
+                markerEnd="url(#arrowhead)"
+                opacity={
+                  highlightIds &&
+                  !(highlightIds.has(e.from.data.id) && highlightIds.has(e.to.data.id))
+                    ? UNFOCUSED_OPACITY
+                    : 1
+                }
+              />
+            ))}
+
             {allEdges.map((e, i) => (
               <path
                 key={i}
@@ -477,9 +551,12 @@ export default function GraphView({
               const w = nodeWidth(n.data);
               const h = nodeHeight(n.data);
               const isHovered = hoveredId === n.data.id;
-              // Every PR carries a review state, so a PR node's border always
-              // shows it; only branch nodes fall back to the plain stroke.
-              const reviewState = isPR(n.data) ? prReviewState(n.data) : null;
+              // Every open PR carries a review state, so its border always
+              // shows it. Branch nodes fall back to the plain stroke, and so
+              // does a merged layer: its review is over, and a thick green
+              // border would put it level with the work still open.
+              const reviewState =
+                isPR(n.data) && !isMergedPR(n.data) ? prReviewState(n.data) : null;
               const stroke = isHovered
                 ? COLORS.hover
                 : reviewState
@@ -565,6 +642,17 @@ export default function GraphView({
               </div>
             );
           })}
+
+          {stackBoxes.map((box) => (
+            <StackTab
+              key={box.number}
+              box={box}
+              merged={mergedByStack.get(box.number) ?? 0}
+              dimmed={!!highlightIds && !box.nodeIds.some((id) => highlightIds.has(id))}
+              onShare={handleShareStack}
+              onFocus={onFocusStack}
+            />
+          ))}
         </div>
       </div>
     </div>

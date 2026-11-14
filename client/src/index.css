@@ -57,6 +57,15 @@
   --color-hover: #0969da;
   --color-behind: #0969da;
   --color-stack: #8250df;
+  /* The wash inside the rectangle around a stack: the stack colour, thin
+     enough that the cards on it keep their own. */
+  --color-stack-bg: rgba(130, 80, 223, 0.06);
+  --color-on-stack: #ffffff;
+  /* A merged layer of a stack. Grey, so it reads as past work beside the
+     green and the review colours of what is still open. */
+  --color-merged: #afb8c1;
+  --color-merged-bg: #f6f8fa;
+  --color-merged-accent: #8250df;
   --color-review-requested: #bf8700;
   --color-review-commented: #6e7681;
   /* Faded on purpose: nothing is being asked of these PRs. */
@@ -135,6 +144,11 @@
     --color-hover: #58a6ff;
     --color-behind: #58a6ff;
     --color-stack: #8957e5;
+    --color-stack-bg: rgba(137, 87, 229, 0.1);
+    --color-on-stack: #ffffff;
+    --color-merged: #484f58;
+    --color-merged-bg: #161b22;
+    --color-merged-accent: #a371f7;
     --color-review-requested: #d29922;
     --color-review-commented: #8b949e;
     --color-review-none: #484f58;
@@ -382,6 +396,11 @@ body {
 
 .focus-banner-btn:hover {
   background: var(--color-border-subtle);
+}
+
+/* The share button on a stack's name tab, which is the stack colour itself. */
+.stack-share-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
 }
 
 /* --- Folder churn --- */

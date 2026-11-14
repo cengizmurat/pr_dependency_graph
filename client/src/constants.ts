@@ -12,6 +12,17 @@ export const SPACING = {
   vertical: { depth: 260, sibling: 320 },
 };
 
+// How far the rectangle around a stack reaches past the cards inside it. The
+// left side is the widest: a card's badges hang over its left edge. The top
+// leaves room for the stack's name tab, which sits on the rectangle's border.
+export const STACK_BOX_PAD = { left: 38, right: 16, top: 26, bottom: 14 };
+
+// Extra distance kept before the last card of a stack, across the direction
+// the graph runs in, so two stacks side by side do not touch rectangles: left
+// to right it clears the name tab on top of the rectangle, top to bottom the
+// rectangle's wide left side.
+export const STACK_LEAF_ROOM = { horizontal: 20, vertical: 28 };
+
 export const COLORS = {
   ready: "var(--color-ready)",
   draft: "var(--color-draft)",
@@ -24,6 +35,9 @@ export const COLORS = {
   hover: "var(--color-hover)",
   behind: "var(--color-behind)",
   stack: "var(--color-stack)",
+  stackBg: "var(--color-stack-bg)",
+  merged: "var(--color-merged)",
+  mergedBg: "var(--color-merged-bg)",
   reviewRequested: "var(--color-review-requested)",
   reviewCommented: "var(--color-review-commented)",
   reviewNone: "var(--color-review-none)",
@@ -92,6 +106,11 @@ export const STATE_COLORS: Record<string, string> = {
 // GitHub's "stack" octicon (16px), the glyph it puts on a stacked pull request.
 export const STACK_ICON_PATH =
   "M7.122.392a1.75 1.75 0 0 1 1.756 0l5.003 2.902c.83.481.83 1.68 0 2.162L8.878 8.358a1.75 1.75 0 0 1-1.756 0L2.119 5.456a1.251 1.251 0 0 1 0-2.162ZM8.125 1.69a.248.248 0 0 0-.25 0l-4.63 2.685 4.63 2.685a.248.248 0 0 0 .25 0l4.63-2.685ZM1.601 7.789a.75.75 0 0 1 1.025-.273l5.249 3.044a.248.248 0 0 0 .25 0l5.249-3.044a.75.75 0 0 1 .752 1.298l-5.248 3.044a1.75 1.75 0 0 1-1.756 0L1.874 8.814A.75.75 0 0 1 1.6 7.789Zm0 3.5a.75.75 0 0 1 1.025-.273l5.249 3.044a.248.248 0 0 0 .25 0l5.249-3.044a.75.75 0 0 1 .752 1.298l-5.248 3.044a1.75 1.75 0 0 1-1.756 0l-5.248-3.044a.75.75 0 0 1-.273-1.025Z";
+
+// GitHub's "git-merge" octicon (16px), the glyph it puts on a merged pull
+// request.
+export const MERGED_ICON_PATH =
+  "M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.95-.218ZM4.25 13.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm8.5-4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM5 3.25a.75.75 0 1 0 0 .005V3.25Z";
 
 // The focus badge is grey: the other badge colors say something about the PR,
 // this one is just an action.

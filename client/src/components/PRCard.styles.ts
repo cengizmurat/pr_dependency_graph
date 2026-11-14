@@ -26,6 +26,22 @@ export const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     marginTop: 3,
   },
+  // Stands where the state dot does on an open PR, at the same width, so the
+  // title starts in the same place either way.
+  stateIcon: {
+    flexShrink: 0,
+    width: 10,
+    marginTop: 3,
+    overflow: "visible",
+  },
+  // A merged layer is past work: its title steps back a little.
+  titleMerged: {
+    color: "var(--color-text-secondary)",
+  },
+  ageMerged: {
+    color: "var(--color-merged-accent)",
+    fontWeight: 600,
+  },
   title: {
     color: "var(--color-text)",
     fontSize: 13,

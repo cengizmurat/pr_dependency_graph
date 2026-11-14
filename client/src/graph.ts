@@ -1,4 +1,29 @@
-import type { GraphQLPullRequest, GraphData, GraphNode, GraphEdge, EdgeReviewStatus } from "./types";
+import type {
+  GraphQLPullRequest,
+  GraphData,
+  GraphNode,
+  GraphEdge,
+  EdgeReviewStatus,
+  PRNode,
+} from "./types";
+
+// A merged pull request is past work: it is on the graph only as a layer of a
+// stack, hangs off nothing and has nothing hanging off it. The layout puts it
+// on the far side of the branch its stack targets — see layoutMergedPRs.
+export function isMergedPR(node: GraphNode): node is PRNode {
+  return node.type === "pr" && node.state === "MERGED";
+}
+
+// The branch a merged layer went into: the one its stack targets. GitHub
+// retargets each layer to that branch as the ones below it merge, so the PR's
+// own base says the same thing when the stack's is not known.
+export function mergedIntoBranch(pr: { baseBranch: string; stack?: PRNode["stack"] }): string {
+  return pr.stack?.baseRefName ?? pr.baseBranch;
+}
+
+export function branchNodeId(name: string): string {
+  return `branch-${name}`;
+}
 
 function reviewStatusFromDecision(
   reviewDecision: string | null,
@@ -15,9 +40,11 @@ export function buildDependencyGraph(
   owner: string,
   repo: string,
 ): GraphData {
+  // A merged PR's head branch is spent — usually deleted — so nothing depends
+  // on it any more, even where a name gets reused.
   const headBranchToPR = new Map<string, GraphQLPullRequest>();
   for (const pr of prs) {
-    if (pr.headRefName !== pr.baseRefName) {
+    if (pr.state !== "MERGED" && pr.headRefName !== pr.baseRefName) {
       headBranchToPR.set(pr.headRefName, pr);
     }
   }
@@ -33,6 +60,8 @@ export function buildDependencyGraph(
     baseBranch: pr.baseRefName,
     headBranch: pr.headRefName,
     isDraft: pr.isDraft,
+    state: pr.state,
+    mergedAt: pr.mergedAt,
     labels: pr.labels,
     createdAt: pr.createdAt,
     stateChangedAt: pr.stateChangedAt,
@@ -47,8 +76,27 @@ export function buildDependencyGraph(
 
   const edges: GraphEdge[] = [];
   const branchNodes = new Map<string, GraphNode>();
+  const addBranch = (name: string): string => {
+    const branchId = branchNodeId(name);
+    if (!branchNodes.has(branchId)) {
+      branchNodes.set(branchId, {
+        type: "branch",
+        id: branchId,
+        name,
+        url: `https://github.com/${owner}/${repo}/tree/${name}`,
+      });
+    }
+    return branchId;
+  };
 
   for (const pr of prs) {
+    // A merged layer has no dependency left to draw. The branch it went into
+    // is still put on the graph, so there is something to draw it beside even
+    // when every open layer of its stack is gone.
+    if (pr.state === "MERGED") {
+      addBranch(pr.stack?.baseRefName ?? pr.baseRefName);
+      continue;
+    }
     const hasConflict = pr.mergeable === "CONFLICTING";
     const isMergeable = pr.mergeStateStatus === "CLEAN";
     const reviewStatus = reviewStatusFromDecision(pr.reviewDecision);
@@ -62,15 +110,7 @@ export function buildDependencyGraph(
         reviewStatus,
       });
     } else {
-      const branchId = `branch-${pr.baseRefName}`;
-      if (!branchNodes.has(branchId)) {
-        branchNodes.set(branchId, {
-          type: "branch",
-          id: branchId,
-          name: pr.baseRefName,
-          url: `https://github.com/${owner}/${repo}/tree/${pr.baseRefName}`,
-        });
-      }
+      const branchId = addBranch(pr.baseRefName);
       edges.push({
         source: branchId,
         target: `pr-${pr.number}`,
@@ -112,6 +152,13 @@ export function restrictGraphToPRs(
   );
   for (const edge of data.edges) {
     if (branchIds.has(edge.source) && kept.has(edge.target)) kept.add(edge.source);
+  }
+  // A merged layer has no edge to say so, but it too is drawn against a branch.
+  for (const node of data.nodes) {
+    if (isMergedPR(node) && kept.has(node.id)) {
+      const branchId = branchNodeId(mergedIntoBranch(node));
+      if (branchIds.has(branchId)) kept.add(branchId);
+    }
   }
 
   return {

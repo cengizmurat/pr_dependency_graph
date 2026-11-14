@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DatePicker, Dropdown } from "antd";
 import dayjs from "dayjs";
 import { motion, useReducedMotion } from "motion/react";
-import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, fetchPullRequestSummary, fetchBehindByCounts, buildDependencyGraph } from "../api";
+import { fetchViewerLogin, fetchContributors, fetchPRsByDateRange, fetchStackPRs, fetchPullRequestSummary, fetchBehindByCounts, buildDependencyGraph } from "../api";
 import type {
   GraphQLPullRequest,
   Contributor,
@@ -21,7 +21,7 @@ import {
   PR_REVIEW_STATE_COLOR,
   PR_REVIEW_STATE_LABEL,
 } from "../reviewState";
-import { EYE_ICON_PATH, FILTER_ICON_PATH, LOOKBACK_DAYS_KEY, TAG_ICON_PATH } from "../constants";
+import { EYE_ICON_PATH, FILTER_ICON_PATH, LOOKBACK_DAYS_KEY, STACK_ICON_PATH, TAG_ICON_PATH } from "../constants";
 import {
   getStoredLookbackDays,
   getStoredIncludeBots,
@@ -37,7 +37,14 @@ import {
   copyToClipboard,
 } from "../utils";
 import { withoutBotContributions } from "../bots";
-import { buildShareUrl, getFocusPR, withFocusPR } from "../prFocus";
+import {
+  buildShareUrl,
+  buildStackShareUrl,
+  getFocusPR,
+  getFocusStack,
+  withFocusPR,
+  withFocusStack,
+} from "../prFocus";
 import { hydrateShortcut, pruneStaleShortcut, SHORTCUT_PARAM } from "../filterShortcuts";
 import type { DateRange } from "../utils";
 import { useGithubToken } from "../hooks/useGithubToken";
@@ -93,7 +100,10 @@ function matchesAuthorFilter(pr: GraphQLPullRequest, authors: string[]): boolean
   return authors.length === 0 || authors.includes(pr.authorLogin);
 }
 
+// Ready and draft are states of an open PR. A merged or closed layer of a
+// stack is neither, so asking for one of them leaves it out.
 function matchesStatusFilter(pr: GraphQLPullRequest, status: PRStatusFilter): boolean {
+  if (status !== "all" && pr.state !== "OPEN") return false;
   if (status === "ready") return !pr.isDraft;
   if (status === "draft") return pr.isDraft;
   return true;
@@ -199,6 +209,27 @@ type FocusState =
   | { kind: "closed"; state: "CLOSED" | "MERGED" }
   | { kind: "missing" }
   | { kind: "error"; message: string };
+
+// The same for a focused stack. A stack is never "closed": its merged layers
+// are drawn like the open ones.
+type StackFocusState =
+  | { kind: "visible"; size: number; merged: number }
+  | { kind: "filtered" }
+  | { kind: "loading" }
+  | { kind: "missing" }
+  | { kind: "error"; message: string };
+
+// The PRs of the date range, plus the layers of a focused stack that the range
+// left out. The range's own copy of a PR wins: it is the one kept fresh.
+function withStackPRs(
+  prs: GraphQLPullRequest[],
+  stackPRs: GraphQLPullRequest[] | null | undefined,
+): GraphQLPullRequest[] {
+  if (!stackPRs || stackPRs.length === 0) return prs;
+  const known = new Set(prs.map((pr) => pr.number));
+  const extra = stackPRs.filter((pr) => !known.has(pr.number));
+  return extra.length === 0 ? prs : [...prs, ...extra];
+}
 
 function useIncrementalPRs(
   token: string | null,
@@ -407,10 +438,22 @@ export default function GraphPage() {
 
   // A shared link carries the PR its stack is about in the `pr` param, which
   // is what the graph frames itself on once the data lands.
-  const focusPR = useMemo(() => getFocusPR(searchParams), [searchParams]);
+  // A link to a whole stack carries the stack's number in the `stack` param
+  // instead, and wins when both are there.
+  const focusStack = useMemo(() => getFocusStack(searchParams), [searchParams]);
+  const focusPR = useMemo(
+    () => (focusStack === null ? getFocusPR(searchParams) : null),
+    [searchParams, focusStack],
+  );
   const setFocusPR = useCallback(
     (next: number | null) => {
       setSearchParams((prev) => withFocusPR(prev, next), { replace: true });
+    },
+    [setSearchParams],
+  );
+  const setFocusStack = useCallback(
+    (next: number | null) => {
+      setSearchParams((prev) => withFocusStack(prev, next), { replace: true });
     },
     [setSearchParams],
   );
@@ -434,12 +477,43 @@ export default function GraphPage() {
   const endDate = dateRange[1].toISOString();
 
   const {
-    prs: fetchedPRs,
+    prs: rangePRs,
     isLoading,
     isFetchingMore,
     error: prError,
     refetch,
   } = useIncrementalPRs(token, owner, repo, startDate, endDate, activeTab === "prs");
+
+  // A PR in the date range brings its whole stack with it, so a focused stack
+  // is usually loaded already. A shared link can name a stack with no PR in
+  // the reader's range, though — an old one, or one that has fully merged —
+  // and then the stack is read on its own, by its number.
+  const focusStackInRange =
+    focusStack !== null && rangePRs.some((pr) => pr.stack?.number === focusStack);
+  const {
+    data: focusStackPRs,
+    isFetching: stackLookupFetching,
+    error: stackLookupError,
+  } = useQuery({
+    queryKey: ["stackPRs", owner, repo, focusStack],
+    queryFn: ({ signal }) => fetchStackPRs(token!, owner!, repo!, focusStack!, signal),
+    enabled:
+      !!token &&
+      !!owner &&
+      !!repo &&
+      activeTab === "prs" &&
+      focusStack !== null &&
+      !focusStackInRange &&
+      !isLoading &&
+      !isFetchingMore,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
+  const fetchedPRs = useMemo(
+    () => (focusStack === null ? rangePRs : withStackPRs(rangePRs, focusStackPRs)),
+    [rangePRs, focusStack, focusStackPRs],
+  );
 
   const [includeBots, setIncludeBots] = useState(getStoredIncludeBots);
   const toggleIncludeBots = useCallback(() => {
@@ -494,11 +568,14 @@ export default function GraphPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const prKeys = allPRs.map((p) => p.number).join(",");
+  // Only an open PR can be behind its base: a merged layer's branch is spent,
+  // and usually deleted.
+  const openPRs = useMemo(() => allPRs.filter((p) => p.state === "OPEN"), [allPRs]);
+  const prKeys = openPRs.map((p) => p.number).join(",");
   const { data: behindByData } = useQuery({
     queryKey: ["behindBy", owner, repo, prKeys],
-    queryFn: () => fetchBehindByCounts(token!, owner!, repo!, allPRs, queryClient),
-    enabled: !!owner && !!repo && !!token && allPRs.length > 0 && activeTab === "prs",
+    queryFn: () => fetchBehindByCounts(token!, owner!, repo!, openPRs, queryClient),
+    enabled: !!owner && !!repo && !!token && openPRs.length > 0 && activeTab === "prs",
     staleTime: 60 * 1000,
   });
 
@@ -618,8 +695,9 @@ export default function GraphPage() {
   // also what the two halves add up to.
   const prCountByStatus = useMemo<Record<PRStatusFilter, number>>(() => {
     const pool = filterPRs(allPRs, filters, STATUS_FACET_SKIP);
-    const draft = pool.reduce((n, pr) => n + (pr.isDraft ? 1 : 0), 0);
-    return { all: pool.length, ready: pool.length - draft, draft };
+    const open = pool.filter((pr) => pr.state === "OPEN");
+    const draft = open.reduce((n, pr) => n + (pr.isDraft ? 1 : 0), 0);
+    return { all: pool.length, ready: open.length - draft, draft };
   }, [allPRs, filters]);
 
   // How many PRs each review state would leave on screen. As with the author
@@ -634,8 +712,9 @@ export default function GraphPage() {
     return counts;
   }, [allPRs, filters]);
 
-  // The graph is always built from every PR in the date range: filters pick
-  // out which of them to highlight, they don't decide who is on the graph.
+  // The graph is always built from every PR in the date range, and every layer
+  // of the stacks they are in: filters pick out which of them to highlight,
+  // they don't decide who is on the graph.
   // Dependencies stay drawn either way, so a highlighted PR is still shown in
   // the context of the stack it belongs to.
   const data = useMemo(() => {
@@ -685,6 +764,60 @@ export default function GraphPage() {
     if (!hasActiveFilters) return null;
     return new Set(filterPRs(allPRs, filters).map((pr) => pr.number));
   }, [hasActiveFilters, allPRs, filters]);
+
+  // What the header counts. The merged layers of the stacks are on the graph
+  // and answer to the filters like any other card, but they are not open PRs,
+  // so they are counted apart.
+  const prCounts = useMemo(() => {
+    let open = 0;
+    let merged = 0;
+    let matchedOpen = 0;
+    let matchedMerged = 0;
+    for (const pr of allPRs) {
+      const isMerged = pr.state === "MERGED";
+      if (pr.state === "OPEN") open++;
+      else if (isMerged) merged++;
+      else continue;
+      if (matchedPRs?.has(pr.number)) {
+        if (isMerged) matchedMerged++;
+        else matchedOpen++;
+      }
+    }
+    return { open, merged, matchedOpen, matchedMerged };
+  }, [allPRs, matchedPRs]);
+
+  // --- Focused stack (shared link) ----------------------------------------
+
+  const stackFocusState = useMemo<StackFocusState | null>(() => {
+    if (focusStack === null) return null;
+
+    const layers = allPRs.filter((pr) => pr.stack?.number === focusStack);
+    if (layers.length > 0) {
+      if (matchedPRs && !layers.some((pr) => matchedPRs.has(pr.number))) {
+        return { kind: "filtered" };
+      }
+      return {
+        kind: "visible",
+        size: layers[0].stack!.size,
+        merged: layers.filter((pr) => pr.state === "MERGED").length,
+      };
+    }
+    if (isLoading || isFetchingMore || stackLookupFetching) return { kind: "loading" };
+    if (stackLookupError) {
+      return { kind: "error", message: (stackLookupError as Error).message };
+    }
+    if (focusStackPRs === null) return { kind: "missing" };
+    return { kind: "loading" };
+  }, [
+    focusStack,
+    allPRs,
+    matchedPRs,
+    isLoading,
+    isFetchingMore,
+    stackLookupFetching,
+    stackLookupError,
+    focusStackPRs,
+  ]);
 
   // --- Focused PR (shared link) -------------------------------------------
 
@@ -781,17 +914,24 @@ export default function GraphPage() {
   );
 
   // A change of focus invalidates any "Link copied" note still on screen.
-  useEffect(() => setLinkCopied(false), [focusPR]);
+  useEffect(() => setLinkCopied(false), [focusPR, focusStack]);
 
   const copyShareLink = useCallback(async () => {
-    if (!owner || !repo || focusPR === null) return;
-    const copied = await copyToClipboard(buildShareUrl(owner, repo, focusPR));
+    if (!owner || !repo) return;
+    const url =
+      focusStack !== null
+        ? buildStackShareUrl(owner, repo, focusStack)
+        : focusPR !== null
+          ? buildShareUrl(owner, repo, focusPR)
+          : null;
+    if (!url) return;
+    const copied = await copyToClipboard(url);
     setLinkCopied(copied);
     if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
     if (copied) {
       copyResetTimer.current = setTimeout(() => setLinkCopied(false), COPY_FEEDBACK_MS);
     }
-  }, [owner, repo, focusPR]);
+  }, [owner, repo, focusPR, focusStack]);
 
   const clearFilters = useCallback(() => {
     setSearchParams(
@@ -1082,12 +1222,19 @@ export default function GraphPage() {
       <>
         {matchedPRs && (
           <>
-            <AnimatedCounter value={matchedPRs.size} duration={0.5} />
+            <AnimatedCounter value={prCounts.matchedOpen} duration={0.5} />
             {" of "}
           </>
         )}
-        <AnimatedCounter value={allPRs.length} duration={0.5} />
+        <AnimatedCounter value={prCounts.open} duration={0.5} />
         {isFetchingMore && "+"} open PRs
+        {prCounts.merged > 0 && (
+          <span title="Merged pull requests of the stacks on the graph">
+            {" · "}
+            {matchedPRs && `${prCounts.matchedMerged} of `}
+            {prCounts.merged} merged
+          </span>
+        )}
       </>
     ) : null;
 
@@ -1226,6 +1373,8 @@ export default function GraphPage() {
               token={token}
               focusPR={focusPR}
               onFocusPR={setFocusPR}
+              focusStack={focusStack}
+              onFocusStack={setFocusStack}
               highlightPRs={matchedPRs}
               filteredDisplay={filteredDisplay}
             />
@@ -1234,8 +1383,8 @@ export default function GraphPage() {
         )}
         {focusPR !== null && focusState && (
           <FocusBanner
-            prNumber={focusPR}
-            state={focusState}
+            kind={focusState.kind}
+            message={focusMessage(focusPR, focusState)}
             isMobile={isMobile}
             isFetchingMore={isFetchingMore}
             linkCopied={linkCopied}
@@ -1244,8 +1393,24 @@ export default function GraphPage() {
             onClearFilters={clearFilters}
           />
         )}
+        {focusStack !== null && stackFocusState && (
+          <FocusBanner
+            kind={stackFocusState.kind}
+            message={stackFocusMessage(focusStack, stackFocusState)}
+            icon={STACK_ICON_PATH}
+            isMobile={isMobile}
+            isFetchingMore={isFetchingMore}
+            linkCopied={linkCopied}
+            onCopyLink={copyShareLink}
+            onClear={() => setFocusStack(null)}
+            onClearFilters={clearFilters}
+          />
+        )}
         {isFetchingMore && (() => {
-          const oldestSoFar = dayjs(allPRs[allPRs.length - 1]?.createdAt);
+          // The stacks bring in PRs from outside the date range, which say
+          // nothing about how far the search has got.
+          const inRange = allPRs.filter((pr) => !pr.viaStack);
+          const oldestSoFar = dayjs(inRange[inRange.length - 1]?.createdAt);
           const totalMs = dayjs(endDate).diff(dayjs(startDate));
           const elapsedMs = dayjs(endDate).diff(oldestSoFar);
           const progress = totalMs > 0 ? Math.min(1, Math.max(0, elapsedMs / totalMs)) : 0;
@@ -1343,9 +1508,48 @@ function useCentredBannerLeft(isMobile: boolean, stateKind: FocusState["kind"]) 
   return { ref, placement };
 }
 
+function focusMessage(prNumber: number, state: FocusState): string {
+  switch (state.kind) {
+    case "visible":
+      return state.following > 0
+        ? `Focused on #${prNumber} ${state.title} and ${state.following} following PR${state.following === 1 ? "" : "s"}`
+        : `Focused on #${prNumber} ${state.title}`;
+    case "loading":
+      return `Looking for PR #${prNumber}...`;
+    case "filtered":
+      return `PR #${prNumber} doesn\u2019t match the active filters`;
+    case "closed":
+      return `PR #${prNumber} is ${state.state === "MERGED" ? "merged" : "closed"} — the graph only shows open pull requests`;
+    case "missing":
+      return `PR #${prNumber} wasn't found in this repository`;
+    case "error":
+      return `PR #${prNumber} couldn't be looked up: ${state.message}`;
+  }
+}
+
+function stackFocusMessage(stackNumber: number, state: StackFocusState): string {
+  switch (state.kind) {
+    case "visible": {
+      const size = `${state.size} pull request${state.size === 1 ? "" : "s"}`;
+      return state.merged > 0
+        ? `Focused on stack #${stackNumber} — ${size}, ${state.merged} merged`
+        : `Focused on stack #${stackNumber} — ${size}`;
+    }
+    case "loading":
+      return `Looking for stack #${stackNumber}...`;
+    case "filtered":
+      return `No pull request of stack #${stackNumber} matches the active filters`;
+    case "missing":
+      return `Stack #${stackNumber} wasn't found in this repository`;
+    case "error":
+      return `Stack #${stackNumber} couldn't be looked up: ${state.message}`;
+  }
+}
+
 function FocusBanner({
-  prNumber,
-  state,
+  kind,
+  message,
+  icon = EYE_ICON_PATH,
   isMobile,
   isFetchingMore,
   linkCopied,
@@ -1353,8 +1557,10 @@ function FocusBanner({
   onClear,
   onClearFilters,
 }: {
-  prNumber: number;
-  state: FocusState;
+  // What became of the focused PR or stack — see FocusState.
+  kind: FocusState["kind"];
+  message: string;
+  icon?: string;
   isMobile: boolean;
   isFetchingMore: boolean;
   linkCopied: boolean;
@@ -1362,33 +1568,8 @@ function FocusBanner({
   onClear: () => void;
   onClearFilters: () => void;
 }) {
-  const isProblem = state.kind !== "visible" && state.kind !== "loading";
-  const { ref, placement } = useCentredBannerLeft(isMobile, state.kind);
-
-  let message: string;
-  switch (state.kind) {
-    case "visible":
-      message =
-        state.following > 0
-          ? `Focused on #${prNumber} ${state.title} and ${state.following} following PR${state.following === 1 ? "" : "s"}`
-          : `Focused on #${prNumber} ${state.title}`;
-      break;
-    case "loading":
-      message = `Looking for PR #${prNumber}...`;
-      break;
-    case "filtered":
-      message = `PR #${prNumber} doesn\u2019t match the active filters`;
-      break;
-    case "closed":
-      message = `PR #${prNumber} is ${state.state === "MERGED" ? "merged" : "closed"} — the graph only shows open pull requests`;
-      break;
-    case "missing":
-      message = `PR #${prNumber} wasn't found in this repository`;
-      break;
-    case "error":
-      message = `PR #${prNumber} couldn't be looked up: ${state.message}`;
-      break;
-  }
+  const isProblem = kind !== "visible" && kind !== "loading";
+  const { ref, placement } = useCentredBannerLeft(isMobile, kind);
 
   return (
     <div
@@ -1408,10 +1589,10 @@ function FocusBanner({
       role="status"
     >
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}>
-        <path d={EYE_ICON_PATH} />
+        <path d={icon} />
       </svg>
       <span style={styles.focusBannerText}>{message}</span>
-      {state.kind === "visible" && (
+      {kind === "visible" && (
         <button
           type="button"
           className="focus-banner-btn"
@@ -1425,7 +1606,7 @@ function FocusBanner({
           {linkCopied ? "Link copied" : "Copy link to share"}
         </button>
       )}
-      {state.kind === "filtered" && (
+      {kind === "filtered" && (
         <button
           type="button"
           className="focus-banner-btn"

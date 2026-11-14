@@ -9,6 +9,7 @@ import type {
 import {
   EYE_ICON_PATH,
   MAX_REVIEWER_AVATARS,
+  MERGED_ICON_PATH,
   SHARE_BADGE_COLOR,
   STACK_ICON_PATH,
   STATE_COLORS,
@@ -36,6 +37,9 @@ function labelTextColor(hex: string): string {
 // gives the creation date whenever the PR has switched state since.
 function ageTitle(pr: PRNode): string {
   const opened = `Opened ${new Date(pr.createdAt).toLocaleString()}`;
+  if (pr.state === "MERGED" && pr.mergedAt) {
+    return `Merged ${new Date(pr.mergedAt).toLocaleString()} — ${opened}`;
+  }
   if (pr.stateChangedAt === pr.createdAt) return opened;
   const changed = new Date(pr.stateChangedAt).toLocaleString();
   const label = pr.isDraft ? "Converted to draft" : "Ready for review";
@@ -277,9 +281,16 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurre
   ].slice(0, MAX_REVIEWER_AVATARS);
   const extraCount = pr.reviewers.length - MAX_REVIEWER_AVATARS;
 
-  const hasMergeBadge = mergeStatus && (mergeStatus.hasConflict || mergeStatus.isMergeable);
-  const hasUpdateBadge = isUpdating || (pr.behindBy != null && pr.behindBy > 0);
-  const hasBadges = hasMergeBadge || hasUpdateBadge || !!pr.stack || !!onFocus;
+  // A merged or closed PR is only on the graph as a layer of its stack. There
+  // is nothing left to merge, update or focus on, so it keeps the stack badge
+  // alone.
+  const isOpen = pr.state === "OPEN";
+  const isMerged = pr.state === "MERGED";
+  const canFocus = isOpen && !!onFocus;
+  const hasMergeBadge =
+    isOpen && mergeStatus && (mergeStatus.hasConflict || mergeStatus.isMergeable);
+  const hasUpdateBadge = isOpen && (isUpdating || (pr.behindBy != null && pr.behindBy > 0));
+  const hasBadges = hasMergeBadge || hasUpdateBadge || !!pr.stack || canFocus;
 
   // GitHub's totals, less whatever sits in generated files. While the PR's
   // file list is still loading there is nothing to show yet but a spinner.
@@ -319,19 +330,35 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurre
               isCurrentlyUpdating={isCurrentlyUpdating}
             />
           )}
-          {onFocus && <FocusBadge prNumber={pr.number} onFocus={onFocus} />}
+          {canFocus && <FocusBadge prNumber={pr.number} onFocus={onFocus} />}
         </div>
       )}
       <div style={styles.header}>
-        <span
-          style={{
-            ...styles.dot,
-            backgroundColor: pr.isDraft
-              ? "var(--color-draft)"
-              : "var(--color-ready)",
-          }}
-        />
-        <span style={styles.title}>
+        {isMerged ? (
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 16 16"
+            fill="var(--color-merged-accent)"
+            style={styles.stateIcon}
+            role="img"
+            aria-label="Merged"
+          >
+            <path d={MERGED_ICON_PATH} />
+          </svg>
+        ) : (
+          <span
+            style={{
+              ...styles.dot,
+              backgroundColor: !isOpen
+                ? "var(--color-conflict)"
+                : pr.isDraft
+                  ? "var(--color-draft)"
+                  : "var(--color-ready)",
+            }}
+          />
+        )}
+        <span style={isMerged ? { ...styles.title, ...styles.titleMerged } : styles.title}>
           #{pr.number} {pr.title}
         </span>
       </div>
@@ -363,9 +390,16 @@ export default function PRCard({ pr, mergeStatus, isMerging, isUpdating, isCurre
       )}
 
       <div style={styles.row}>
-        <span style={styles.age} title={ageTitle(pr)}>
-          {timeAgo(pr.stateChangedAt)}
-        </span>
+        {isMerged ? (
+          <span style={{ ...styles.age, ...styles.ageMerged }} title={ageTitle(pr)}>
+            Merged{pr.mergedAt ? ` ${timeAgo(pr.mergedAt)}` : ""}
+          </span>
+        ) : (
+          <span style={styles.age} title={ageTitle(pr)}>
+            {isOpen ? "" : "Closed · "}
+            {timeAgo(pr.stateChangedAt)}
+          </span>
+        )}
         <div style={styles.diff}>
           {diffLoading ? (
             <span style={styles.diffLoading} role="img" title="Loading the diff" aria-label="Loading the diff">

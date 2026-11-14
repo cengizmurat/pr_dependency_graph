@@ -52,7 +52,14 @@ export interface PRStack {
   // 1-based position from the bottom, where 1 targets the stack's base branch.
   position: number;
   size: number;
+  // The branch the whole stack is aimed at, usually `main`. A merged layer is
+  // drawn beside this branch. Absent when GitHub did not say.
+  baseRefName?: string;
 }
+
+// The search behind the graph only returns open PRs. A merged or closed one is
+// on the graph only as a layer of a stack that still has work in it.
+export type PRState = "OPEN" | "MERGED" | "CLOSED";
 
 // The parts of a PR read after the PR list itself, each in a request of its
 // own. The list alone is enough to draw the graph; these fill the cards in.
@@ -72,6 +79,12 @@ export interface GraphQLPullRequest {
   title: string;
   url: string;
   isDraft: boolean;
+  state: PRState;
+  // When the PR was merged, or null for one that was not.
+  mergedAt: string | null;
+  // True when the PR was not found by the date-range search and is here only
+  // because its stack is: a merged layer, or an open one from outside the range.
+  viaStack?: boolean;
   createdAt: string;
   // When the PR last entered its current draft/ready state — the most recent
   // "ready for review" or "convert to draft" event, or the creation time for a
@@ -282,6 +295,8 @@ export interface PRNode {
   baseBranch: string;
   headBranch: string;
   isDraft: boolean;
+  state: PRState;
+  mergedAt: string | null;
   labels: PRLabel[];
   createdAt: string;
   // See GraphQLPullRequest.stateChangedAt.
@@ -360,6 +375,28 @@ export interface EdgeFlags {
   hasConflict: boolean;
   isMergeable: boolean;
   reviewStatus: EdgeReviewStatus;
+}
+
+// The link from a merged stack layer to what it went into: the next merged
+// layer, or the branch the stack targets. Drawn pointing at `to`.
+export interface MergedEdge {
+  from: LayoutNode;
+  to: LayoutNode;
+}
+
+// The violet rectangle around the pull requests of one GitHub stack, in graph
+// coordinates.
+export interface StackBox {
+  number: number;
+  // The stack's full size as GitHub reports it, which can be more than the
+  // layers on screen when the filters hide some.
+  size: number;
+  // Node ids of the layers drawn inside the rectangle.
+  nodeIds: string[];
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 // --- Component types ---

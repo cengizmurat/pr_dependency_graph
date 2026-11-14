@@ -1,6 +1,7 @@
 import type {
   PRDetailPart,
   PRDetailsStatus,
+  PRState,
   ReviewState,
   Mergeable,
   Reviewer,
@@ -58,7 +59,7 @@ async function fetchWithAuth(
 // stack returns null for both.
 const STACK_FIELDS = `
         stackEntry { position }
-        stack { number size }`;
+        stack { number size baseRefName }`;
 
 // Stacked PRs are still a public preview, so the fields are absent from the
 // schema wherever the feature isn't enabled — and an unknown field fails the
@@ -155,6 +156,12 @@ const DETAIL_FIELDS: Record<PRDetailPart, string> = {
 };
 
 const DETAIL_PARTS = Object.keys(DETAIL_FIELDS) as PRDetailPart[];
+
+// What places a PR on the graph and sorts it, whichever query it comes from.
+const PR_BASE_FIELDS = `
+        number title url isDraft createdAt additions deletions
+        headRefName baseRefName headRefOid mergeable mergeStateStatus reviewDecision
+        author { login avatarUrl }${STATE_CHANGE_FIELDS}`;
 
 // The parts the one-query PR list asks for. Teams are left out: without
 // `read:org` they would fail the whole list rather than just themselves.
@@ -574,7 +581,14 @@ interface PRNodeBaseRaw {
   // Absent entirely when the stack fields aren't in the schema, null when the
   // PR simply isn't stacked.
   stackEntry?: { position: number } | null;
-  stack?: { number: number; size: number } | null;
+  stack?: { number: number; size: number; baseRefName?: string | null } | null;
+  // Only asked of the PRs read through their stack. The date-range search
+  // returns open PRs alone, so a PR without these is an open one.
+  state?: PRState;
+  mergedAt?: string | null;
+  // Set here rather than by GitHub: the PR was read through its stack, not
+  // found by the search.
+  viaStack?: boolean;
 }
 
 interface PRDetailsRaw {
@@ -785,6 +799,9 @@ function processRawPR(
     title: pr.title,
     url: pr.url,
     isDraft: pr.isDraft,
+    state: pr.state ?? "OPEN",
+    mergedAt: pr.mergedAt ?? null,
+    ...(pr.viaStack ? { viaStack: true } : {}),
     createdAt: pr.createdAt,
     stateChangedAt: stateChangedAt(pr),
     additions: pr.additions,
@@ -817,6 +834,7 @@ function processRawPR(
             number: pr.stack.number,
             position: pr.stackEntry.position,
             size: pr.stack.size,
+            ...(pr.stack.baseRefName ? { baseRefName: pr.stack.baseRefName } : {}),
           }
         : null,
     details,
@@ -847,10 +865,7 @@ query($query: String!, $cursor: String, $first: Int!) {
   search(query: $query, type: ISSUE, first: $first, after: $cursor) {
     pageInfo { hasNextPage endCursor }
     nodes {
-      ... on PullRequest {
-        number title url isDraft createdAt additions deletions
-        headRefName baseRefName headRefOid mergeable mergeStateStatus reviewDecision
-        author { login avatarUrl }${STATE_CHANGE_FIELDS}${stackFields}
+      ... on PullRequest {${PR_BASE_FIELDS}${stackFields}
       }
     }
   }
@@ -971,48 +986,130 @@ function createLimiter(limit: number) {
   };
 }
 
-// The open PRs created in the date range, in two steps. The PR list comes
-// first, page by page: it is enough to draw the graph. Each page then starts
-// the detail requests for its PRs — labels, reviews, opinionated reviews,
-// review requests and team review requests, each in requests of its own, all
-// at once. The PRs carry which parts are still loading, so a card shows a
-// spinner in their place.
-//
-// `onUpdate` is called whenever something new is in: a page of PRs, or one
-// part for a batch of them. `morePages` says whether more PRs are coming.
-// The returned list is the finished one, with every part loaded or failed.
-export async function fetchPRsByDateRange(
+// --- Stacks ---
+
+// Stacks asked about in one request, and how long it may take. A stack comes
+// back with every layer's own fields, so a request holds only a few of them.
+const STACK_BATCH_SIZE = 4;
+const STACK_TIMEOUT_MS = 20_000;
+
+// GitHub's own cap on a connection page. A stack is a handful of PRs; one page
+// is all of it.
+const STACK_ENTRIES_PAGE = 100;
+
+// A stack has no lookup of its own in GraphQL: it is reached through any one of
+// its pull requests. The layers come back whatever their state, which is the
+// point — the search above only ever returns open PRs.
+function stackMembersQuery(members: readonly number[]): string {
+  const fields = members
+    .map(
+      (number, i) => `
+    s${i}: pullRequest(number: ${number}) {
+      stack {
+        number size baseRefName
+        entries(first: ${STACK_ENTRIES_PAGE}) {
+          nodes {
+            position
+            pullRequest {
+              state mergedAt${PR_BASE_FIELDS}
+            }
+          }
+        }
+      }
+    }`,
+    )
+    .join("");
+  return `
+query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {${fields}
+  }
+}`;
+}
+
+interface RawStack {
+  number: number;
+  size: number;
+  baseRefName?: string | null;
+  entries: {
+    nodes: ({ position: number; pullRequest: PRNodeBaseRaw | null } | null)[] | null;
+  } | null;
+}
+
+// The layers of the stack each given PR belongs to, in the order asked. Null
+// where the PR is in no stack, or GitHub could not read it.
+function fetchStackMembersBatch(
   token: string,
   owner: string,
   repo: string,
-  startDate: string,
-  endDate: string,
-  onUpdate?: (accumulated: GraphQLPullRequest[], morePages: boolean) => void,
-  signal?: AbortSignal,
-): Promise<GraphQLPullRequest[]> {
-  const searchQuery = `repo:${owner}/${repo} is:pr is:open created:${startDate}..${endDate}`;
+  members: readonly number[],
+  signal: AbortSignal,
+): Promise<(PRNodeBaseRaw[] | null)[]> {
+  return readWithRetry(
+    async (attemptSignal) => {
+      const data = await graphql<{
+        repository: Record<string, { stack: RawStack | null } | null> | null;
+      }>(token, stackMembersQuery(members), { owner, name: repo }, attemptSignal);
+      return members.map((_, i) => {
+        const stack = data.repository?.[`s${i}`]?.stack;
+        if (!stack) return null;
+        const layers: PRNodeBaseRaw[] = [];
+        for (const entry of stack.entries?.nodes ?? []) {
+          if (!entry?.pullRequest?.number) continue;
+          // The entry says where the PR sits and the stack says the rest, so
+          // the PR carries the same two fields a search result does.
+          layers.push({
+            ...entry.pullRequest,
+            stackEntry: { position: entry.position },
+            stack: { number: stack.number, size: stack.size, baseRefName: stack.baseRefName },
+          });
+        }
+        return layers;
+      });
+    },
+    STACK_TIMEOUT_MS,
+    signal,
+  );
+}
 
+// Gathers pull requests and everything read about them afterwards: the detail
+// parts of each, and the other layers of every stack one of them is in.
+//
+// `add` takes PRs as a query returned them. Each new one starts its detail
+// requests — labels, reviews, opinionated reviews, review requests and team
+// review requests, each in requests of its own, all at once — and, when it is
+// in a stack not seen yet, a request for that stack's layers, which are added
+// the same way. So a stack is always whole: a merged layer, or an open one from
+// outside the date range, comes in behind the PR that led to it.
+//
+// The PRs carry which parts are still loading, so a card shows a spinner in
+// their place. `onChange` is called whenever something new is in.
+function createPRCollector(
+  token: string,
+  owner: string,
+  repo: string,
+  signal: AbortSignal,
+  onChange: () => void,
+) {
   interface Entry {
     raw: PRNodeBaseRaw & Partial<PRDetailsRaw>;
     details: PRDetailsStatus;
     pr: GraphQLPullRequest;
   }
-  const order: number[] = [];
+  // What the search found, in its order, then what only the stacks brought in.
+  const found: number[] = [];
+  const viaStack: number[] = [];
   const entries = new Map<number, Entry>();
-  let morePages = true;
-
-  const snapshot = () => order.map((number) => entries.get(number)!.pr);
-  const publish = () => onUpdate?.(snapshot(), morePages);
-
-  // Stops the detail requests as soon as the caller cancels or the PR list
-  // fails: there is nothing left to fill in then.
-  const controller = new AbortController();
-  const onAbort = () => controller.abort();
-  if (signal?.aborted) controller.abort();
-  signal?.addEventListener("abort", onAbort, { once: true });
+  const stacksRead = new Set<number>();
 
   const limit = createLimiter(DETAIL_CONCURRENCY);
   const reading: Promise<void>[] = [];
+  // A request started by another one's answer is added while the first batch
+  // is already being waited on, so each is marked as handled here: a cancelled
+  // one must not surface as an unhandled rejection before `settled` reaches it.
+  const track = (request: Promise<void>) => {
+    request.catch(() => {});
+    reading.push(request);
+  };
 
   // Folds one part's answer for a batch into its PRs. A PR with no answer —
   // the request failed even after retrying, or GitHub could not read that PR —
@@ -1030,20 +1127,18 @@ export async function fetchPRsByDateRange(
       entry.details = { ...entry.details, [part]: answer ? "loaded" : "failed" };
       entry.pr = processRawPR(entry.raw, entry.details);
     });
-    publish();
+    onChange();
   };
 
   const readDetails = (numbers: readonly number[]) => {
     for (let i = 0; i < numbers.length; i += DETAIL_BATCH_SIZE) {
       const batch = numbers.slice(i, i + DETAIL_BATCH_SIZE);
       for (const part of DETAIL_PARTS) {
-        reading.push(
-          limit(() =>
-            fetchPRDetailsBatch(token, owner, repo, part, batch, controller.signal),
-          ).then(
+        track(
+          limit(() => fetchPRDetailsBatch(token, owner, repo, part, batch, signal)).then(
             (answers) => settle(part, batch, answers),
             (err) => {
-              if (controller.signal.aborted) throw err;
+              if (signal.aborted) throw err;
               console.warn(`Failed to fetch PR ${part}:`, err);
               settle(part, batch, null);
             },
@@ -1052,6 +1147,119 @@ export async function fetchPRsByDateRange(
       }
     }
   };
+
+  // One member per stack that has not been read yet is enough to reach it.
+  const readStacks = (numbers: readonly number[]) => {
+    const members: number[] = [];
+    for (const number of numbers) {
+      const stack = entries.get(number)?.raw.stack;
+      if (!stack || stacksRead.has(stack.number)) continue;
+      stacksRead.add(stack.number);
+      members.push(number);
+    }
+    for (let i = 0; i < members.length; i += STACK_BATCH_SIZE) {
+      const batch = members.slice(i, i + STACK_BATCH_SIZE);
+      track(
+        limit(() => fetchStackMembersBatch(token, owner, repo, batch, signal)).then(
+          (stacks) => {
+            add(
+              stacks.flatMap((layers) => layers ?? []),
+              true,
+            );
+          },
+          (err) => {
+            if (signal.aborted) throw err;
+            // The PRs the search found are still drawn; their stacks are just
+            // missing the layers the search could not see.
+            console.warn("Failed to fetch the stacks' pull requests:", err);
+          },
+        ),
+      );
+    }
+  };
+
+  function add(raws: readonly (PRNodeBaseRaw | null)[], fromStack: boolean): void {
+    const added: number[] = [];
+    for (const raw of raws) {
+      if (!raw?.number) continue;
+      const existing = entries.get(raw.number);
+      if (existing) {
+        // A PR opened while paging pushes the others down a place, so the next
+        // page can start with one already seen. And a stack can bring a PR in
+        // before the search reaches it: the search then claims it back, so it
+        // counts as one of the PRs in the date range.
+        if (!fromStack && existing.raw.viaStack) {
+          viaStack.splice(viaStack.indexOf(raw.number), 1);
+          found.push(raw.number);
+          existing.raw = { ...existing.raw, viaStack: false };
+          existing.pr = processRawPR(existing.raw, existing.details);
+        }
+        continue;
+      }
+      const entryRaw = fromStack ? { ...raw, viaStack: true } : raw;
+      entries.set(raw.number, {
+        raw: entryRaw,
+        details: ALL_DETAILS_LOADING,
+        pr: processRawPR(entryRaw, ALL_DETAILS_LOADING),
+      });
+      (fromStack ? viaStack : found).push(raw.number);
+      added.push(raw.number);
+    }
+    onChange();
+    readDetails(added);
+    readStacks(added);
+  }
+
+  return {
+    add: (raws: readonly (PRNodeBaseRaw | null)[]) => add(raws, false),
+    addFromStack: (raws: readonly (PRNodeBaseRaw | null)[]) => add(raws, true),
+    snapshot: () => [...found, ...viaStack].map((number) => entries.get(number)!.pr),
+    // Resolves once nothing is being read any more, with every part of every
+    // PR loaded or failed.
+    settled: async () => {
+      let seen = 0;
+      while (seen < reading.length) {
+        const pending = reading.slice(seen);
+        seen = reading.length;
+        await Promise.all(pending);
+      }
+    },
+    // What is still running ends on the abort; nothing waits on it any more.
+    abandon: () => void Promise.allSettled(reading),
+  };
+}
+
+// The open PRs created in the date range, together with every other layer of
+// the stacks they are in. The PR list comes first, page by page: it is enough
+// to draw the graph. The rest follows it in — see createPRCollector.
+//
+// `onUpdate` is called whenever something new is in: a page of PRs, one part
+// for a batch of them, or the layers of a stack. `morePages` says whether more
+// PRs are coming. The returned list is the finished one, with every part
+// loaded or failed.
+export async function fetchPRsByDateRange(
+  token: string,
+  owner: string,
+  repo: string,
+  startDate: string,
+  endDate: string,
+  onUpdate?: (accumulated: GraphQLPullRequest[], morePages: boolean) => void,
+  signal?: AbortSignal,
+): Promise<GraphQLPullRequest[]> {
+  const searchQuery = `repo:${owner}/${repo} is:pr is:open created:${startDate}..${endDate}`;
+
+  let morePages = true;
+
+  // Stops the detail requests as soon as the caller cancels or the PR list
+  // fails: there is nothing left to fill in then.
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  if (signal?.aborted) controller.abort();
+  signal?.addEventListener("abort", onAbort, { once: true });
+
+  const collector = createPRCollector(token, owner, repo, controller.signal, () =>
+    onUpdate?.(collector.snapshot(), morePages),
+  );
 
   try {
     let cursor: string | null = null;
@@ -1069,33 +1277,75 @@ export async function fetchPRsByDateRange(
       );
 
       const search = result.search;
-      const added: number[] = [];
-      for (const raw of search?.nodes ?? []) {
-        // A PR opened while paging pushes the others down a place, so the next
-        // page can start with one already seen.
-        if (!raw?.number || entries.has(raw.number)) continue;
-        entries.set(raw.number, {
-          raw,
-          details: ALL_DETAILS_LOADING,
-          pr: processRawPR(raw, ALL_DETAILS_LOADING),
-        });
-        order.push(raw.number);
-        added.push(raw.number);
-      }
-
       morePages = !!search?.pageInfo.hasNextPage;
       cursor = search?.pageInfo.endCursor ?? null;
-      publish();
-      readDetails(added);
+      collector.add(search?.nodes ?? []);
     }
 
-    await Promise.all(reading);
-    return snapshot();
+    await collector.settled();
+    return collector.snapshot();
   } catch (err) {
     controller.abort();
-    // The detail requests still running end on the abort; nothing waits on
-    // them any more, so their rejections are dropped here.
-    void Promise.allSettled(reading);
+    collector.abandon();
+    throw err;
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+interface RestStack {
+  pull_requests?: { number?: number }[];
+}
+
+// Every pull request of one stack, by the stack's number — what a shared stack
+// link needs when none of the stack's PRs is in the reader's date range. Null
+// when the repository has no such stack.
+//
+// Only the REST API can look a stack up by its number, and it says little
+// about each layer, so it is asked for one PR number and the rest is read like
+// any other stack, through that PR.
+export async function fetchStackPRs(
+  token: string,
+  owner: string,
+  repo: string,
+  stackNumber: number,
+  signal?: AbortSignal,
+): Promise<GraphQLPullRequest[] | null> {
+  const res = await fetchWithAuth(
+    token,
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/stacks/${stackNumber}`,
+    { headers: { Accept: "application/vnd.github+json" }, signal },
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message ?? `GitHub API returned ${res.status}`);
+  }
+  const stack: RestStack = await res.json();
+  const member = stack.pull_requests?.find((pr) => pr.number)?.number;
+  if (!member) return null;
+
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  if (signal?.aborted) controller.abort();
+  signal?.addEventListener("abort", onAbort, { once: true });
+
+  const collector = createPRCollector(token, owner, repo, controller.signal, () => {});
+  try {
+    const [layers] = await fetchStackMembersBatch(
+      token,
+      owner,
+      repo,
+      [member],
+      controller.signal,
+    );
+    if (!layers) return null;
+    collector.addFromStack(layers);
+    await collector.settled();
+    return collector.snapshot();
+  } catch (err) {
+    controller.abort();
+    collector.abandon();
     throw err;
   } finally {
     signal?.removeEventListener("abort", onAbort);

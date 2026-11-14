@@ -16,6 +16,13 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
+    version: 18,
+    title: "See a whole GitHub stack, merged layers included",
+    description:
+      "Every pull request of a GitHub stack is now on the graph, inside a violet rectangle, even the ones outside your date range. The layers that are already merged sit on the other side of the branch the stack targets, so you can see what is done and what is still open. The share button on the rectangle copies a link to the whole stack. Your filters apply to these pull requests too.",
+    date: "2026-11-14",
+  },
+  {
     version: 17,
     title: "See where your CI time goes",
     description:

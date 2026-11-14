@@ -56,7 +56,7 @@ returning users see each unread one once, as a popup.
 2. Enter a GitHub `owner/repo`.
 3. The app fetches all open PRs directly from the GitHub GraphQL API.
 4. Stacked PR dependencies are detected: if PR-B's base branch matches PR-A's head branch, PR-B depends on PR-A.
-5. PRs belonging to a native GitHub stack also carry their stack membership, read from the `stack` and `stackEntry` fields on the GraphQL `PullRequest` type. A stack badge on the card shows the PR's layer, e.g. `2/3`. GitHub rejects the update-branch endpoint for a stacked PR — a stack is rebased as a whole, and only the PR's own "Rebase Stack" button or `gh stack rebase` can ask for that — so the update badge opens the pull request instead. Repositories without GitHub's stacked pull requests are unaffected: the fields are dropped from the query and the branch heuristic above still applies.
+5. PRs belonging to a native GitHub stack also carry their stack membership, read from the `stack` and `stackEntry` fields on the GraphQL `PullRequest` type. A stack badge on the card shows the PR's layer, e.g. `2/3`. GitHub rejects the update-branch endpoint for a stacked PR — a stack is rebased as a whole, and only the PR's own "Rebase Stack" button or `gh stack rebase` can ask for that — so the update badge opens the pull request instead. Repositories without GitHub's stacked pull requests are unaffected: the fields are dropped from the query and the branch heuristic above still applies. A stack is always drawn whole — see [A GitHub Stack Is Drawn Whole](#a-github-stack-is-drawn-whole).
 6. An interactive force-directed graph is rendered with clickable PR nodes.
 7. Teams asked for a review show on the card next to the people. A PR that asks a team counts as asking each member of it, so the reviewer filter and the "Requested reviews" shortcut find it for them. To count only the people asked by name, set "Team review requests" to "Ignored" in Settings. Reading teams needs the `read:org` scope: the sign-in asks for it, and a personal access token needs it too. Without it the teams are left out and everything else still works. If you signed in before this change, sign out and in again to grant it.
 
@@ -225,6 +225,48 @@ as if it had been clicked.
 Following such a link without being signed in sends you to the home page to
 authorize, and back to the link afterwards — filters intact, resolved to your
 account rather than the sharer's.
+
+## A GitHub Stack Is Drawn Whole
+
+When a pull request on the graph belongs to a GitHub stack, every other layer
+of that stack is fetched too, whatever its state and whenever it was opened.
+The date-range search only returns open PRs, so the rest is read through the
+stack itself: `stack { entries { pullRequest } }` on any one of its PRs gives
+all of them. A merged layer, or an open one from before the date range, is
+therefore on the graph as long as one PR of its stack is.
+
+All the layers of a stack sit inside one violet rectangle, with a tab on its
+top border that names the stack and says how much of it has merged, such as
+`Stack #12 · 2 of 5 merged`. A stack is drawn as a straight line: a layer is
+level with the next layer of its stack, not midway between everything that
+depends on it, so the rectangle never takes in a card that is not part of the
+stack.
+
+Merged layers are past work, so they go on the other side of the branch the
+stack targets — to the left of `main` when the graph runs left to right, above
+it when it runs top to bottom. Read across, a stack is then in the order of its
+layers: what has merged, the branch it merged into, and what is still open
+against it. A merged card is grey, says `Merged 3d ago`, and keeps only its
+stack badge: there is nothing left to merge, update or focus on.
+
+The toolbar filters apply to these pull requests like to any other. A filter
+fades or hides a merged layer that does not match, and the menus count them.
+The status filter is the one difference: Ready and Draft are states of an open
+PR, so picking either leaves the merged layers out. The header counts them
+apart from the open ones, as in `11 open PRs · 3 merged`.
+
+### Sharing a Whole Stack
+
+The share button on a stack's tab copies a link to the stack,
+`https://<host>/owner/repo?stack=12`. Opening it frames the graph on every
+layer of that stack, merged ones included, and fades the rest back. Clicking
+the stack's name on the tab opens the same view without copying anything.
+
+The link names the stack, not one of its PRs, so it keeps working as layers
+merge. If no PR of the stack is in the reader's date range — an old stack, or
+one that has fully merged — the stack is looked up by its number with
+`GET /repos/{owner}/{repo}/stacks/{stack_number}` and read on its own. Like the
+PR link below, it carries no filters.
 
 ## Sharing a Stack of PRs
 
