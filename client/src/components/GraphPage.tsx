@@ -48,6 +48,7 @@ import { AnimatedCounter } from "@/components/ui/animated-counter";
 import MatrixOrb from "@/components/ui/matrix-orb";
 import GraphView from "./GraphView";
 import FeatureAnnouncementPopup from "./FeatureAnnouncement";
+import LastUpdated from "./LastUpdated";
 import FoldToggle from "./FoldToggle";
 import PageTabs from "./PageTabs";
 import type { PageTab } from "./PageTabs";
@@ -262,6 +263,9 @@ function useIncrementalPRs(
     isFetchingMore,
     error: query.error ? (query.error as Error).message : null,
     refetch: query.refetch,
+    updatedAt: query.dataUpdatedAt,
+    isRefreshing: query.isFetching && !query.isLoading,
+    refreshFailed: query.isError && query.data !== undefined,
   };
 }
 
@@ -450,9 +454,14 @@ export default function GraphPage() {
     const timer = setInterval(() => {
       if (!dayjs().isAfter(dateRange[1])) return;
       const next: DateRange = [dateRange[0], dayjs().endOf("day")];
-      // Seed the new key with the PRs on screen, marked stale, so the graph refetches without blanking.
-      const shown = queryClient.getQueryData<GraphQLPullRequest[]>(prsQueryKey(owner, repo, dateRange));
-      if (shown) queryClient.setQueryData(prsQueryKey(owner, repo, next), shown, { updatedAt: 0 });
+      // Seed the new key with the PRs on screen and their fetch time, marked stale, so
+      // the graph refetches without blanking.
+      const shown = queryClient.getQueryState<GraphQLPullRequest[]>(prsQueryKey(owner, repo, dateRange));
+      if (shown?.data) {
+        const nextKey = prsQueryKey(owner, repo, next);
+        queryClient.setQueryData(nextKey, shown.data, { updatedAt: shown.dataUpdatedAt });
+        void queryClient.invalidateQueries({ queryKey: nextKey, exact: true, refetchType: "none" });
+      }
       setDateRange(next);
     }, DAY_CHECK_INTERVAL_MS);
     return () => clearInterval(timer);
@@ -464,6 +473,9 @@ export default function GraphPage() {
     isFetchingMore,
     error: prError,
     refetch,
+    updatedAt: prsUpdatedAt,
+    isRefreshing: prsRefreshing,
+    refreshFailed: prsRefreshFailed,
   } = useIncrementalPRs(token, owner, repo, dateRange, activeTab === "prs");
 
   const [includeBots, setIncludeBots] = useState(getStoredIncludeBots);
@@ -1102,18 +1114,29 @@ export default function GraphPage() {
     </>
   );
 
-  // How many PRs the graph is picking out, of how many it holds.
+  // How many PRs the graph is picking out, of how many it holds, and when they were fetched.
   const countLabel =
-    activeTab === "prs" && data ? (
+    activeTab === "prs" ? (
       <>
-        {matchedPRs && (
+        {data && (
           <>
-            <AnimatedCounter value={matchedPRs.size} duration={0.5} />
-            {" of "}
+            {matchedPRs && (
+              <>
+                <AnimatedCounter value={matchedPRs.size} duration={0.5} />
+                {" of "}
+              </>
+            )}
+            <AnimatedCounter value={allPRs.length} duration={0.5} />
+            {isFetchingMore && "+"} open PRs
+            {" · "}
           </>
         )}
-        <AnimatedCounter value={allPRs.length} duration={0.5} />
-        {isFetchingMore && "+"} open PRs
+        <LastUpdated
+          updatedAt={prsUpdatedAt}
+          isRefreshing={prsRefreshing}
+          failed={prsRefreshFailed}
+          compact={isMobile}
+        />
       </>
     ) : null;
 
