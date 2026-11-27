@@ -16,6 +16,13 @@ export interface FeatureAnnouncement {
 // version is lower see the popup once, after which it is marked as seen.
 export const FEATURE_ANNOUNCEMENTS: FeatureAnnouncement[] = [
   {
+    version: 18,
+    title: "See when the graph was last updated",
+    description:
+      "Pull requests now refresh every 15 minutes even while the tab is in the background, and a tab left open past midnight keeps finding the new ones. Next to the PR count, the header shows when the list was last updated, such as \"Updated 3 min ago\", and \"Updating…\" while it fetches. If an update fails, the label turns red and shows how old the data on screen is. Hover over it to see the exact time.",
+    date: "2026-11-27",
+  },
+  {
     version: 17,
     title: "See where your CI time goes",
     description:
