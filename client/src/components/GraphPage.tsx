@@ -67,9 +67,9 @@ function looksLikeRepoNotFound(message: string): boolean {
 
 const { RangePicker } = DatePicker;
 
-// Open PRs are kept fresh by refetching on this interval. The graph updates in
-// place when newer data arrives, so a tab left open stays current on its own.
+// Open PRs refetch on this interval, also in a hidden tab, and the graph updates in place.
 const PR_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+const DAY_CHECK_INTERVAL_MS = 60 * 1000;
 
 // Stable reference for the empty case so dependent memos don't recompute on
 // every render before the first page lands.
@@ -200,21 +200,30 @@ type FocusState =
   | { kind: "missing" }
   | { kind: "error"; message: string };
 
+function prsQueryKey(owner: string | undefined, repo: string | undefined, range: DateRange) {
+  return ["prs", owner, repo, range[0].toISOString(), range[1].toISOString()];
+}
+
 function useIncrementalPRs(
   token: string | null,
   owner: string | undefined,
   repo: string | undefined,
-  startDate: string,
-  endDate: string,
+  dateRange: DateRange,
   active: boolean,
 ) {
   const queryClient = useQueryClient();
   const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const startDate = dateRange[0].toISOString();
+  const endDate = dateRange[1].toISOString();
 
   const query = useQuery({
-    queryKey: ["prs", owner, repo, startDate, endDate],
+    queryKey: prsQueryKey(owner, repo, dateRange),
     enabled: !!token && !!owner && !!repo && active,
     refetchInterval: PR_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: true,
+    // Catches up on return when the browser froze a hidden tab and skipped ticks.
+    staleTime: PR_REFRESH_INTERVAL_MS,
+    refetchOnWindowFocus: true,
     queryFn: async ({ queryKey, signal }) => {
       // Stream pages into the cache so the graph renders progressively, but
       // only on the first load. On a background auto-refresh the full graph is
@@ -418,6 +427,8 @@ export default function GraphPage() {
   const [lookbackDays, setLookbackDays] = useState(getStoredLookbackDays);
   const [lookbackInput, setLookbackInput] = useState(String(lookbackDays));
   const [dateRange, setDateRange] = useState<DateRange>(() => buildDefaultRange(lookbackDays));
+  // A range that ends today moves its end along when the day changes in an open tab.
+  const [rangeFollowsToday, setRangeFollowsToday] = useState(true);
 
   useEffect(() => {
     const val = parseInt(lookbackInput, 10);
@@ -426,6 +437,7 @@ export default function GraphPage() {
       setLookbackDays(val);
       localStorage.setItem(LOOKBACK_DAYS_KEY, String(val));
       setDateRange(buildDefaultRange(val));
+      setRangeFollowsToday(true);
     }, 500);
     return () => clearTimeout(timer);
   }, [lookbackInput]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -433,13 +445,26 @@ export default function GraphPage() {
   const startDate = dateRange[0].toISOString();
   const endDate = dateRange[1].toISOString();
 
+  useEffect(() => {
+    if (!rangeFollowsToday) return;
+    const timer = setInterval(() => {
+      if (!dayjs().isAfter(dateRange[1])) return;
+      const next: DateRange = [dateRange[0], dayjs().endOf("day")];
+      // Seed the new key with the PRs on screen, marked stale, so the graph refetches without blanking.
+      const shown = queryClient.getQueryData<GraphQLPullRequest[]>(prsQueryKey(owner, repo, dateRange));
+      if (shown) queryClient.setQueryData(prsQueryKey(owner, repo, next), shown, { updatedAt: 0 });
+      setDateRange(next);
+    }, DAY_CHECK_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [rangeFollowsToday, dateRange, owner, repo, queryClient]);
+
   const {
     prs: fetchedPRs,
     isLoading,
     isFetchingMore,
     error: prError,
     refetch,
-  } = useIncrementalPRs(token, owner, repo, startDate, endDate, activeTab === "prs");
+  } = useIncrementalPRs(token, owner, repo, dateRange, activeTab === "prs");
 
   const [includeBots, setIncludeBots] = useState(getStoredIncludeBots);
   const toggleIncludeBots = useCallback(() => {
@@ -1036,6 +1061,7 @@ export default function GraphPage() {
             onChange={(dates) => {
               if (dates && dates[0] && dates[1]) {
                 setDateRange([dates[0], dates[1]]);
+                setRangeFollowsToday(dates[1].isSame(dayjs(), "day"));
               }
             }}
             allowClear={false}
